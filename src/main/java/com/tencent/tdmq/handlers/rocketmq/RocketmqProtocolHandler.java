@@ -32,7 +32,7 @@ public class RocketmqProtocolHandler implements ProtocolHandler {
     public static final String SSL_PREFIX = "SSL://";
     public static final String PLAINTEXT_PREFIX = "rocketmq://";
     public static final String LISTENER_DEL = ",";
-    public static final String LISTENER_PATTEN = "^(amqp)://[-a-zA-Z0-9+&@#/%?=~_|!:,.;]*[-0-9+]";
+    public static final String LISTENER_PATTEN = "^(rocketmq)://[-a-zA-Z0-9+&@#/%?=~_|!:,.;]*[-0-9+]";
 
     @Getter
     private RocketmqServiceConfiguration rocketmqConfig;
