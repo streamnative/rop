@@ -24,6 +24,8 @@ import com.tencent.tdmq.handlers.rocketmq.inner.processor.EndTransactionProcesso
 import com.tencent.tdmq.handlers.rocketmq.inner.processor.PullMessageProcessor;
 import com.tencent.tdmq.handlers.rocketmq.inner.processor.QueryMessageProcessor;
 import com.tencent.tdmq.handlers.rocketmq.inner.processor.SendMessageProcessor;
+import io.netty.channel.ChannelInitializer;
+import io.netty.channel.socket.SocketChannel;
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.List;
@@ -35,7 +37,10 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.pulsar.broker.PulsarService;
 import org.apache.rocketmq.broker.client.ConsumerIdsChangeListener;
 import org.apache.rocketmq.broker.latency.BrokerFixedThreadPoolExecutor;
 import org.apache.rocketmq.broker.mqtrace.ConsumeMessageHook;
@@ -44,7 +49,6 @@ import org.apache.rocketmq.broker.util.ServiceProvider;
 import org.apache.rocketmq.common.ThreadFactoryImpl;
 import org.apache.rocketmq.common.UtilAll;
 import org.apache.rocketmq.common.protocol.RequestCode;
-import org.apache.rocketmq.remoting.RemotingServer;
 import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
 import org.apache.rocketmq.store.MessageArrivingListener;
 import org.apache.rocketmq.store.MessageStore;
@@ -84,7 +88,9 @@ public class RocketMQBrokerController {
     private final List<SendMessageHook> sendMessageHookList = new ArrayList<>();
     private final List<ConsumeMessageHook> consumeMessageHookList = new ArrayList<>();
     private MessageStore messageStore;
-    private RemotingServer remotingServer;
+    @Getter
+    @Setter
+    private final RocketMQRemoteServer remotingServer;
     private final Broker2Client broker2Client = new Broker2Client(this);
 
     private TopicConfigManager topicConfigManager;
@@ -103,10 +109,16 @@ public class RocketMQBrokerController {
     private TransactionalMessageCheckService transactionalMessageCheckService;
     private TransactionalMessageService transactionalMessageService;
     private AbstractTransactionalMessageCheckListener transactionalMessageCheckListener;
+    private final ChannelInitializer<SocketChannel> channelInitializer;
+    @Getter
+    @Setter
+    private final PulsarService pulsarService;
 
-    public RocketMQBrokerController(
-            final RocketMQServiceConfiguration serverConfig) {
+    public RocketMQBrokerController(final RocketMQServiceConfiguration serverConfig, PulsarService pulsarService,
+            final ChannelInitializer<SocketChannel> channelInitializer) {
         this.serverConfig = serverConfig;
+        this.pulsarService = pulsarService;
+        this.channelInitializer = channelInitializer;
         this.consumerOffsetManager = new ConsumerOffsetManager(this);
         this.topicConfigManager = new TopicConfigManager(this);
         this.pullMessageProcessor = new PullMessageProcessor(this);
@@ -136,6 +148,8 @@ public class RocketMQBrokerController {
                 this.serverConfig.getEndTransactionPoolQueueCapacity());
 
         this.brokerStatsManager = new BrokerStatsManager(serverConfig.getBrokerName());
+        this.remotingServer = new RocketMQRemoteServer(this.serverConfig, this.clientHousekeepingService,
+                this.channelInitializer);
 
     }
 

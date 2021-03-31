@@ -30,9 +30,9 @@ public class RocketMQProtocolHandler implements ProtocolHandler {
 
     public static final String PROTOCOL_NAME = "rocketmq";
     public static final String SSL_PREFIX = "SSL://";
-    public static final String PLAINTEXT_PREFIX = "rocketmq://";
+    public static final String PLAINTEXT_PREFIX = "PLAINTEXT://";
     public static final String LISTENER_DEL = ",";
-    public static final String LISTENER_PATTEN = "^(rocketmq)://[-a-zA-Z0-9+&@#/%?=~_|!:,.;]*[-0-9+]";
+    public static final String LISTENER_PATTEN = "^(PLAINTEXT?|SSL)://[-a-zA-Z0-9+&@#/%?=~_|!:,.;]*:([0-9]+)";
 
     @Getter
     private RocketMQServiceConfiguration rocketmqConfig;
@@ -102,14 +102,14 @@ public class RocketMQProtocolHandler implements ProtocolHandler {
 
         try {
             ImmutableMap.Builder<InetSocketAddress, ChannelInitializer<SocketChannel>> builder =
-                    ImmutableMap.<InetSocketAddress, ChannelInitializer<SocketChannel>>builder();
+                    ImmutableMap.builder();
 
             for (String listener : parts) {
                 if (listener.startsWith(PLAINTEXT_PREFIX)) {
                     builder.put(
                             new InetSocketAddress(brokerService.pulsar().getBindAddress(), getListenerPort(listener)),
                             new RocketMQChannelInitializer(rocketmqConfig,
-                                    brokerService.pulsar())); // todo: 这里看是否需要定义专门的 RocketmqBrokerService 来包装
+                                    brokerService.pulsar(), false)); // todo: 这里看是否需要定义专门的 RocketmqBrokerService 来包装
                 } else {
                     log.error("Rocketmq listener {} not supported. supports {} and {}",
                             listener, PLAINTEXT_PREFIX, SSL_PREFIX);

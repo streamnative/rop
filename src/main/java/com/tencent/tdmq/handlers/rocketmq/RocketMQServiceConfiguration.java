@@ -216,4 +216,5 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
     private boolean autoCreateSubscriptionGroup = true;
 
     private int defaultQueryMaxNum = 10000;
+    private int serverChannelMaxIdleTimeSeconds = 120;
 }
