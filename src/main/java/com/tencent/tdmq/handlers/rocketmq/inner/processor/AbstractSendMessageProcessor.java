@@ -1,6 +1,6 @@
 package com.tencent.tdmq.handlers.rocketmq.inner.processor;
 
-import com.tencent.tdmq.handlers.rocketmq.RocketMQBrokerController;
+import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
 import io.netty.channel.ChannelHandlerContext;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;

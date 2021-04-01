@@ -27,7 +27,7 @@
         <!-- core dependencies-->
         <rocketmq.version>4.6.1</rocketmq.version>
         <!-- 目前使用的社区的最新官方版本 -->
-        <tdmq.version>2.8.0-rc-202102252222</tdmq.version>
+        <tdmq.version>2.7.1.1-rc-202103251930</tdmq.version>
         <spotbugs-annotations.version>3.1.8</spotbugs-annotations.version>
 
         <maven.compiler.source>8</maven.compiler.source>

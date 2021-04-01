@@ -1,6 +1,6 @@
 package com.tencent.tdmq.handlers.rocketmq.inner.processor;
 
-import com.tencent.tdmq.handlers.rocketmq.RocketMQBrokerController;
+import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;

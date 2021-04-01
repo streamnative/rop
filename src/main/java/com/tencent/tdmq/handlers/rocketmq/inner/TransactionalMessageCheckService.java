@@ -1,13 +1,9 @@
 package com.tencent.tdmq.handlers.rocketmq.inner;
 
 
-import com.tencent.tdmq.handlers.rocketmq.RocketMQBrokerController;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.rocketmq.broker.BrokerController;
 import org.apache.rocketmq.common.ServiceThread;
-import org.apache.rocketmq.common.constant.LoggerName;
-import org.apache.rocketmq.logging.InternalLogger;
-import org.apache.rocketmq.logging.InternalLoggerFactory;
+
 @Slf4j
 public class TransactionalMessageCheckService extends ServiceThread {
     private RocketMQBrokerController brokerController;

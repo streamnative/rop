@@ -1,13 +1,13 @@
-package com.tencent.tdmq.handlers.rocketmq;
+package com.tencent.tdmq.handlers.rocketmq.inner;
 
-import com.tencent.tdmq.handlers.rocketmq.inner.NettyRemotingAbstract;
+import com.google.common.base.Preconditions;
+import com.tencent.tdmq.handlers.rocketmq.RocketMQServiceConfiguration;
 import com.tencent.tdmq.handlers.rocketmq.utils.FileRegionEncoder;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelInitializer;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.handler.timeout.IdleState;
@@ -24,6 +24,7 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
 import lombok.Data;
 import lombok.Getter;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.remoting.ChannelEventListener;
 import org.apache.rocketmq.remoting.InvokeCallback;
@@ -51,9 +52,7 @@ public class RocketMQRemoteServer extends NettyRemotingAbstract implements Remot
     public static final String HANDSHAKE_HANDLER_NAME = "handshakeHandler";
     public static final String TLS_HANDLER_NAME = "sslHandler";
     public static final String FILE_REGION_ENCODER_NAME = "fileRegionEncoder";
-    @Getter
     private DefaultEventExecutorGroup defaultEventExecutorGroup;
-    @Getter
     private RocketMQServiceConfiguration config;
 
     private final ExecutorService publicExecutor;
@@ -66,15 +65,13 @@ public class RocketMQRemoteServer extends NettyRemotingAbstract implements Remot
     private NettyEncoder encoder;
     private NettyConnectManageHandler connectionManageHandler;
     private NettyServerHandler serverHandler;
-    @Getter
-    private final ChannelInitializer<SocketChannel> rocketMQChannelInitializer;
+    private SocketChannel rocketMQChannel;
 
     public RocketMQRemoteServer(final RocketMQServiceConfiguration config,
-            final ChannelEventListener channelEventListener, ChannelInitializer<SocketChannel> rocketMQChannelInitializer) {
+            final ChannelEventListener channelEventListener) {
         super(config.getPermitsOneway(), config.getPermitsAsync());
         this.config = config;
         this.channelEventListener = channelEventListener;
-        this.rocketMQChannelInitializer = rocketMQChannelInitializer;
         int publicThreadNums = config.getCallbackThreadPoolsNum() <= 0 ? 4 : config.getCallbackThreadPoolsNum();
 
         this.publicExecutor = Executors.newFixedThreadPool(publicThreadNums, new ThreadFactory() {
@@ -274,16 +271,8 @@ public class RocketMQRemoteServer extends NettyRemotingAbstract implements Remot
 
     @Override
     public void start() {
-        prepareSharableHandlers();
-
-/*
-        try {
-            ChannelFuture sync = this.serverBootstrap.bind().sync();
-            InetSocketAddress addr = (InetSocketAddress) sync.channel().localAddress();
-            this.port = addr.getPort();
-        } catch (InterruptedException e1) {
-            throw new RuntimeException("this.serverBootstrap.bind().sync() InterruptedException", e1);
-        }*/
+        Preconditions.checkNotNull(this.rocketMQChannel, "RocketMQ channel isn't initialized.");
+        this.port = this.rocketMQChannel.localAddress().getPort();
 
         if (this.channelEventListener != null) {
             this.nettyEventExecutor.start();

@@ -1,8 +1,7 @@
 package com.tencent.tdmq.handlers.rocketmq.inner.processor;
 
-import com.tencent.tdmq.handlers.rocketmq.RocketMQBrokerController;
+import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
 import io.netty.channel.ChannelHandlerContext;
-import org.apache.rocketmq.broker.BrokerController;
 import org.apache.rocketmq.broker.client.ClientChannelInfo;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.constant.LoggerName;

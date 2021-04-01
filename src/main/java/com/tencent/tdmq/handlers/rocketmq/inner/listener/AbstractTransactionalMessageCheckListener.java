@@ -1,6 +1,6 @@
 package com.tencent.tdmq.handlers.rocketmq.inner.listener;
 
-import com.tencent.tdmq.handlers.rocketmq.RocketMQBrokerController;
+import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
 import io.netty.channel.Channel;
 import java.util.Random;
 import java.util.concurrent.ArrayBlockingQueue;

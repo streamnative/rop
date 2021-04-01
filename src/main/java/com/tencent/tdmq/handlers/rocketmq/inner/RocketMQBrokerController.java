@@ -1,18 +1,6 @@
-package com.tencent.tdmq.handlers.rocketmq;
+package com.tencent.tdmq.handlers.rocketmq.inner;
 
-import com.tencent.tdmq.handlers.rocketmq.inner.Broker2Client;
-import com.tencent.tdmq.handlers.rocketmq.inner.ClientHousekeepingService;
-import com.tencent.tdmq.handlers.rocketmq.inner.ConsumerManager;
-import com.tencent.tdmq.handlers.rocketmq.inner.ConsumerOffsetManager;
-import com.tencent.tdmq.handlers.rocketmq.inner.ProducerManager;
-import com.tencent.tdmq.handlers.rocketmq.inner.PullRequestHoldService;
-import com.tencent.tdmq.handlers.rocketmq.inner.RebalanceLockManager;
-import com.tencent.tdmq.handlers.rocketmq.inner.SubscriptionGroupManager;
-import com.tencent.tdmq.handlers.rocketmq.inner.TopicConfigManager;
-import com.tencent.tdmq.handlers.rocketmq.inner.TransactionalMessageBridge;
-import com.tencent.tdmq.handlers.rocketmq.inner.TransactionalMessageCheckService;
-import com.tencent.tdmq.handlers.rocketmq.inner.TransactionalMessageService;
-import com.tencent.tdmq.handlers.rocketmq.inner.TransactionalMessageServiceImpl;
+import com.tencent.tdmq.handlers.rocketmq.RocketMQServiceConfiguration;
 import com.tencent.tdmq.handlers.rocketmq.inner.listener.AbstractTransactionalMessageCheckListener;
 import com.tencent.tdmq.handlers.rocketmq.inner.listener.DefaultConsumerIdsChangeListener;
 import com.tencent.tdmq.handlers.rocketmq.inner.listener.DefaultTransactionalMessageCheckListener;
@@ -41,6 +29,7 @@ import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.pulsar.broker.PulsarService;
+import org.apache.pulsar.broker.service.BrokerService;
 import org.apache.rocketmq.broker.client.ConsumerIdsChangeListener;
 import org.apache.rocketmq.broker.latency.BrokerFixedThreadPoolExecutor;
 import org.apache.rocketmq.broker.mqtrace.ConsumeMessageHook;
@@ -88,8 +77,7 @@ public class RocketMQBrokerController {
     private final List<SendMessageHook> sendMessageHookList = new ArrayList<>();
     private final List<ConsumeMessageHook> consumeMessageHookList = new ArrayList<>();
     private MessageStore messageStore;
-    @Getter
-    @Setter
+
     private final RocketMQRemoteServer remotingServer;
     private final Broker2Client broker2Client = new Broker2Client(this);
 
@@ -109,16 +97,11 @@ public class RocketMQBrokerController {
     private TransactionalMessageCheckService transactionalMessageCheckService;
     private TransactionalMessageService transactionalMessageService;
     private AbstractTransactionalMessageCheckListener transactionalMessageCheckListener;
-    private final ChannelInitializer<SocketChannel> channelInitializer;
-    @Getter
-    @Setter
-    private final PulsarService pulsarService;
 
-    public RocketMQBrokerController(final RocketMQServiceConfiguration serverConfig, PulsarService pulsarService,
-            final ChannelInitializer<SocketChannel> channelInitializer) {
+    private BrokerService brokerService;
+
+    public RocketMQBrokerController(final RocketMQServiceConfiguration serverConfig) {
         this.serverConfig = serverConfig;
-        this.pulsarService = pulsarService;
-        this.channelInitializer = channelInitializer;
         this.consumerOffsetManager = new ConsumerOffsetManager(this);
         this.topicConfigManager = new TopicConfigManager(this);
         this.pullMessageProcessor = new PullMessageProcessor(this);
@@ -148,8 +131,7 @@ public class RocketMQBrokerController {
                 this.serverConfig.getEndTransactionPoolQueueCapacity());
 
         this.brokerStatsManager = new BrokerStatsManager(serverConfig.getBrokerName());
-        this.remotingServer = new RocketMQRemoteServer(this.serverConfig, this.clientHousekeepingService,
-                this.channelInitializer);
+        this.remotingServer = new RocketMQRemoteServer(this.serverConfig, this.clientHousekeepingService);
 
     }
 
@@ -178,7 +160,7 @@ public class RocketMQBrokerController {
             }
         }
 
-        result = result && this.messageStore.load();
+        //result = result && this.messageStore.load();
 
         if (result) {
             this.sendMessageExecutor = new BrokerFixedThreadPoolExecutor(

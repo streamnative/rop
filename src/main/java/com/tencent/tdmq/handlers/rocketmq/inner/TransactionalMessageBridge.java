@@ -1,6 +1,5 @@
 package com.tencent.tdmq.handlers.rocketmq.inner;
 
-import com.tencent.tdmq.handlers.rocketmq.RocketMQBrokerController;
 import java.net.SocketAddress;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;

@@ -1,6 +1,5 @@
 package com.tencent.tdmq.handlers.rocketmq.inner;
 
-import com.tencent.tdmq.handlers.rocketmq.RocketMQBrokerController;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -9,13 +8,10 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.rocketmq.broker.BrokerController;
 import org.apache.rocketmq.broker.longpolling.ManyPullRequest;
 import org.apache.rocketmq.broker.longpolling.PullRequest;
 import org.apache.rocketmq.common.ServiceThread;
 import org.apache.rocketmq.common.SystemClock;
-import org.apache.rocketmq.logging.InternalLogger;
-import org.apache.rocketmq.logging.InternalLoggerFactory;
 import org.apache.rocketmq.store.ConsumeQueueExt.CqExtUnit;
 @Slf4j
 public class PullRequestHoldService extends ServiceThread {

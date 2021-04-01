@@ -1,150 +1,215 @@
 package com.tencent.tdmq.handlers.rocketmq;
 
-import io.netty.channel.ChannelDuplexHandler;
-import io.netty.channel.ChannelHandler;
-import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.SimpleChannelInboundHandler;
-import io.netty.handler.timeout.IdleState;
-import io.netty.handler.timeout.IdleStateEvent;
-import io.netty.util.concurrent.DefaultEventExecutorGroup;
-import java.util.Timer;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.atomic.AtomicInteger;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Maps;
+import io.netty.channel.ChannelInitializer;
+import io.netty.channel.socket.SocketChannel;
+import java.net.InetSocketAddress;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Supplier;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.bookkeeper.common.util.OrderedExecutor;
+import org.apache.commons.lang3.builder.ReflectionToStringBuilder;
+import org.apache.pulsar.ZookeeperSessionExpiredHandlers;
+import org.apache.pulsar.broker.BookKeeperClientFactory;
+import org.apache.pulsar.broker.ManagedLedgerClientFactory;
+import org.apache.pulsar.broker.PulsarServerException;
 import org.apache.pulsar.broker.PulsarService;
-import org.apache.rocketmq.remoting.ChannelEventListener;
-import org.apache.rocketmq.remoting.common.RemotingHelper;
-import org.apache.rocketmq.remoting.common.RemotingUtil;
-import org.apache.rocketmq.remoting.netty.NettyEncoder;
-import org.apache.rocketmq.remoting.protocol.RemotingCommand;
+import org.apache.pulsar.broker.loadbalance.LoadManager;
+import org.apache.pulsar.broker.service.BrokerService;
+import org.apache.pulsar.broker.service.schema.SchemaRegistryService;
+import org.apache.pulsar.broker.stats.MetricsGenerator;
+import org.apache.pulsar.broker.stats.prometheus.PrometheusMetricsServlet;
+import org.apache.pulsar.broker.web.WebService;
+import org.apache.pulsar.common.configuration.VipStatus;
+import org.apache.pulsar.common.policies.data.OffloadPolicies;
+import org.apache.pulsar.zookeeper.LocalZooKeeperConnectionService;
+import org.apache.pulsar.zookeeper.ZookeeperSessionExpiredHandler;
+import org.eclipse.jetty.servlet.ServletHolder;
 
 @Slf4j
 public class RocketMQService extends PulsarService {
 
-    private DefaultEventExecutorGroup defaultEventExecutorGroup;
+    @Getter
     private final RocketMQServiceConfiguration config;
-    private final RocketMQBrokerController rocketMQBrokerController;
-
-    private final ExecutorService publicExecutor;
-    private final ChannelEventListener channelEventListener;
-    private NettyEncoder encoder;
-    private final Timer timer = new Timer("ServerHouseKeepingService", true);
-
-    private NettyConnectManageHandler connectionManageHandler;
-    private NettyServerHandler serverHandler;
 
 
     public RocketMQService(RocketMQServiceConfiguration config) {
         super(config);
-        //super(config.getPermitsOneway(), config.getPermitsAsync());
         this.config = config;
-        this.rocketMQBrokerController = new RocketMQBrokerController(config);
-        this.channelEventListener = null;
+    }
 
-        this.publicExecutor = Executors.newFixedThreadPool(config.getCallbackThreadPoolsNum(), new ThreadFactory() {
-            private AtomicInteger threadIndex = new AtomicInteger(0);
+    @Override
+    public Map<String, String> getProtocolDataToAdvertise() {
+        return ImmutableMap.<String, String>builder()
+                .put("kafka", config.getRocketmqListeners())
+                .build();
+    }
 
-            @Override
-            public Thread newThread(Runnable r) {
-                return new Thread(r, "NettyServerPublicExecutor_" + this.threadIndex.incrementAndGet());
+    @Override
+    public void start() throws PulsarServerException {
+        ReentrantLock lock = getMutex();
+
+        lock.lock();
+
+        try {
+            // TODO: add Kafka on Pulsar Version support -- https://github.com/streamnative/kop/issues/3
+            log.info("Starting Pulsar Broker service powered by Pulsar version: '{}'",
+                    (getBrokerVersion() != null ? getBrokerVersion() : "unknown"));
+
+            if (getState() != State.Init) {
+                throw new PulsarServerException("Cannot start the service once it was stopped");
             }
-        });
-    }
 
-    //@Override
-    public ChannelEventListener getChannelEventListener() {
-        return null;
-    }
-
-    //@Override
-    public ExecutorService getCallbackExecutor() {
-        return null;
-    }
-
-    @ChannelHandler.Sharable
-    class NettyServerHandler extends SimpleChannelInboundHandler<RemotingCommand> {
-
-        @Override
-        protected void channelRead0(ChannelHandlerContext ctx, RemotingCommand msg) throws Exception {
-            /* processMessageReceived(ctx, msg);*/
-        }
-    }
-
-    @ChannelHandler.Sharable
-    class NettyConnectManageHandler extends ChannelDuplexHandler {
-
-        @Override
-        public void channelRegistered(ChannelHandlerContext ctx) throws Exception {
-            final String remoteAddress = RemotingHelper.parseChannelRemoteAddr(ctx.channel());
-            log.info("NETTY SERVER PIPELINE: channelRegistered {}", remoteAddress);
-            super.channelRegistered(ctx);
-        }
-
-        @Override
-        public void channelUnregistered(ChannelHandlerContext ctx) throws Exception {
-            final String remoteAddress = RemotingHelper.parseChannelRemoteAddr(ctx.channel());
-            log.info("NETTY SERVER PIPELINE: channelUnregistered, the channel[{}]", remoteAddress);
-            super.channelUnregistered(ctx);
-        }
-
-        @Override
-        public void channelActive(ChannelHandlerContext ctx) throws Exception {
-            final String remoteAddress = RemotingHelper.parseChannelRemoteAddr(ctx.channel());
-            log.info("NETTY SERVER PIPELINE: channelActive, the channel[{}]", remoteAddress);
-            super.channelActive(ctx);
-
-            if (RocketMQService.this.channelEventListener != null) {
-               /* RocketMQService.this
-                        .putNettyEvent(new NettyEvent(NettyEventType.CONNECT, remoteAddress, ctx.channel()));*/
+            if (config.getRocketmqListeners() == null || config.getRocketmqListeners().isEmpty()) {
+                throw new IllegalArgumentException("Kafka Listeners should be provided through brokerConf.listeners");
             }
-        }
 
-        @Override
-        public void channelInactive(ChannelHandlerContext ctx) throws Exception {
-            final String remoteAddress = RemotingHelper.parseChannelRemoteAddr(ctx.channel());
-            log.info("NETTY SERVER PIPELINE: channelInactive, the channel[{}]", remoteAddress);
-            super.channelInactive(ctx);
-
-            if (RocketMQService.this.channelEventListener != null) {
-               /* RocketMQService.this
-                        .putNettyEvent(new NettyEvent(NettyEventType.CLOSE, remoteAddress, ctx.channel()));*/
+            if (config.getAdvertisedAddress() != null
+                    && !config.getRocketmqListeners().contains(config.getAdvertisedAddress())) {
+                String err = "Error config: advertisedAddress - " + config.getAdvertisedAddress()
+                        + " and listeners - " + config.getRocketmqListeners() + " not match.";
+                log.error(err);
+                throw new IllegalArgumentException(err);
             }
-        }
 
-        @Override
-        public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
-            if (evt instanceof IdleStateEvent) {
-                IdleStateEvent event = (IdleStateEvent) evt;
-                if (event.state().equals(IdleState.ALL_IDLE)) {
-                    final String remoteAddress = RemotingHelper.parseChannelRemoteAddr(ctx.channel());
-                    log.warn("NETTY SERVER PIPELINE: IDLE exception [{}]", remoteAddress);
-                    RemotingUtil.closeChannel(ctx.channel());
-                    if (RocketMQService.this.channelEventListener != null) {
-                       /* RocketMQService.this
-                                .putNettyEvent(new NettyEvent(NettyEventType.IDLE, remoteAddress, ctx.channel()));*/
-                    }
+            setOrderedExecutor(OrderedExecutor.newBuilder().numThreads(8).name("pulsar-ordered")
+                    .build());
+
+            // init KafkaProtocolHandler
+            RocketMQProtocolHandler rocketmqHandler = new RocketMQProtocolHandler();
+            rocketmqHandler.initialize(config);
+
+            // Now we are ready to start services
+            setLocalZooKeeperConnectionProvider(new LocalZooKeeperConnectionService(getZooKeeperClientFactory(),
+                    config.getZookeeperServers(), config.getZooKeeperSessionTimeoutMillis()));
+            ZookeeperSessionExpiredHandler expiredHandler =
+                    ZookeeperSessionExpiredHandlers.shutdownWhenZookeeperSessionExpired(getShutdownService());
+            getLocalZooKeeperConnectionProvider().start(expiredHandler);
+
+            // Initialize and start service to access configuration repository.
+            startZkCacheService();
+
+            BookKeeperClientFactory bkClientFactory = newBookKeeperClientFactory();
+            setBkClientFactory(bkClientFactory);
+            setManagedLedgerClientFactory(
+                    new ManagedLedgerClientFactory(config, getZkClient(), bkClientFactory));
+            setBrokerService(new BrokerService(this));
+
+            // Start load management service (even if load balancing is disabled)
+            getLoadManager().set(LoadManager.create(this));
+
+            setDefaultOffloader(createManagedLedgerOffloader(OffloadPolicies.create(config.getProperties())));
+
+            getBrokerService().start();
+
+            WebService webService = new WebService(this);
+            setWebService(webService);
+            Map<String, Object> attributeMap = Maps.newHashMap();
+            attributeMap.put(WebService.ATTRIBUTE_PULSAR_NAME, this);
+            Map<String, Object> vipAttributeMap = Maps.newHashMap();
+            vipAttributeMap.put(VipStatus.ATTRIBUTE_STATUS_FILE_PATH, config.getStatusFilePath());
+            vipAttributeMap.put(VipStatus.ATTRIBUTE_IS_READY_PROBE, new Supplier<Boolean>() {
+                @Override
+                public Boolean get() {
+                    // Ensure the VIP status is only visible when the broker is fully initialized
+                    return getState() == State.Started;
                 }
+            });
+            webService.addRestResources("/",
+                    VipStatus.class.getPackage().getName(), false, vipAttributeMap);
+            webService.addRestResources("/",
+                    "org.apache.pulsar.broker.web", false, attributeMap);
+            webService.addRestResources("/admin",
+                    "org.apache.pulsar.broker.admin.v1", true, attributeMap);
+            webService.addRestResources("/admin/v2",
+                    "org.apache.pulsar.broker.admin.v2", true, attributeMap);
+            webService.addRestResources("/admin/v3",
+                    "org.apache.pulsar.broker.admin.v3", true, attributeMap);
+            webService.addRestResources("/lookup",
+                    "org.apache.pulsar.broker.lookup", true, attributeMap);
+
+            webService.addServlet("/metrics",
+                    new ServletHolder(
+                            new PrometheusMetricsServlet(
+                                    this,
+                                    config.isExposeTopicLevelMetricsInPrometheus(),
+                                    config.isExposeConsumerLevelMetricsInPrometheus())),
+                    false, attributeMap);
+
+            if (log.isDebugEnabled()) {
+                log.debug("Attempting to add static directory");
             }
+            webService.addStaticResources("/static", "/static");
 
-            ctx.fireUserEventTriggered(evt);
-        }
+            setSchemaRegistryService(SchemaRegistryService.create(null, new HashSet<>()));
 
-        @Override
-        public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
-            final String remoteAddress = RemotingHelper.parseChannelRemoteAddr(ctx.channel());
-            log.warn("NETTY SERVER PIPELINE: exceptionCaught {}", remoteAddress);
-            log.warn("NETTY SERVER PIPELINE: exceptionCaught exception.", cause);
+            webService.start();
 
-            if (RocketMQService.this.channelEventListener != null) {
-              /*  RocketMQService.this
-                        .putNettyEvent(new NettyEvent(NettyEventType.EXCEPTION, remoteAddress, ctx.channel()));*/
-            }
+            // Refresh addresses, since the port might have been dynamically assigned
+            setWebServiceAddress(webAddress(config));
+            setWebServiceAddressTls(webAddressTls(config));
+            setBrokerServiceUrl(config.getBrokerServicePort().isPresent()
+                    ? brokerUrl(advertisedAddress(config), getBrokerListenPort().get())
+                    : null);
+            setBrokerServiceUrlTls(brokerUrlTls(config));
 
-            RemotingUtil.closeChannel(ctx.channel());
+            // needs load management service
+            this.startNamespaceService();
+
+            // Start the leader election service
+            startLeaderElectionService();
+
+            // Register heartbeat and bootstrap namespaces.
+            getNsService().registerBootstrapNamespaces();
+
+            setMetricsGenerator(new MetricsGenerator(this));
+
+            // By starting the Load manager service, the broker will also become visible
+            // to the rest of the broker by creating the registration z-node. This needs
+            // to be done only when the broker is fully operative.
+            startLoadManagementService();
+
+            acquireSLANamespace();
+
+            final String bootstrapMessage = "bootstrap service "
+                    + (config.getWebServicePort().isPresent()
+                    ? "port = " + config.getWebServicePort().get() : "")
+                    + (config.getWebServicePortTls().isPresent()
+                    ? "tls-port = " + config.getWebServicePortTls() : "")
+                    + ("kafka listener url= " + config.getRocketmqListeners());
+
+            // start Kafka protocol handler.
+            // put after load manager for the use of existing broker service to create internal topics.
+            rocketmqHandler.start(this.getBrokerService());
+
+            Map<InetSocketAddress, ChannelInitializer<SocketChannel>> channelInitializer =
+                    rocketmqHandler.newChannelInitializers();
+            Map<String, Map<InetSocketAddress, ChannelInitializer<SocketChannel>>> protocolHandlers = ImmutableMap
+                    .<String, Map<InetSocketAddress, ChannelInitializer<SocketChannel>>>builder()
+                    .put("kafka", channelInitializer)
+                    .build();
+            getBrokerService().startProtocolHandlers(protocolHandlers);
+
+            setState(State.Started);
+
+            log.info("Kafka messaging service is ready, {}, cluster={}, configs={}",
+                    bootstrapMessage, config.getClusterName(),
+                    ReflectionToStringBuilder.toString(config));
+        } catch (Exception e) {
+            log.error(e.getMessage(), e);
+            throw new PulsarServerException(e);
+        } finally {
+            lock.unlock();
         }
     }
 
+    @Override
+    public void close() throws PulsarServerException {
+        super.close();
+    }
 
 }

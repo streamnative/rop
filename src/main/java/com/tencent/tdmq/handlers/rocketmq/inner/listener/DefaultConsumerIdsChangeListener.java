@@ -1,14 +1,10 @@
 package com.tencent.tdmq.handlers.rocketmq.inner.listener;
 
-import com.tencent.tdmq.handlers.rocketmq.RocketMQBrokerController;
+import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
 import io.netty.channel.Channel;
-import java.util.Collection;
-import java.util.Iterator;
 import java.util.List;
-import org.apache.rocketmq.broker.BrokerController;
 import org.apache.rocketmq.broker.client.ConsumerGroupEvent;
 import org.apache.rocketmq.broker.client.ConsumerIdsChangeListener;
-import org.apache.rocketmq.common.protocol.heartbeat.SubscriptionData;
 
 public class DefaultConsumerIdsChangeListener implements ConsumerIdsChangeListener {
     private final RocketMQBrokerController brokerController;

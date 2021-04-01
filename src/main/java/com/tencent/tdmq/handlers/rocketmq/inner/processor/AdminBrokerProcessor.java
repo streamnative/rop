@@ -1,7 +1,7 @@
 package com.tencent.tdmq.handlers.rocketmq.inner.processor;
 
 import com.alibaba.fastjson.JSON;
-import com.tencent.tdmq.handlers.rocketmq.RocketMQBrokerController;
+import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import java.io.UnsupportedEncodingException;

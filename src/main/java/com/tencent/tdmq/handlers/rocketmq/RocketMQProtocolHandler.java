@@ -3,13 +3,14 @@ package com.tencent.tdmq.handlers.rocketmq;
 import static com.google.common.base.Preconditions.checkState;
 
 import com.google.common.collect.ImmutableMap;
+import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
 import com.tencent.tdmq.handlers.rocketmq.utils.ConfigurationUtils;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.socket.SocketChannel;
 import java.net.InetSocketAddress;
 import java.util.Locale;
 import java.util.Map;
-import lombok.Getter;
+import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.pulsar.broker.ServiceConfiguration;
 import org.apache.pulsar.broker.ServiceConfigurationUtils;
@@ -26,6 +27,7 @@ import org.apache.pulsar.broker.service.BrokerService;
  * 可以通过 pulsar service 加载以及运行
  */
 @Slf4j
+@Data
 public class RocketMQProtocolHandler implements ProtocolHandler {
 
     public static final String PROTOCOL_NAME = "rocketmq";
@@ -34,11 +36,9 @@ public class RocketMQProtocolHandler implements ProtocolHandler {
     public static final String LISTENER_DEL = ",";
     public static final String LISTENER_PATTEN = "^(PLAINTEXT?|SSL)://[-a-zA-Z0-9+&@#/%?=~_|!:,.;]*:([0-9]+)";
 
-    @Getter
     private RocketMQServiceConfiguration rocketmqConfig;
-    @Getter
     private BrokerService brokerService;
-    @Getter
+    private RocketMQBrokerController rocketMQBroker;
     private String bindAddress;
 
     public static int getListenerPort(String listener) {
@@ -69,6 +69,7 @@ public class RocketMQProtocolHandler implements ProtocolHandler {
             rocketmqConfig = ConfigurationUtils.create(conf.getProperties(), RocketMQServiceConfiguration.class);
         }
         this.bindAddress = ServiceConfigurationUtils.getDefaultOrConfiguredAddress(rocketmqConfig.getBindAddress());
+        this.rocketMQBroker = new RocketMQBrokerController(rocketmqConfig);
     }
 
     @Override
@@ -82,13 +83,19 @@ public class RocketMQProtocolHandler implements ProtocolHandler {
     @Override
     public void start(BrokerService service) {
         brokerService = service;
-
+        rocketMQBroker.setBrokerService(brokerService);
         log.info("Starting RocketmqProtocolHandler, rop version is: '{}'", RopVersion.getVersion());
         log.info("Git Revision {}", RopVersion.getGitSha());
         log.info("Built by {} on {} at {}",
                 RopVersion.getBuildUser(),
                 RopVersion.getBuildHost(),
                 RopVersion.getBuildTime());
+        try {
+            rocketMQBroker.start();
+        } catch (Exception e) {
+            log.error("start rop error.", e);
+        }
+
     }
 
     @Override
@@ -96,6 +103,7 @@ public class RocketMQProtocolHandler implements ProtocolHandler {
         checkState(rocketmqConfig != null);
         checkState(rocketmqConfig.getRocketmqListeners() != null);
         checkState(brokerService != null);
+        checkState(rocketMQBroker != null);
 
         String listeners = rocketmqConfig.getRocketmqListeners();
         String[] parts = listeners.split(LISTENER_DEL);
@@ -108,8 +116,8 @@ public class RocketMQProtocolHandler implements ProtocolHandler {
                 if (listener.startsWith(PLAINTEXT_PREFIX)) {
                     builder.put(
                             new InetSocketAddress(brokerService.pulsar().getBindAddress(), getListenerPort(listener)),
-                            new RocketMQChannelInitializer(rocketmqConfig,
-                                    brokerService.pulsar(), false)); // todo: 这里看是否需要定义专门的 RocketmqBrokerService 来包装
+                            new RocketMQChannelInitializer(rocketmqConfig, rocketMQBroker,
+                                    brokerService, false)); // todo: 这里看是否需要定义专门的 RocketmqBrokerService 来包装
                 } else {
                     log.error("Rocketmq listener {} not supported. supports {} and {}",
                             listener, PLAINTEXT_PREFIX, SSL_PREFIX);

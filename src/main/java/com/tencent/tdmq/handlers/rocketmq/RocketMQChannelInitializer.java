@@ -1,11 +1,13 @@
 package com.tencent.tdmq.handlers.rocketmq;
 
+import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
+import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQRemoteServer;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.handler.codec.LengthFieldPrepender;
 import io.netty.handler.timeout.IdleStateHandler;
 import lombok.Getter;
-import org.apache.pulsar.broker.PulsarService;
+import org.apache.pulsar.broker.service.BrokerService;
 import org.apache.rocketmq.remoting.netty.NettyDecoder;
 
 /**
@@ -19,7 +21,7 @@ import org.apache.rocketmq.remoting.netty.NettyDecoder;
 public class RocketMQChannelInitializer extends ChannelInitializer<SocketChannel> {
 
     @Getter
-    private final PulsarService pulsarService;
+    private final BrokerService brokerService;
     @Getter
     private final RocketMQServiceConfiguration rocketmqConfig;
     @Getter
@@ -30,19 +32,21 @@ public class RocketMQChannelInitializer extends ChannelInitializer<SocketChannel
     private final boolean enableTls;
 
 
-    public RocketMQChannelInitializer(RocketMQServiceConfiguration rocketmqConfig, PulsarService pulsarService,
+    public RocketMQChannelInitializer(RocketMQServiceConfiguration rocketmqConfig,
+            RocketMQBrokerController rocketmqBroker, BrokerService brokerService,
             boolean enableTls) {
         super();
         this.rocketmqConfig = rocketmqConfig;
-        this.pulsarService = pulsarService;
+        this.brokerController = rocketmqBroker;
+        this.brokerService = brokerService;
         this.enableTls = enableTls;
-        this.brokerController = new RocketMQBrokerController(rocketmqConfig, pulsarService, this);
-        this.remoteServer = brokerController.getRemotingServer();
+        this.remoteServer = rocketmqBroker.getRemotingServer();
     }
 
 
     @Override
     protected void initChannel(SocketChannel ch) throws Exception {
+        remoteServer.setRocketMQChannel(ch);
         ch.pipeline().addLast(new LengthFieldPrepender(4));
         ch.pipeline()
                 .addLast(remoteServer.getDefaultEventExecutorGroup(), remoteServer.HANDSHAKE_HANDLER_NAME,

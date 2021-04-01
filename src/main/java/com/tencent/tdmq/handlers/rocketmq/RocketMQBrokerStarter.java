@@ -86,16 +86,14 @@ public class RocketMQBrokerStarter {
                 throw new IllegalArgumentException("Max message size need smaller than jvm directMemory");
             }
 
-/*
-
-            if (brokerConfig.getAdvertisedAddress() != null
+/*            if (brokerConfig.getAdvertisedAddress() != null
                 && !brokerConfig.getListeners().contains(brokerConfig.getAdvertisedAddress())) {
                 String err = "Error config: advertisedAddress - " + brokerConfig.getAdvertisedAddress()
                     + " and listeners - " + brokerConfig.getListeners() + " not match.";
                 log.error(err);
                 throw new IllegalArgumentException(err);
-            }
-*/
+            }*/
+
 
             // init rocketmq broker service
             rocketmqService = new RocketMQService(brokerConfig);

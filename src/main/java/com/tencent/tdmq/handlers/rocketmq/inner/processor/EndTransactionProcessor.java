@@ -1,8 +1,7 @@
 package com.tencent.tdmq.handlers.rocketmq.inner.processor;
 
-import com.tencent.tdmq.handlers.rocketmq.RocketMQBrokerController;
+import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
 import io.netty.channel.ChannelHandlerContext;
-import org.apache.rocketmq.broker.BrokerController;
 import org.apache.rocketmq.broker.transaction.OperationResult;
 import org.apache.rocketmq.common.TopicFilterType;
 import org.apache.rocketmq.common.constant.LoggerName;
@@ -21,7 +20,6 @@ import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.store.MessageExtBrokerInner;
 import org.apache.rocketmq.store.PutMessageResult;
-import org.apache.rocketmq.store.config.BrokerRole;
 
 public class EndTransactionProcessor implements NettyRequestProcessor {
     private static final InternalLogger LOGGER = InternalLoggerFactory.getLogger(LoggerName.TRANSACTION_LOGGER_NAME);

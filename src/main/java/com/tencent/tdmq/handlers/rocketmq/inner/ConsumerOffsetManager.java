@@ -1,6 +1,5 @@
 package com.tencent.tdmq.handlers.rocketmq.inner;
 
-import com.tencent.tdmq.handlers.rocketmq.RocketMQBrokerController;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
