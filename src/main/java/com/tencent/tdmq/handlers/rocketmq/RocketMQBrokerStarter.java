@@ -1,19 +1,4 @@
-/**
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 package com.tencent.tdmq.handlers.rocketmq;
-
 
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Preconditions.checkState;
@@ -53,7 +38,6 @@ import org.slf4j.bridge.SLF4JBridgeHandler;
 public class RocketMQBrokerStarter {
 
     private static class BrokerStarter {
-
         private final RocketMQServiceConfiguration brokerConfig;
         private final RocketMQService rocketmqService;
         private final BookieServer bookieServer;
@@ -86,13 +70,13 @@ public class RocketMQBrokerStarter {
                 throw new IllegalArgumentException("Max message size need smaller than jvm directMemory");
             }
 
-/*            if (brokerConfig.getAdvertisedAddress() != null
-                && !brokerConfig.getListeners().contains(brokerConfig.getAdvertisedAddress())) {
+          if (brokerConfig.getAdvertisedAddress() != null
+                && !brokerConfig.getRocketmqListeners().contains(brokerConfig.getAdvertisedAddress())) {
                 String err = "Error config: advertisedAddress - " + brokerConfig.getAdvertisedAddress()
-                    + " and listeners - " + brokerConfig.getListeners() + " not match.";
+                    + " and listeners - " + brokerConfig.getRocketmqListeners() + " not match.";
                 log.error(err);
                 throw new IllegalArgumentException(err);
-            }*/
+            }
 
 
             // init rocketmq broker service

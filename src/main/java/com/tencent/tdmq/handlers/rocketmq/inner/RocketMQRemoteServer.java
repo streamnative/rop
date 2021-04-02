@@ -1,6 +1,5 @@
 package com.tencent.tdmq.handlers.rocketmq.inner;
 
-import com.google.common.base.Preconditions;
 import com.tencent.tdmq.handlers.rocketmq.RocketMQServiceConfiguration;
 import com.tencent.tdmq.handlers.rocketmq.utils.FileRegionEncoder;
 import io.netty.buffer.ByteBuf;
@@ -23,8 +22,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
 import lombok.Data;
-import lombok.Getter;
-import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.remoting.ChannelEventListener;
 import org.apache.rocketmq.remoting.InvokeCallback;
@@ -65,7 +62,6 @@ public class RocketMQRemoteServer extends NettyRemotingAbstract implements Remot
     private NettyEncoder encoder;
     private NettyConnectManageHandler connectionManageHandler;
     private NettyServerHandler serverHandler;
-    private SocketChannel rocketMQChannel;
 
     public RocketMQRemoteServer(final RocketMQServiceConfiguration config,
             final ChannelEventListener channelEventListener) {
@@ -271,8 +267,8 @@ public class RocketMQRemoteServer extends NettyRemotingAbstract implements Remot
 
     @Override
     public void start() {
-        Preconditions.checkNotNull(this.rocketMQChannel, "RocketMQ channel isn't initialized.");
-        this.port = this.rocketMQChannel.localAddress().getPort();
+        //Preconditions.checkNotNull(this.rocketMQChannel, "RocketMQ channel isn't initialized.");
+        //this.port = this.rocketMQChannel.localAddress().getPort();
 
         if (this.channelEventListener != null) {
             this.nettyEventExecutor.start();

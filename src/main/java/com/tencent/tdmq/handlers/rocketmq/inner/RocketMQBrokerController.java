@@ -343,6 +343,8 @@ public class RocketMQBrokerController {
          */
         AdminBrokerProcessor adminProcessor = new AdminBrokerProcessor(this);
         this.remotingServer.registerDefaultProcessor(adminProcessor, this.adminBrokerExecutor);
+        NamesvrProcessor namesvrProcessor = new NamesvrProcessor(this, this.brokerService);
+        this.remotingServer.registerDefaultProcessor(namesvrProcessor, this.adminBrokerExecutor);
     }
 
     public long headSlowTimeMills(BlockingQueue<Runnable> q) {

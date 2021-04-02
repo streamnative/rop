@@ -108,7 +108,7 @@ public class SubscriptionGroupManager implements RocketMQLoader{
 
     @Override
     public boolean load() {
-        return false;
+        return true;
     }
 
     @Override

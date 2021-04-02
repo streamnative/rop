@@ -70,6 +70,7 @@ public class RocketMQProtocolHandler implements ProtocolHandler {
         }
         this.bindAddress = ServiceConfigurationUtils.getDefaultOrConfiguredAddress(rocketmqConfig.getBindAddress());
         this.rocketMQBroker = new RocketMQBrokerController(rocketmqConfig);
+        this.rocketMQBroker.initialize();
     }
 
     @Override

@@ -1,7 +1,6 @@
 package com.tencent.tdmq.handlers.rocketmq;
 
-import lombok.Getter;
-import lombok.Setter;
+import lombok.Data;
 import org.apache.pulsar.broker.ServiceConfiguration;
 import org.apache.pulsar.common.configuration.Category;
 import org.apache.pulsar.common.configuration.FieldContext;
@@ -16,8 +15,7 @@ import org.apache.rocketmq.common.constant.PermName;
  * 这个类主要用来继承 pulsar broker 的 ServiceConfiguration 类，实现配置的注入
  */
 
-@Getter
-@Setter
+@Data
 public class RocketMQServiceConfiguration extends ServiceConfiguration {
 
     @Category
@@ -57,7 +55,7 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
                     + "e.g. PLAINTEXT://localhost:9096.\n"
                     + "If hostname is not set, bind to the default interface."
     )
-    private String rocketmqListeners = "rocketmq://127.0.0.1:9096";
+    private String rocketmqListeners = "PLAINTEXT://127.0.0.1:9876";
 
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
@@ -200,21 +198,83 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
     )
     private int transactionCheckMax = 15;
 
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
+            doc = "The maximum number of times the message was checked, "
+                    + "if exceed this value, this message will be discarded.\n"
+    )
     private boolean autoCreateTopicEnable = false;
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
+            doc = "The maximum number of times the message was checked, "
+                    + "if exceed this value, this message will be discarded.\n"
+    )
     private int defaultTopicQueueNums = 3;
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
+            doc = "The maximum number of times the message was checked, "
+                    + "if exceed this value, this message will be discarded.\n"
+    )
     private boolean clusterTopicEnable = true;
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
+            doc = "The maximum number of times the message was checked, "
+                    + "if exceed this value, this message will be discarded.\n"
+    )
     private boolean brokerTopicEnable = true;
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
+            doc = "The maximum number of times the message was checked, "
+                    + "if exceed this value, this message will be discarded.\n"
+    )
     private boolean traceTopicEnable = false;
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
+            doc = "The maximum number of times the message was checked, "
+                    + "if exceed this value, this message will be discarded.\n"
+    )
     private String msgTraceTopicName = "trace";
     private boolean longPollingEnable = true;
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
+            doc = "The maximum number of times the message was checked, "
+                    + "if exceed this value, this message will be discarded.\n"
+    )
     private long shortPollingTimeMills = 1000;
-
-    private int brokerPermission = PermName.PERM_READ | PermName.PERM_WRITE;
-
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
+            doc = "The maximum number of times the message was checked, "
+                    + "if exceed this value, this message will be discarded.\n"
+    )
+    private int brokerPermission = (PermName.PERM_READ | PermName.PERM_WRITE);
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
+            doc = "The maximum number of times the message was checked, "
+                    + "if exceed this value, this message will be discarded.\n"
+    )
     private int commercialBaseCount = 1;
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
+            doc = "The maximum number of times the message was checked, "
+                    + "if exceed this value, this message will be discarded.\n"
+    )
     private boolean notifyConsumerIdsChangedEnable = true;
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
+            doc = "The maximum number of times the message was checked, "
+                    + "if exceed this value, this message will be discarded.\n"
+    )
     private boolean autoCreateSubscriptionGroup = true;
-
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
+            doc = "The maximum number of times the message was checked, "
+                    + "if exceed this value, this message will be discarded.\n"
+    )
     private int defaultQueryMaxNum = 10000;
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
+            doc = "The maximum number of times the message was checked, "
+                    + "if exceed this value, this message will be discarded.\n"
+    )
     private int serverChannelMaxIdleTimeSeconds = 120;
 }

@@ -190,7 +190,7 @@ public class RocketMQService extends PulsarService {
                     rocketmqHandler.newChannelInitializers();
             Map<String, Map<InetSocketAddress, ChannelInitializer<SocketChannel>>> protocolHandlers = ImmutableMap
                     .<String, Map<InetSocketAddress, ChannelInitializer<SocketChannel>>>builder()
-                    .put("kafka", channelInitializer)
+                    .put("rocketmq", channelInitializer)
                     .build();
             getBrokerService().startProtocolHandlers(protocolHandlers);
 

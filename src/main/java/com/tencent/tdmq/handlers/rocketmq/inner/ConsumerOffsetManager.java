@@ -224,7 +224,7 @@ public class ConsumerOffsetManager implements RocketMQLoader{
 
     @Override
     public boolean load() {
-        return false;
+        return true;
     }
 
     @Override
