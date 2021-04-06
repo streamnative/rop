@@ -16,7 +16,7 @@
 Configuration:
   status: INFO
   monitorInterval: 30
-  name: kop
+  name: Rop
 
   Appenders:
     Console:
@@ -34,7 +34,7 @@ Configuration:
           level: info
 
     Logger:
-      - name: io.streamnative.pulsar.handlers.kop
+      - name: com.tencent.tdmq.handlers.rocketmq
         level: info
         additivity: false
         AppenderRef:

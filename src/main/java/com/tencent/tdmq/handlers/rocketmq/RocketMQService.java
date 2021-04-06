@@ -45,7 +45,7 @@ public class RocketMQService extends PulsarService {
     @Override
     public Map<String, String> getProtocolDataToAdvertise() {
         return ImmutableMap.<String, String>builder()
-                .put("rocket", config.getRocketmqListeners())
+                .put("rocketMQ", config.getRocketmqListeners())
                 .build();
     }
 
@@ -56,7 +56,6 @@ public class RocketMQService extends PulsarService {
         lock.lock();
 
         try {
-            // TODO: add rocketMQ on Pulsar Version support -- https://github.com/streamnative/kop/issues/3
             log.info("Starting Pulsar Broker service powered by Pulsar version: '{}'",
                     (getBrokerVersion() != null ? getBrokerVersion() : "unknown"));
 
