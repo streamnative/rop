@@ -8,7 +8,6 @@ import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
-import io.netty.channel.socket.SocketChannel;
 import io.netty.handler.timeout.IdleState;
 import io.netty.handler.timeout.IdleStateEvent;
 import io.netty.util.concurrent.DefaultEventExecutorGroup;
@@ -49,14 +48,12 @@ public class RocketMQRemoteServer extends NettyRemotingAbstract implements Remot
     public static final String HANDSHAKE_HANDLER_NAME = "handshakeHandler";
     public static final String TLS_HANDLER_NAME = "sslHandler";
     public static final String FILE_REGION_ENCODER_NAME = "fileRegionEncoder";
-    private DefaultEventExecutorGroup defaultEventExecutorGroup;
-    private RocketMQServiceConfiguration config;
-
     private final ExecutorService publicExecutor;
     private final ChannelEventListener channelEventListener;
-    private int port = 0;
-
     private final Timer timer = new Timer("ServerHouseKeepingService", true);
+    private DefaultEventExecutorGroup defaultEventExecutorGroup;
+    private RocketMQServiceConfiguration config;
+    private int port = 0;
     // sharable handlers
     private HandshakeHandler handshakeHandler;
     private NettyEncoder encoder;
@@ -115,12 +112,112 @@ public class RocketMQRemoteServer extends NettyRemotingAbstract implements Remot
         }
     }
 
+    @Override
+    public void start() {
+        //Preconditions.checkNotNull(this.rocketMQChannel, "RocketMQ channel isn't initialized.");
+        //this.port = this.rocketMQChannel.localAddress().getPort();
+
+        if (this.channelEventListener != null) {
+            this.nettyEventExecutor.start();
+        }
+
+        this.timer.scheduleAtFixedRate(new TimerTask() {
+
+            @Override
+            public void run() {
+                try {
+                    RocketMQRemoteServer.this.scanResponseTable();
+                } catch (Throwable e) {
+                    log.error("scanResponseTable exception", e);
+                }
+            }
+        }, 1000 * 3, 1000);
+    }
+
+    @Override
+    public void shutdown() {
+        try {
+            if (this.timer != null) {
+                this.timer.cancel();
+            }
+
+            if (this.nettyEventExecutor != null) {
+                this.nettyEventExecutor.shutdown();
+            }
+
+            if (this.defaultEventExecutorGroup != null) {
+                this.defaultEventExecutorGroup.shutdownGracefully();
+            }
+        } catch (Exception e) {
+            log.error("NettyRemotingServer shutdown exception, ", e);
+        }
+
+        if (this.publicExecutor != null) {
+            try {
+                this.publicExecutor.shutdown();
+            } catch (Exception e) {
+                log.error("NettyRemotingServer shutdown exception, ", e);
+            }
+        }
+    }
+
+    @Override
+    public void registerRPCHook(RPCHook rpcHook) {
+        if (rpcHook != null && !rpcHooks.contains(rpcHook)) {
+            rpcHooks.add(rpcHook);
+        }
+    }
+
+    @Override
+    public void registerProcessor(int requestCode, NettyRequestProcessor processor, ExecutorService executor) {
+        ExecutorService executorThis = executor;
+        if (null == executor) {
+            executorThis = this.publicExecutor;
+        }
+
+        Pair<NettyRequestProcessor, ExecutorService> pair = new Pair<>(processor,
+                executorThis);
+        this.processorTable.put(requestCode, pair);
+    }
+
+    @Override
+    public void registerDefaultProcessor(NettyRequestProcessor processor, ExecutorService executor) {
+        this.defaultRequestProcessor = new Pair<>(processor, executor);
+    }
+
+    @Override
+    public int localListenPort() {
+        return this.port;
+    }
+
+    @Override
+    public Pair<NettyRequestProcessor, ExecutorService> getProcessorPair(int requestCode) {
+        return processorTable.get(requestCode);
+    }
+
+    @Override
+    public RemotingCommand invokeSync(final Channel channel, final RemotingCommand request, final long timeoutMillis)
+            throws InterruptedException, RemotingSendRequestException, RemotingTimeoutException {
+        return this.invokeSyncImpl(channel, request, timeoutMillis);
+    }
+
+    @Override
+    public void invokeAsync(Channel channel, RemotingCommand request, long timeoutMillis, InvokeCallback invokeCallback)
+            throws InterruptedException, RemotingTooMuchRequestException, RemotingTimeoutException, RemotingSendRequestException {
+        this.invokeAsyncImpl(channel, request, timeoutMillis, invokeCallback);
+    }
+
+    @Override
+    public void invokeOneway(Channel channel, RemotingCommand request, long timeoutMillis) throws InterruptedException,
+            RemotingTooMuchRequestException, RemotingTimeoutException, RemotingSendRequestException {
+        this.invokeOnewayImpl(channel, request, timeoutMillis);
+    }
+
     @ChannelHandler.Sharable
     class HandshakeHandler extends SimpleChannelInboundHandler<ByteBuf> {
 
-        private final TlsMode tlsMode;
-
         private static final byte HANDSHAKE_MAGIC_CODE = 0x16;
+        private final TlsMode tlsMode;
 
         HandshakeHandler(TlsMode tlsMode) {
             this.tlsMode = tlsMode;
@@ -263,106 +360,5 @@ public class RocketMQRemoteServer extends NettyRemotingAbstract implements Remot
 
             RemotingUtil.closeChannel(ctx.channel());
         }
-    }
-
-    @Override
-    public void start() {
-        //Preconditions.checkNotNull(this.rocketMQChannel, "RocketMQ channel isn't initialized.");
-        //this.port = this.rocketMQChannel.localAddress().getPort();
-
-        if (this.channelEventListener != null) {
-            this.nettyEventExecutor.start();
-        }
-
-        this.timer.scheduleAtFixedRate(new TimerTask() {
-
-            @Override
-            public void run() {
-                try {
-                    RocketMQRemoteServer.this.scanResponseTable();
-                } catch (Throwable e) {
-                    log.error("scanResponseTable exception", e);
-                }
-            }
-        }, 1000 * 3, 1000);
-    }
-
-    @Override
-    public void shutdown() {
-        try {
-            if (this.timer != null) {
-                this.timer.cancel();
-            }
-
-            if (this.nettyEventExecutor != null) {
-                this.nettyEventExecutor.shutdown();
-            }
-
-            if (this.defaultEventExecutorGroup != null) {
-                this.defaultEventExecutorGroup.shutdownGracefully();
-            }
-        } catch (Exception e) {
-            log.error("NettyRemotingServer shutdown exception, ", e);
-        }
-
-        if (this.publicExecutor != null) {
-            try {
-                this.publicExecutor.shutdown();
-            } catch (Exception e) {
-                log.error("NettyRemotingServer shutdown exception, ", e);
-            }
-        }
-    }
-
-    @Override
-    public void registerRPCHook(RPCHook rpcHook) {
-        if (rpcHook != null && !rpcHooks.contains(rpcHook)) {
-            rpcHooks.add(rpcHook);
-        }
-    }
-
-    @Override
-    public void registerProcessor(int requestCode, NettyRequestProcessor processor, ExecutorService executor) {
-        ExecutorService executorThis = executor;
-        if (null == executor) {
-            executorThis = this.publicExecutor;
-        }
-
-        Pair<NettyRequestProcessor, ExecutorService> pair = new Pair<>(processor,
-                executorThis);
-        this.processorTable.put(requestCode, pair);
-    }
-
-    @Override
-    public void registerDefaultProcessor(NettyRequestProcessor processor, ExecutorService executor) {
-        this.defaultRequestProcessor = new Pair<>(processor, executor);
-    }
-
-    @Override
-    public int localListenPort() {
-        return this.port;
-    }
-
-    @Override
-    public Pair<NettyRequestProcessor, ExecutorService> getProcessorPair(int requestCode) {
-        return processorTable.get(requestCode);
-    }
-
-    @Override
-    public RemotingCommand invokeSync(final Channel channel, final RemotingCommand request, final long timeoutMillis)
-            throws InterruptedException, RemotingSendRequestException, RemotingTimeoutException {
-        return this.invokeSyncImpl(channel, request, timeoutMillis);
-    }
-
-    @Override
-    public void invokeAsync(Channel channel, RemotingCommand request, long timeoutMillis, InvokeCallback invokeCallback)
-            throws InterruptedException, RemotingTooMuchRequestException, RemotingTimeoutException, RemotingSendRequestException {
-        this.invokeAsyncImpl(channel, request, timeoutMillis, invokeCallback);
-    }
-
-    @Override
-    public void invokeOneway(Channel channel, RemotingCommand request, long timeoutMillis) throws InterruptedException,
-            RemotingTooMuchRequestException, RemotingTimeoutException, RemotingSendRequestException {
-        this.invokeOnewayImpl(channel, request, timeoutMillis);
     }
 }

@@ -3,7 +3,7 @@
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -11,6 +11,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package com.tencent.tdmq.handlers.rocketmq;
 
 import com.beust.jcommander.Parameter;
@@ -34,10 +35,37 @@ import org.apache.pulsar.zookeeper.LocalBookkeeperEnsemble;
  */
 @Slf4j
 public class RocketMQStandalone implements AutoCloseable {
+
     RocketMQService rocketmqBroker;
     PulsarAdmin admin;
     LocalBookkeeperEnsemble bkEnsemble;
     RocketMQServiceConfiguration config;
+    @Parameter(names = {"-c", "--config"}, description = "Configuration file path", required = true)
+    private String configFile;
+    @Parameter(names = {"--wipe-data"}, description = "Clean up previous ZK/BK data")
+    private boolean wipeData = false;
+    @Parameter(names = {"--num-bookies"}, description = "Number of local Bookies")
+    private int numOfBk = 1;
+    @Parameter(names = {"--zookeeper-port"}, description = "Local zookeeper's port")
+    private int zkPort = 2181;
+    @Parameter(names = {"--bookkeeper-port"}, description = "Local bookies base port")
+    private int bkPort = 3181;
+    @Parameter(names = {"--zookeeper-dir"}, description = "Local zooKeeper's data directory")
+    private String zkDir = "data/standalone/zookeeper";
+    @Parameter(names = {"--bookkeeper-dir"}, description = "Local bookies base data directory")
+    private String bkDir = "data/standalone/bookkeeper";
+    @Parameter(names = {"--no-rocketmqBroker"}, description = "Only start ZK and BK services, no rocketmqBroker")
+    private boolean noBroker = false;
+    @Parameter(names = {"--only-rocketmqBroker"}, description = "Only start Pulsar rocketmqBroker service (no ZK, BK)")
+    private boolean onlyBroker = false;
+    @Parameter(names = {"-nss", "--no-stream-storage"}, description = "Disable stream storage")
+    private boolean noStreamStorage = true;
+    @Parameter(names = {"--stream-storage-port"}, description = "Local bookies stream storage port")
+    private int streamStoragePort = 4181;
+    @Parameter(names = {"-a", "--advertised-address"}, description = "Standalone rocketmqBroker advertised address")
+    private String advertisedAddress = null;
+    @Parameter(names = {"-h", "--help"}, description = "Show this help message")
+    private boolean help = false;
 
     public void setRocketmqBroker(RocketMQService rocketmqBroker) {
         this.rocketmqBroker = rocketmqBroker;
@@ -51,156 +79,117 @@ public class RocketMQStandalone implements AutoCloseable {
         this.bkEnsemble = bkEnsemble;
     }
 
-    public void setBkPort(int bkPort) {
-        this.bkPort = bkPort;
-    }
-
-    public void setBkDir(String bkDir) {
-        this.bkDir = bkDir;
-    }
-
-    public void setAdvertisedAddress(String advertisedAddress) {
-        this.advertisedAddress = advertisedAddress;
+    public ServiceConfiguration getConfig() {
+        return config;
     }
 
     public void setConfig(RocketMQServiceConfiguration config) {
         this.config = config;
     }
 
-    public void setConfigFile(String configFile) {
-        this.configFile = configFile;
-    }
-
-    public void setWipeData(boolean wipeData) {
-        this.wipeData = wipeData;
-    }
-
-    public void setNumOfBk(int numOfBk) {
-        this.numOfBk = numOfBk;
-    }
-
-    public void setZkPort(int zkPort) {
-        this.zkPort = zkPort;
-    }
-
-    public void setZkDir(String zkDir) {
-        this.zkDir = zkDir;
-    }
-
-    public void setNoBroker(boolean noBroker) {
-        this.noBroker = noBroker;
-    }
-
-    public void setOnlyBroker(boolean onlyBroker) {
-        this.onlyBroker = onlyBroker;
-    }
-
-    public void setNoStreamStorage(boolean noStreamStorage) {
-        this.noStreamStorage = noStreamStorage;
-    }
-
-    public void setStreamStoragePort(int streamStoragePort) {
-        this.streamStoragePort = streamStoragePort;
-    }
-
-    public void setHelp(boolean help) {
-        this.help = help;
-    }
-
-    public ServiceConfiguration getConfig() {
-        return config;
-    }
-
     public String getConfigFile() {
         return configFile;
+    }
+
+    public void setConfigFile(String configFile) {
+        this.configFile = configFile;
     }
 
     public boolean isWipeData() {
         return wipeData;
     }
 
+    public void setWipeData(boolean wipeData) {
+        this.wipeData = wipeData;
+    }
+
     public int getNumOfBk() {
         return numOfBk;
+    }
+
+    public void setNumOfBk(int numOfBk) {
+        this.numOfBk = numOfBk;
     }
 
     public int getZkPort() {
         return zkPort;
     }
 
+    public void setZkPort(int zkPort) {
+        this.zkPort = zkPort;
+    }
+
     public int getBkPort() {
         return bkPort;
+    }
+
+    public void setBkPort(int bkPort) {
+        this.bkPort = bkPort;
     }
 
     public String getZkDir() {
         return zkDir;
     }
 
+    public void setZkDir(String zkDir) {
+        this.zkDir = zkDir;
+    }
+
     public String getBkDir() {
         return bkDir;
+    }
+
+    public void setBkDir(String bkDir) {
+        this.bkDir = bkDir;
     }
 
     public boolean isNoBroker() {
         return noBroker;
     }
 
+    public void setNoBroker(boolean noBroker) {
+        this.noBroker = noBroker;
+    }
+
     public boolean isOnlyBroker() {
         return onlyBroker;
+    }
+
+    public void setOnlyBroker(boolean onlyBroker) {
+        this.onlyBroker = onlyBroker;
     }
 
     public boolean isNoStreamStorage() {
         return noStreamStorage;
     }
 
+    public void setNoStreamStorage(boolean noStreamStorage) {
+        this.noStreamStorage = noStreamStorage;
+    }
+
     public int getStreamStoragePort() {
         return streamStoragePort;
+    }
+
+    public void setStreamStoragePort(int streamStoragePort) {
+        this.streamStoragePort = streamStoragePort;
     }
 
     public String getAdvertisedAddress() {
         return advertisedAddress;
     }
 
+    public void setAdvertisedAddress(String advertisedAddress) {
+        this.advertisedAddress = advertisedAddress;
+    }
+
     public boolean isHelp() {
         return help;
     }
 
-    @Parameter(names = { "-c", "--config" }, description = "Configuration file path", required = true)
-    private String configFile;
-
-    @Parameter(names = { "--wipe-data" }, description = "Clean up previous ZK/BK data")
-    private boolean wipeData = false;
-
-    @Parameter(names = { "--num-bookies" }, description = "Number of local Bookies")
-    private int numOfBk = 1;
-
-    @Parameter(names = { "--zookeeper-port" }, description = "Local zookeeper's port")
-    private int zkPort = 2181;
-
-    @Parameter(names = { "--bookkeeper-port" }, description = "Local bookies base port")
-    private int bkPort = 3181;
-
-    @Parameter(names = { "--zookeeper-dir" }, description = "Local zooKeeper's data directory")
-    private String zkDir = "data/standalone/zookeeper";
-
-    @Parameter(names = { "--bookkeeper-dir" }, description = "Local bookies base data directory")
-    private String bkDir = "data/standalone/bookkeeper";
-
-    @Parameter(names = { "--no-rocketmqBroker" }, description = "Only start ZK and BK services, no rocketmqBroker")
-    private boolean noBroker = false;
-
-    @Parameter(names = { "--only-rocketmqBroker" }, description = "Only start Pulsar rocketmqBroker service (no ZK, BK)")
-    private boolean onlyBroker = false;
-
-    @Parameter(names = {"-nss", "--no-stream-storage"}, description = "Disable stream storage")
-    private boolean noStreamStorage = true;
-
-    @Parameter(names = { "--stream-storage-port" }, description = "Local bookies stream storage port")
-    private int streamStoragePort = 4181;
-
-    @Parameter(names = { "-a", "--advertised-address" }, description = "Standalone rocketmqBroker advertised address")
-    private String advertisedAddress = null;
-
-    @Parameter(names = { "-h", "--help" }, description = "Show this help message")
-    private boolean help = false;
+    public void setHelp(boolean help) {
+        this.help = help;
+    }
 
     public void start() throws Exception {
 
@@ -208,9 +197,10 @@ public class RocketMQStandalone implements AutoCloseable {
             throw new IllegalArgumentException("Null configuration is provided");
         }
 
-        if (config.getAdvertisedAddress() != null && !config.getRocketmqListeners().contains(config.getAdvertisedAddress())) {
+        if (config.getAdvertisedAddress() != null && !config.getRocketmqListeners()
+                .contains(config.getAdvertisedAddress())) {
             String err = "Error config: advertisedAddress - " + config.getAdvertisedAddress() + " and listeners - "
-                + config.getRocketmqListeners() + " not match.";
+                    + config.getRocketmqListeners() + " not match.";
             log.error(err);
             throw new IllegalArgumentException(err);
         }
@@ -239,7 +229,7 @@ public class RocketMQStandalone implements AutoCloseable {
         URL webServiceUrl = new URL(
                 String.format("http://%s:%d", config.getAdvertisedAddress(), config.getWebServicePort().get()));
         final String brokerServiceUrl = String.format("pulsar://%s:%d", config.getAdvertisedAddress(),
-            config.getBrokerServicePort().get());
+                config.getBrokerServicePort().get());
 
         admin = PulsarAdmin.builder().serviceHttpUrl(webServiceUrl.toString()).authentication(
                 config.getBrokerClientAuthenticationPlugin(), config.getBrokerClientAuthenticationParameters()).build();
@@ -257,7 +247,7 @@ public class RocketMQStandalone implements AutoCloseable {
         final String defaultNamespace = TopicName.PUBLIC_TENANT + "/" + TopicName.DEFAULT_NAMESPACE;
         try {
             ClusterData clusterData = new ClusterData(webServiceUrl.toString(), null /* serviceUrlTls */,
-                brokerServiceUrl, null /* brokerServiceUrlTls */);
+                    brokerServiceUrl, null /* brokerServiceUrlTls */);
             if (!admin.clusters().getClusters().contains(cluster)) {
                 admin.clusters().createCluster(cluster, clusterData);
             } else {
@@ -273,7 +263,7 @@ public class RocketMQStandalone implements AutoCloseable {
                 admin.namespaces().createNamespace(defaultNamespace, clusters);
                 admin.namespaces().setNamespaceReplicationClusters(defaultNamespace, clusters);
                 admin.namespaces().setRetention(defaultNamespace,
-                    new RetentionPolicies(20, 100));
+                        new RetentionPolicies(20, 100));
             }
         } catch (PulsarAdminException e) {
             log.info("error while create default namespace: {}", e.getMessage());

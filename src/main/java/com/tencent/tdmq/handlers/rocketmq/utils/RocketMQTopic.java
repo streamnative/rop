@@ -16,6 +16,18 @@ public class RocketMQTopic {
 
     private static final String persistentDomain = "persistent://";
     private static volatile String namespacePrefix;  // the full namespace prefix, e.g. "public/default"
+    @Getter
+    private final String originalName;
+    @Getter
+    private final String fullName;
+
+    public RocketMQTopic(String topic) {
+        if (namespacePrefix == null) {
+            throw new RuntimeException("RocketMQTopic is not initialized");
+        }
+        originalName = topic;
+        fullName = expandToFullName(topic);
+    }
 
     public static String removeDefaultNamespacePrefix(String fullTopicName) {
         final String topicPrefix = persistentDomain + namespacePrefix + "/";
@@ -33,17 +45,8 @@ public class RocketMQTopic {
         RocketMQTopic.namespacePrefix = namespace;
     }
 
-    @Getter
-    private final String originalName;
-    @Getter
-    private final String fullName;
-
-    public RocketMQTopic(String topic) {
-        if (namespacePrefix == null) {
-            throw new RuntimeException("RocketMQTopic is not initialized");
-        }
-        originalName = topic;
-        fullName = expandToFullName(topic);
+    public static String toString(MessageQueue messageQueue) {
+        return (new RocketMQTopic(messageQueue.getTopic())).getPartitionName(messageQueue.getQueueId());
     }
 
     private String expandToFullName(String topic) {
@@ -71,10 +74,6 @@ public class RocketMQTopic {
             throw new IllegalArgumentException("Invalid partition " + partition + ", it should be non-negative number");
         }
         return fullName + PARTITIONED_TOPIC_SUFFIX + partition;
-    }
-
-    public static String toString(MessageQueue messageQueue) {
-        return (new RocketMQTopic(messageQueue.getTopic())).getPartitionName(messageQueue.getQueueId());
     }
 }
 

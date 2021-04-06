@@ -28,21 +28,17 @@ import org.apache.rocketmq.store.PutMessageResult;
 import org.apache.rocketmq.store.PutMessageStatus;
 
 public class TransactionalMessageServiceImpl implements TransactionalMessageService {
+
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.TRANSACTION_LOGGER_NAME);
-
-    private TransactionalMessageBridge transactionalMessageBridge;
-
     private static final int PULL_MSG_RETRY_NUMBER = 1;
-
     private static final int MAX_PROCESS_TIME_LIMIT = 60000;
-
     private static final int MAX_RETRY_COUNT_WHEN_HALF_NULL = 1;
+    private TransactionalMessageBridge transactionalMessageBridge;
+    private ConcurrentHashMap<MessageQueue, MessageQueue> opQueueMap = new ConcurrentHashMap<>();
 
     public TransactionalMessageServiceImpl(TransactionalMessageBridge transactionBridge) {
         this.transactionalMessageBridge = transactionBridge;
     }
-
-    private ConcurrentHashMap<MessageQueue, MessageQueue> opQueueMap = new ConcurrentHashMap<>();
 
     @Override
     public PutMessageResult prepareMessage(MessageExtBrokerInner messageInner) {
@@ -180,7 +176,8 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
 
                         long valueOfCurrentMinusBorn = System.currentTimeMillis() - msgExt.getBornTimestamp();
                         long checkImmunityTime = transactionTimeout;
-                        String checkImmunityTimeStr = msgExt.getUserProperty(MessageConst.PROPERTY_CHECK_IMMUNITY_TIME_IN_SECONDS);
+                        String checkImmunityTimeStr = msgExt
+                                .getUserProperty(MessageConst.PROPERTY_CHECK_IMMUNITY_TIME_IN_SECONDS);
                         if (null != checkImmunityTimeStr) {
                             checkImmunityTime = getImmunityTime(checkImmunityTimeStr, transactionTimeout);
                             if (valueOfCurrentMinusBorn < checkImmunityTime) {
@@ -192,14 +189,16 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
                             }
                         } else {
                             if ((0 <= valueOfCurrentMinusBorn) && (valueOfCurrentMinusBorn < checkImmunityTime)) {
-                                log.debug("New arrived, the miss offset={}, check it later checkImmunity={}, born={}", i,
+                                log.debug("New arrived, the miss offset={}, check it later checkImmunity={}, born={}",
+                                        i,
                                         checkImmunityTime, new Date(msgExt.getBornTimestamp()));
                                 break;
                             }
                         }
                         List<MessageExt> opMsg = pullResult.getMsgFoundList();
                         boolean isNeedCheck = (opMsg == null && valueOfCurrentMinusBorn > checkImmunityTime)
-                                || (opMsg != null && (opMsg.get(opMsg.size() - 1).getBornTimestamp() - startTime > transactionTimeout))
+                                || (opMsg != null && (opMsg.get(opMsg.size() - 1).getBornTimestamp() - startTime
+                                > transactionTimeout))
                                 || (valueOfCurrentMinusBorn <= -1);
 
                         if (isNeedCheck) {
@@ -208,7 +207,8 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
                             }
                             listener.resolveHalfMsg(msgExt);
                         } else {
-                            pullResult = fillOpRemoveMap(removeMap, opQueue, pullResult.getNextBeginOffset(), halfOffset, doneOpOffset);
+                            pullResult = fillOpRemoveMap(removeMap, opQueue, pullResult.getNextBeginOffset(),
+                                    halfOffset, doneOpOffset);
                             log.debug("The miss offset:{} in messageQueue:{} need to get more opMsg, result is:{}", i,
                                     messageQueue, pullResult);
                             continue;
@@ -446,10 +446,12 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
     @Override
     public boolean deletePrepareMessage(MessageExt msgExt) {
         if (this.transactionalMessageBridge.putOpMessage(msgExt, TransactionalMessageUtil.REMOVETAG)) {
-            log.debug("Transaction op message write successfully. messageId={}, queueId={} msgExt:{}", msgExt.getMsgId(), msgExt.getQueueId(), msgExt);
+            log.debug("Transaction op message write successfully. messageId={}, queueId={} msgExt:{}",
+                    msgExt.getMsgId(), msgExt.getQueueId(), msgExt);
             return true;
         } else {
-            log.error("Transaction op message write failed. messageId is {}, queueId is {}", msgExt.getMsgId(), msgExt.getQueueId());
+            log.error("Transaction op message write failed. messageId is {}, queueId is {}", msgExt.getMsgId(),
+                    msgExt.getQueueId());
             return false;
         }
     }

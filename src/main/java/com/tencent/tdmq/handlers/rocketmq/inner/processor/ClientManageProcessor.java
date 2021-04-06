@@ -27,6 +27,7 @@ import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 
 public class ClientManageProcessor implements NettyRequestProcessor {
+
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
     private final RocketMQBrokerController brokerController;
 
@@ -139,7 +140,8 @@ public class ClientManageProcessor implements NettyRequestProcessor {
                 if (null != subscriptionGroupConfig) {
                     isNotifyConsumerIdsChangedEnable = subscriptionGroupConfig.isNotifyConsumerIdsChangedEnable();
                 }
-                this.brokerController.getConsumerManager().unregisterConsumer(group, clientChannelInfo, isNotifyConsumerIdsChangedEnable);
+                this.brokerController.getConsumerManager()
+                        .unregisterConsumer(group, clientChannelInfo, isNotifyConsumerIdsChangedEnable);
             }
         }
 
@@ -171,10 +173,12 @@ public class ClientManageProcessor implements NettyRequestProcessor {
             }*/
 
             try {
-                FilterFactory.INSTANCE.get(subscriptionData.getExpressionType()).compile(subscriptionData.getSubString());
+                FilterFactory.INSTANCE.get(subscriptionData.getExpressionType())
+                        .compile(subscriptionData.getSubString());
             } catch (Exception e) {
                 log.warn("Client {}@{} filter message, but failed to compile expression! sub={}, error={}",
-                        requestBody.getClientId(), requestBody.getGroup(), requestBody.getSubscriptionData(), e.getMessage());
+                        requestBody.getClientId(), requestBody.getGroup(), requestBody.getSubscriptionData(),
+                        e.getMessage());
                 response.setCode(ResponseCode.SUBSCRIPTION_PARSE_FAILED);
                 response.setRemark(e.getMessage());
                 return response;

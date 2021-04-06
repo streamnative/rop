@@ -8,7 +8,7 @@ import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.subscription.SubscriptionGroupConfig;
 
 @Slf4j
-public class SubscriptionGroupManager implements RocketMQLoader{
+public class SubscriptionGroupManager implements RocketMQLoader {
 
     private final ConcurrentMap<String, SubscriptionGroupConfig> subscriptionGroupTable = new ConcurrentHashMap(1024);
     private final DataVersion dataVersion = new DataVersion();

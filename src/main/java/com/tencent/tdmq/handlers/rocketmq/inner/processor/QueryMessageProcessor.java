@@ -23,6 +23,7 @@ import org.apache.rocketmq.store.QueryMessageResult;
 import org.apache.rocketmq.store.SelectMappedBufferResult;
 
 public class QueryMessageProcessor implements NettyRequestProcessor {
+
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
 
     private final RocketMQBrokerController brokerController;

@@ -10,8 +10,10 @@ import org.apache.rocketmq.remoting.ChannelEventListener;
 
 @Slf4j
 public class ClientHousekeepingService implements ChannelEventListener {
+
     private final RocketMQBrokerController brokerController;
-    private ScheduledExecutorService scheduledExecutorService = Executors.newSingleThreadScheduledExecutor(new ThreadFactoryImpl("ClientHousekeepingScheduledThread"));
+    private ScheduledExecutorService scheduledExecutorService = Executors
+            .newSingleThreadScheduledExecutor(new ThreadFactoryImpl("ClientHousekeepingScheduledThread"));
 
     public ClientHousekeepingService(RocketMQBrokerController brokerController) {
         this.brokerController = brokerController;

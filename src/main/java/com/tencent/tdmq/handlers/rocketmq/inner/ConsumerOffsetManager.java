@@ -13,7 +13,7 @@ import org.apache.rocketmq.common.UtilAll;
 import org.apache.rocketmq.remoting.protocol.RemotingSerializable;
 
 @Slf4j
-public class ConsumerOffsetManager implements RocketMQLoader{
+public class ConsumerOffsetManager implements RocketMQLoader {
 
     private static final String TOPIC_GROUP_SEPARATOR = "@";
     private ConcurrentMap<String, ConcurrentMap<Integer, Long>> offsetTable = new ConcurrentHashMap(512);

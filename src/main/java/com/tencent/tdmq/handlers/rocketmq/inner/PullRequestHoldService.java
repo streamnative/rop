@@ -13,8 +13,10 @@ import org.apache.rocketmq.broker.longpolling.PullRequest;
 import org.apache.rocketmq.common.ServiceThread;
 import org.apache.rocketmq.common.SystemClock;
 import org.apache.rocketmq.store.ConsumeQueueExt.CqExtUnit;
+
 @Slf4j
 public class PullRequestHoldService extends ServiceThread {
+
     private static final String TOPIC_QUEUEID_SEPARATOR = "@";
     private final RocketMQBrokerController brokerController;
     private final SystemClock systemClock = new SystemClock();
@@ -26,10 +28,10 @@ public class PullRequestHoldService extends ServiceThread {
 
     public void suspendPullRequest(String topic, int queueId, PullRequest pullRequest) {
         String key = this.buildKey(topic, queueId);
-        ManyPullRequest mpr = (ManyPullRequest)this.pullRequestTable.get(key);
+        ManyPullRequest mpr = (ManyPullRequest) this.pullRequestTable.get(key);
         if (null == mpr) {
             mpr = new ManyPullRequest();
-            ManyPullRequest prev = (ManyPullRequest)this.pullRequestTable.putIfAbsent(key, mpr);
+            ManyPullRequest prev = (ManyPullRequest) this.pullRequestTable.putIfAbsent(key, mpr);
             if (prev != null) {
                 mpr = prev;
             }
@@ -49,7 +51,7 @@ public class PullRequestHoldService extends ServiceThread {
     public void run() {
         log.info("{} service started", this.getServiceName());
 
-        while(!this.isStopped()) {
+        while (!this.isStopped()) {
             try {
                 if (this.brokerController.getServerConfig().isLongPollingEnable()) {
                     this.waitForRunning(5000L);
@@ -78,8 +80,8 @@ public class PullRequestHoldService extends ServiceThread {
     private void checkHoldRequest() {
         Iterator var1 = this.pullRequestTable.keySet().iterator();
 
-        while(var1.hasNext()) {
-            String key = (String)var1.next();
+        while (var1.hasNext()) {
+            String key = (String) var1.next();
             String[] kArray = key.split("@");
             if (2 == kArray.length) {
                 String topic = kArray[0];
@@ -97,35 +99,39 @@ public class PullRequestHoldService extends ServiceThread {
     }
 
     public void notifyMessageArriving(String topic, int queueId, long maxOffset) {
-        this.notifyMessageArriving(topic, queueId, maxOffset, (Long)null, 0L, (byte[])null, (Map)null);
+        this.notifyMessageArriving(topic, queueId, maxOffset, (Long) null, 0L, (byte[]) null, (Map) null);
     }
 
-    public void notifyMessageArriving(String topic, int queueId, long maxOffset, Long tagsCode, long msgStoreTime, byte[] filterBitMap, Map<String, String> properties) {
+    public void notifyMessageArriving(String topic, int queueId, long maxOffset, Long tagsCode, long msgStoreTime,
+            byte[] filterBitMap, Map<String, String> properties) {
         String key = this.buildKey(topic, queueId);
-        ManyPullRequest mpr = (ManyPullRequest)this.pullRequestTable.get(key);
+        ManyPullRequest mpr = (ManyPullRequest) this.pullRequestTable.get(key);
         if (mpr != null) {
             List<PullRequest> requestList = mpr.cloneListAndClear();
             if (requestList != null) {
                 List<PullRequest> replayList = new ArrayList();
                 Iterator var14 = requestList.iterator();
 
-                while(true) {
-                    while(var14.hasNext()) {
-                        PullRequest request = (PullRequest)var14.next();
+                while (true) {
+                    while (var14.hasNext()) {
+                        PullRequest request = (PullRequest) var14.next();
                         long newestOffset = maxOffset;
                         if (maxOffset <= request.getPullFromThisOffset()) {
                             newestOffset = this.brokerController.getMessageStore().getMaxOffsetInQueue(topic, queueId);
                         }
 
                         if (newestOffset > request.getPullFromThisOffset()) {
-                            boolean match = request.getMessageFilter().isMatchedByConsumeQueue(tagsCode, new CqExtUnit(tagsCode, msgStoreTime, filterBitMap));
+                            boolean match = request.getMessageFilter().isMatchedByConsumeQueue(tagsCode,
+                                    new CqExtUnit(tagsCode, msgStoreTime, filterBitMap));
                             if (match && properties != null) {
-                                match = request.getMessageFilter().isMatchedByCommitLog((ByteBuffer)null, properties);
+                                match = request.getMessageFilter().isMatchedByCommitLog((ByteBuffer) null, properties);
                             }
 
                             if (match) {
                                 try {
-                                    this.brokerController.getPullMessageProcessor().executeRequestWhenWakeup(request.getClientChannel(), request.getRequestCommand());
+                                    this.brokerController.getPullMessageProcessor()
+                                            .executeRequestWhenWakeup(request.getClientChannel(),
+                                                    request.getRequestCommand());
                                 } catch (Throwable var21) {
                                     log.error("execute request when wakeup failed.", var21);
                                 }
@@ -135,7 +141,9 @@ public class PullRequestHoldService extends ServiceThread {
 
                         if (System.currentTimeMillis() >= request.getSuspendTimestamp() + request.getTimeoutMillis()) {
                             try {
-                                this.brokerController.getPullMessageProcessor().executeRequestWhenWakeup(request.getClientChannel(), request.getRequestCommand());
+                                this.brokerController.getPullMessageProcessor()
+                                        .executeRequestWhenWakeup(request.getClientChannel(),
+                                                request.getRequestCommand());
                             } catch (Throwable var20) {
                                 log.error("execute request when wakeup failed.", var20);
                             }

@@ -6,6 +6,7 @@ import org.apache.rocketmq.common.ServiceThread;
 
 @Slf4j
 public class TransactionalMessageCheckService extends ServiceThread {
+
     private RocketMQBrokerController brokerController;
 
     public TransactionalMessageCheckService(RocketMQBrokerController brokerController) {
@@ -33,7 +34,8 @@ public class TransactionalMessageCheckService extends ServiceThread {
         int checkMax = brokerController.getServerConfig().getTransactionCheckMax();
         long begin = System.currentTimeMillis();
         log.info("Begin to check prepare message, begin time:{}", begin);
-        this.brokerController.getTransactionalMessageService().check(timeout, checkMax, this.brokerController.getTransactionalMessageCheckListener());
+        this.brokerController.getTransactionalMessageService()
+                .check(timeout, checkMax, this.brokerController.getTransactionalMessageCheckListener());
         log.info("End to check prepare message, consumed time:{}", System.currentTimeMillis() - begin);
     }
 

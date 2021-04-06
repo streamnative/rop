@@ -37,7 +37,76 @@ import org.slf4j.bridge.SLF4JBridgeHandler;
 @Slf4j
 public class RocketMQBrokerStarter {
 
+    public static void main(String[] args) throws Exception {
+        DateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd hh:mm:ss,SSS");
+        Thread.setDefaultUncaughtExceptionHandler((thread, exception) -> {
+            System.out.println(String.format("%s [%s] error Uncaught exception in thread %s: %s",
+                    dateFormat.format(new Date()),
+                    thread.getContextClassLoader(),
+                    thread.getName(),
+                    exception.getMessage()));
+        });
+
+        BrokerStarter starter = new BrokerStarter(args);
+        Runtime.getRuntime().addShutdownHook(
+                new Thread(() -> {
+                    starter.shutdown();
+                })
+        );
+
+        PulsarByteBufAllocator.registerOOMListener(oomException -> {
+            log.error("-- Shutting down - Received OOM exception: {}", oomException.getMessage(), oomException);
+            starter.shutdown();
+        });
+
+        try {
+            starter.start();
+        } catch (Exception e) {
+            log.error("Failed to start pulsar service.", e);
+            Runtime.getRuntime().halt(1);
+        }
+
+        starter.join();
+    }
+
+    private static boolean argsContains(String[] args, String arg) {
+        return Arrays.asList(args).contains(arg);
+    }
+
+    private static RocketMQServiceConfiguration loadConfig(String configFile) throws Exception {
+        SLF4JBridgeHandler.removeHandlersForRootLogger();
+        SLF4JBridgeHandler.install();
+        RocketMQServiceConfiguration config = ConfigurationUtils.create(
+                new FileInputStream(configFile),
+                RocketMQServiceConfiguration.class);
+        // it validates provided configuration is completed
+        isComplete(config);
+        return config;
+    }
+
+    private static ServerConfiguration readBookieConfFile(String bookieConfigFile) throws IllegalArgumentException {
+        ServerConfiguration bookieConf = new ServerConfiguration();
+        try {
+            bookieConf.loadConf(new File(bookieConfigFile).toURI().toURL());
+            bookieConf.validate();
+            log.info("Using bookie configuration file {}", bookieConfigFile);
+        } catch (MalformedURLException e) {
+            log.error("Could not open configuration file: {}", bookieConfigFile, e);
+            throw new IllegalArgumentException("Could not open configuration file");
+        } catch (ConfigurationException e) {
+            log.error("Malformed configuration file: {}", bookieConfigFile, e);
+            throw new IllegalArgumentException("Malformed configuration file");
+        }
+
+        if (bookieConf.getMaxPendingReadRequestPerThread() < bookieConf.getRereplicationEntryBatchSize()) {
+            throw new IllegalArgumentException(
+                    "rereplicationEntryBatchSize should be smaller than " + "maxPendingReadRequestPerThread");
+        }
+        return bookieConf;
+    }
+
     private static class BrokerStarter {
+
         private final RocketMQServiceConfiguration brokerConfig;
         private final RocketMQService rocketmqService;
         private final BookieServer bookieServer;
@@ -70,14 +139,13 @@ public class RocketMQBrokerStarter {
                 throw new IllegalArgumentException("Max message size need smaller than jvm directMemory");
             }
 
-          if (brokerConfig.getAdvertisedAddress() != null
-                && !brokerConfig.getRocketmqListeners().contains(brokerConfig.getAdvertisedAddress())) {
+            if (brokerConfig.getAdvertisedAddress() != null
+                    && !brokerConfig.getRocketmqListeners().contains(brokerConfig.getAdvertisedAddress())) {
                 String err = "Error config: advertisedAddress - " + brokerConfig.getAdvertisedAddress()
-                    + " and listeners - " + brokerConfig.getRocketmqListeners() + " not match.";
+                        + " and listeners - " + brokerConfig.getRocketmqListeners() + " not match.";
                 log.error(err);
                 throw new IllegalArgumentException(err);
             }
-
 
             // init rocketmq broker service
             rocketmqService = new RocketMQService(brokerConfig);
@@ -179,38 +247,6 @@ public class RocketMQBrokerStarter {
         }
     }
 
-    public static void main(String[] args) throws Exception {
-        DateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd hh:mm:ss,SSS");
-        Thread.setDefaultUncaughtExceptionHandler((thread, exception) -> {
-            System.out.println(String.format("%s [%s] error Uncaught exception in thread %s: %s",
-                    dateFormat.format(new Date()),
-                    thread.getContextClassLoader(),
-                    thread.getName(),
-                    exception.getMessage()));
-        });
-
-        BrokerStarter starter = new BrokerStarter(args);
-        Runtime.getRuntime().addShutdownHook(
-                new Thread(() -> {
-                    starter.shutdown();
-                })
-        );
-
-        PulsarByteBufAllocator.registerOOMListener(oomException -> {
-            log.error("-- Shutting down - Received OOM exception: {}", oomException.getMessage(), oomException);
-            starter.shutdown();
-        });
-
-        try {
-            starter.start();
-        } catch (Exception e) {
-            log.error("Failed to start pulsar service.", e);
-            Runtime.getRuntime().halt(1);
-        }
-
-        starter.join();
-    }
-
     @VisibleForTesting
     private static class StarterArguments {
 
@@ -240,41 +276,5 @@ public class RocketMQBrokerStarter {
                 "-h", "--help"
         }, description = "Show this help message")
         private boolean help = false;
-    }
-
-    private static boolean argsContains(String[] args, String arg) {
-        return Arrays.asList(args).contains(arg);
-    }
-
-    private static RocketMQServiceConfiguration loadConfig(String configFile) throws Exception {
-        SLF4JBridgeHandler.removeHandlersForRootLogger();
-        SLF4JBridgeHandler.install();
-        RocketMQServiceConfiguration config = ConfigurationUtils.create(
-                new FileInputStream(configFile),
-                RocketMQServiceConfiguration.class);
-        // it validates provided configuration is completed
-        isComplete(config);
-        return config;
-    }
-
-    private static ServerConfiguration readBookieConfFile(String bookieConfigFile) throws IllegalArgumentException {
-        ServerConfiguration bookieConf = new ServerConfiguration();
-        try {
-            bookieConf.loadConf(new File(bookieConfigFile).toURI().toURL());
-            bookieConf.validate();
-            log.info("Using bookie configuration file {}", bookieConfigFile);
-        } catch (MalformedURLException e) {
-            log.error("Could not open configuration file: {}", bookieConfigFile, e);
-            throw new IllegalArgumentException("Could not open configuration file");
-        } catch (ConfigurationException e) {
-            log.error("Malformed configuration file: {}", bookieConfigFile, e);
-            throw new IllegalArgumentException("Malformed configuration file");
-        }
-
-        if (bookieConf.getMaxPendingReadRequestPerThread() < bookieConf.getRereplicationEntryBatchSize()) {
-            throw new IllegalArgumentException(
-                    "rereplicationEntryBatchSize should be smaller than " + "maxPendingReadRequestPerThread");
-        }
-        return bookieConf;
     }
 }

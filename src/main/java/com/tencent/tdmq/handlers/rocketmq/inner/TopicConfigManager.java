@@ -92,7 +92,7 @@ public class TopicConfigManager implements RocketMQLoader {
             this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);
         }
 
-        topic = this.brokerController.getServerConfig().getClusterName()+ "_" + "REPLY_TOPIC";
+        topic = this.brokerController.getServerConfig().getClusterName() + "_" + "REPLY_TOPIC";
         topicConfig = new TopicConfig(topic);
         this.systemTopicList.add(topic);
         topicConfig.setReadQueueNums(1);

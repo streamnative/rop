@@ -7,6 +7,7 @@ import org.apache.rocketmq.broker.client.ConsumerGroupEvent;
 import org.apache.rocketmq.broker.client.ConsumerIdsChangeListener;
 
 public class DefaultConsumerIdsChangeListener implements ConsumerIdsChangeListener {
+
     private final RocketMQBrokerController brokerController;
 
     public DefaultConsumerIdsChangeListener(RocketMQBrokerController brokerController) {

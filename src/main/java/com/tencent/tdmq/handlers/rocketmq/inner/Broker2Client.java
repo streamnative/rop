@@ -34,6 +34,7 @@ import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 
 @Slf4j
 public class Broker2Client {
+
     private final RocketMQBrokerController brokerController;
 
     public Broker2Client(RocketMQBrokerController brokerController) {

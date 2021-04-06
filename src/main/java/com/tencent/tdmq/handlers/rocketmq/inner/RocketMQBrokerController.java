@@ -12,8 +12,6 @@ import com.tencent.tdmq.handlers.rocketmq.inner.processor.EndTransactionProcesso
 import com.tencent.tdmq.handlers.rocketmq.inner.processor.PullMessageProcessor;
 import com.tencent.tdmq.handlers.rocketmq.inner.processor.QueryMessageProcessor;
 import com.tencent.tdmq.handlers.rocketmq.inner.processor.SendMessageProcessor;
-import io.netty.channel.ChannelInitializer;
-import io.netty.channel.socket.SocketChannel;
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.List;
@@ -25,10 +23,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import lombok.Data;
-import lombok.Getter;
-import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.pulsar.broker.PulsarService;
 import org.apache.pulsar.broker.service.BrokerService;
 import org.apache.rocketmq.broker.client.ConsumerIdsChangeListener;
 import org.apache.rocketmq.broker.latency.BrokerFixedThreadPoolExecutor;
@@ -76,11 +71,9 @@ public class RocketMQBrokerController {
     private final BrokerStatsManager brokerStatsManager;
     private final List<SendMessageHook> sendMessageHookList = new ArrayList<>();
     private final List<ConsumeMessageHook> consumeMessageHookList = new ArrayList<>();
-    private MessageStore messageStore;
-
     private final RocketMQRemoteServer remotingServer;
     private final Broker2Client broker2Client = new Broker2Client(this);
-
+    private MessageStore messageStore;
     private TopicConfigManager topicConfigManager;
     private ExecutorService sendMessageExecutor;
     private ExecutorService pullMessageExecutor;

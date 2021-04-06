@@ -22,6 +22,7 @@ import org.apache.rocketmq.store.MessageExtBrokerInner;
 import org.apache.rocketmq.store.PutMessageResult;
 
 public class EndTransactionProcessor implements NettyRequestProcessor {
+
     private static final InternalLogger LOGGER = InternalLoggerFactory.getLogger(LoggerName.TRANSACTION_LOGGER_NAME);
     private final RocketMQBrokerController brokerController;
 
@@ -34,7 +35,7 @@ public class EndTransactionProcessor implements NettyRequestProcessor {
             RemotingCommandException {
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
         final EndTransactionRequestHeader requestHeader =
-                (EndTransactionRequestHeader)request.decodeCommandCustomHeader(EndTransactionRequestHeader.class);
+                (EndTransactionRequestHeader) request.decodeCommandCustomHeader(EndTransactionRequestHeader.class);
         LOGGER.debug("Transaction request:{}", requestHeader);
 
         if (requestHeader.getFromTransactionCheck()) {
@@ -103,14 +104,16 @@ public class EndTransactionProcessor implements NettyRequestProcessor {
                 RemotingCommand res = checkPrepareMessage(result.getPrepareMessage(), requestHeader);
                 if (res.getCode() == ResponseCode.SUCCESS) {
                     MessageExtBrokerInner msgInner = endMessageTransaction(result.getPrepareMessage());
-                    msgInner.setSysFlag(MessageSysFlag.resetTransactionValue(msgInner.getSysFlag(), requestHeader.getCommitOrRollback()));
+                    msgInner.setSysFlag(MessageSysFlag
+                            .resetTransactionValue(msgInner.getSysFlag(), requestHeader.getCommitOrRollback()));
                     msgInner.setQueueOffset(requestHeader.getTranStateTableOffset());
                     msgInner.setPreparedTransactionOffset(requestHeader.getCommitLogOffset());
                     msgInner.setStoreTimestamp(result.getPrepareMessage().getStoreTimestamp());
                     MessageAccessor.clearProperty(msgInner, MessageConst.PROPERTY_TRANSACTION_PREPARED);
                     RemotingCommand sendResult = sendFinalMessage(msgInner);
                     if (sendResult.getCode() == ResponseCode.SUCCESS) {
-                        this.brokerController.getTransactionalMessageService().deletePrepareMessage(result.getPrepareMessage());
+                        this.brokerController.getTransactionalMessageService()
+                                .deletePrepareMessage(result.getPrepareMessage());
                     }
                     return sendResult;
                 }
@@ -121,7 +124,8 @@ public class EndTransactionProcessor implements NettyRequestProcessor {
             if (result.getResponseCode() == ResponseCode.SUCCESS) {
                 RemotingCommand res = checkPrepareMessage(result.getPrepareMessage(), requestHeader);
                 if (res.getCode() == ResponseCode.SUCCESS) {
-                    this.brokerController.getTransactionalMessageService().deletePrepareMessage(result.getPrepareMessage());
+                    this.brokerController.getTransactionalMessageService()
+                            .deletePrepareMessage(result.getPrepareMessage());
                 }
                 return res;
             }
@@ -180,7 +184,8 @@ public class EndTransactionProcessor implements NettyRequestProcessor {
         msgInner.setTransactionId(msgExt.getUserProperty(MessageConst.PROPERTY_UNIQ_CLIENT_MESSAGE_ID_KEYIDX));
         msgInner.setSysFlag(msgExt.getSysFlag());
         TopicFilterType topicFilterType =
-                (msgInner.getSysFlag() & MessageSysFlag.MULTI_TAGS_FLAG) == MessageSysFlag.MULTI_TAGS_FLAG ? TopicFilterType.MULTI_TAG
+                (msgInner.getSysFlag() & MessageSysFlag.MULTI_TAGS_FLAG) == MessageSysFlag.MULTI_TAGS_FLAG
+                        ? TopicFilterType.MULTI_TAG
                         : TopicFilterType.SINGLE_TAG;
         long tagsCodeValue = MessageExtBrokerInner.tagsString2tagsCode(topicFilterType, msgInner.getTags());
         msgInner.setTagsCode(tagsCodeValue);
@@ -212,7 +217,8 @@ public class EndTransactionProcessor implements NettyRequestProcessor {
                 case MESSAGE_ILLEGAL:
                 case PROPERTIES_SIZE_EXCEEDED:
                     response.setCode(ResponseCode.MESSAGE_ILLEGAL);
-                    response.setRemark("The message is illegal, maybe msg body or properties length not matched. msg body length limit 128k, msg properties length limit 32k.");
+                    response.setRemark(
+                            "The message is illegal, maybe msg body or properties length not matched. msg body length limit 128k, msg properties length limit 32k.");
                     break;
                 case SERVICE_NOT_AVAILABLE:
                     response.setCode(ResponseCode.SERVICE_NOT_AVAILABLE);

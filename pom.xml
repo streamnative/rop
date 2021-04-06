@@ -73,7 +73,7 @@
             <groupId>org.apache.pulsar</groupId>
             <artifactId>pulsar-broker-common</artifactId>
             <version>${tdmq.version}</version>
-           <!-- <scope>provided</scope>-->
+            <!-- <scope>provided</scope>-->
         </dependency>
 
         <dependency>

@@ -1,20 +1,7 @@
 package com.tencent.tdmq.handlers.rocketmq.inner.pulsar;
 
-import com.tencent.tdmq.handlers.rocketmq.utils.RocketMQTopic;
-import java.util.Collections;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.pulsar.client.admin.PulsarAdmin;
-import org.apache.rocketmq.client.common.ClientErrorCode;
-import org.apache.rocketmq.client.exception.MQClientException;
-import org.apache.rocketmq.common.TopicConfig;
-import org.apache.rocketmq.common.protocol.ResponseCode;
 
 @Slf4j
 class AdminManager {

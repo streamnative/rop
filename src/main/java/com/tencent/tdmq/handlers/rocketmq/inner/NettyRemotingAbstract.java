@@ -21,8 +21,6 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.rocketmq.logging.InternalLogger;
-import org.apache.rocketmq.logging.InternalLoggerFactory;
 import org.apache.rocketmq.remoting.ChannelEventListener;
 import org.apache.rocketmq.remoting.InvokeCallback;
 import org.apache.rocketmq.remoting.RPCHook;
@@ -43,53 +41,46 @@ import org.apache.rocketmq.remoting.protocol.RemotingSysResponseCode;
 
 @Slf4j
 public abstract class NettyRemotingAbstract {
+
+    static {
+        NettyLogger.initNettyLogger();
+    }
+
     /**
      * Semaphore to limit maximum number of on-going one-way requests, which protects system memory footprint.
      */
     protected final Semaphore semaphoreOneway;
-
     /**
      * Semaphore to limit maximum number of on-going asynchronous requests, which protects system memory footprint.
      */
     protected final Semaphore semaphoreAsync;
-
     /**
      * This map caches all on-going requests.
      */
     protected final ConcurrentMap<Integer /* opaque */, ResponseFuture> responseTable =
             new ConcurrentHashMap<>(256);
-
     /**
      * This container holds all processors per request code, aka, for each incoming request, we may look up the
      * responding processor in this map to handle the request.
      */
     protected final HashMap<Integer/* request code */, Pair<NettyRequestProcessor, ExecutorService>> processorTable =
             new HashMap<>(64);
-
     /**
      * Executor to feed netty events to user defined {@link ChannelEventListener}.
      */
     protected final NettyEventExecutor nettyEventExecutor = new NettyEventExecutor();
-
     /**
      * The default request processor to use in case there is no exact match in {@link #processorTable} per request code.
      */
     protected Pair<NettyRequestProcessor, ExecutorService> defaultRequestProcessor;
-
     /**
      * SSL context via which to create {@link SslHandler}.
      */
     protected volatile SslContext sslContext;
-
     /**
      * custom rpc hooks
      */
     protected List<RPCHook> rpcHooks = new ArrayList<RPCHook>();
-
-
-    static {
-        NettyLogger.initNettyLogger();
-    }
 
     /**
      * Constructor, specifying capacity of one-way and asynchronous semaphores.
@@ -548,7 +539,7 @@ public abstract class NettyRemotingAbstract {
         }
     }
 
-   public class NettyEventExecutor extends ServiceThread {
+    public class NettyEventExecutor extends ServiceThread {
 
         private final LinkedBlockingQueue<NettyEvent> eventQueue = new LinkedBlockingQueue<NettyEvent>();
         private final int maxSize = 10000;

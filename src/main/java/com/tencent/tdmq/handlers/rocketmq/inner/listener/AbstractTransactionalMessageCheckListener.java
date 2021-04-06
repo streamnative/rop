@@ -17,12 +17,8 @@ import org.apache.rocketmq.common.protocol.header.CheckTransactionStateRequestHe
 @Slf4j
 public abstract class AbstractTransactionalMessageCheckListener {
 
-    private RocketMQBrokerController brokerController;
-
     //queue nums of topic TRANS_CHECK_MAX_TIME_TOPIC
     protected final static int TCMT_QUEUE_NUMS = 1;
-    protected final Random random = new Random(System.currentTimeMillis());
-
     private static ExecutorService executorService = new ThreadPoolExecutor(2, 5, 100, TimeUnit.SECONDS,
             new ArrayBlockingQueue<Runnable>(2000), new ThreadFactory() {
         @Override
@@ -32,6 +28,8 @@ public abstract class AbstractTransactionalMessageCheckListener {
             return thread;
         }
     }, new CallerRunsPolicy());
+    protected final Random random = new Random(System.currentTimeMillis());
+    private RocketMQBrokerController brokerController;
 
     public AbstractTransactionalMessageCheckListener() {
     }
@@ -78,10 +76,6 @@ public abstract class AbstractTransactionalMessageCheckListener {
         return brokerController;
     }
 
-    public void shutDown() {
-        executorService.shutdown();
-    }
-
     /**
      * Inject brokerController for this listener
      *
@@ -89,6 +83,10 @@ public abstract class AbstractTransactionalMessageCheckListener {
      */
     public void setBrokerController(RocketMQBrokerController brokerController) {
         this.brokerController = brokerController;
+    }
+
+    public void shutDown() {
+        executorService.shutdown();
     }
 
     /**
