@@ -169,7 +169,6 @@ public abstract class NettyRemotingAbstract {
         final Pair<NettyRequestProcessor, ExecutorService> pair =
                 null == matched ? this.defaultRequestProcessor : matched;
         final int opaque = cmd.getOpaque();
-
         if (pair != null) {
             Runnable run = new Runnable() {
                 @Override

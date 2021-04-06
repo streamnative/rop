@@ -12,6 +12,7 @@ import io.netty.handler.timeout.IdleState;
 import io.netty.handler.timeout.IdleStateEvent;
 import io.netty.util.concurrent.DefaultEventExecutorGroup;
 import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.security.cert.CertificateException;
 import java.util.NoSuchElementException;
 import java.util.Timer;
@@ -310,7 +311,10 @@ public class RocketMQRemoteServer extends NettyRemotingAbstract implements Remot
             final String remoteAddress = RemotingHelper.parseChannelRemoteAddr(ctx.channel());
             log.info("NETTY SERVER PIPELINE: channelActive, the channel[{}]", remoteAddress);
             super.channelActive(ctx);
-
+            if (RocketMQRemoteServer.this.port <= 0) {
+                InetSocketAddress addr = (InetSocketAddress) ctx.channel().localAddress();
+                RocketMQRemoteServer.this.port = addr.getPort();
+            }
             if (RocketMQRemoteServer.this.channelEventListener != null) {
                 RocketMQRemoteServer.this
                         .putNettyEvent(new NettyEvent(NettyEventType.CONNECT, remoteAddress, ctx.channel()));

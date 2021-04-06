@@ -5,6 +5,8 @@ import com.tencent.tdmq.handlers.rocketmq.inner.listener.AbstractTransactionalMe
 import com.tencent.tdmq.handlers.rocketmq.inner.listener.DefaultConsumerIdsChangeListener;
 import com.tencent.tdmq.handlers.rocketmq.inner.listener.DefaultTransactionalMessageCheckListener;
 import com.tencent.tdmq.handlers.rocketmq.inner.listener.NotifyMessageArrivingListener;
+import com.tencent.tdmq.handlers.rocketmq.inner.namesvr.MQTopicManager;
+import com.tencent.tdmq.handlers.rocketmq.inner.namesvr.NamesvrProcessor;
 import com.tencent.tdmq.handlers.rocketmq.inner.processor.AdminBrokerProcessor;
 import com.tencent.tdmq.handlers.rocketmq.inner.processor.ClientManageProcessor;
 import com.tencent.tdmq.handlers.rocketmq.inner.processor.ConsumerManageProcessor;
@@ -24,6 +26,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.pulsar.broker.PulsarServerException;
 import org.apache.pulsar.broker.service.BrokerService;
 import org.apache.rocketmq.broker.client.ConsumerIdsChangeListener;
 import org.apache.rocketmq.broker.latency.BrokerFixedThreadPoolExecutor;
@@ -92,8 +95,9 @@ public class RocketMQBrokerController {
     private AbstractTransactionalMessageCheckListener transactionalMessageCheckListener;
 
     private BrokerService brokerService;
+    private MQTopicManager mqTopicManager;
 
-    public RocketMQBrokerController(final RocketMQServiceConfiguration serverConfig) {
+    public RocketMQBrokerController(final RocketMQServiceConfiguration serverConfig) throws PulsarServerException {
         this.serverConfig = serverConfig;
         this.consumerOffsetManager = new ConsumerOffsetManager(this);
         this.topicConfigManager = new TopicConfigManager(this);
@@ -125,14 +129,13 @@ public class RocketMQBrokerController {
 
         this.brokerStatsManager = new BrokerStatsManager(serverConfig.getBrokerName());
         this.remotingServer = new RocketMQRemoteServer(this.serverConfig, this.clientHousekeepingService);
-
+        this.mqTopicManager = new MQTopicManager(this);
     }
 
-    public boolean initialize() throws CloneNotSupportedException {
+    public boolean initialize() throws Exception {
         boolean result = this.topicConfigManager.load();
         result = result && this.consumerOffsetManager.load();
         result = result && this.subscriptionGroupManager.load();
-
         if (result) {
             try {
 //                this.messageStore =
@@ -276,7 +279,7 @@ public class RocketMQBrokerController {
         this.transactionalMessageCheckService = new TransactionalMessageCheckService(this);
     }
 
-    public void registerProcessor() {
+    public void registerProcessor() throws PulsarServerException {
         /**
          * SendMessageProcessor
          */
@@ -336,7 +339,7 @@ public class RocketMQBrokerController {
          */
         AdminBrokerProcessor adminProcessor = new AdminBrokerProcessor(this);
         this.remotingServer.registerDefaultProcessor(adminProcessor, this.adminBrokerExecutor);
-        NamesvrProcessor namesvrProcessor = new NamesvrProcessor(this, this.brokerService);
+        NamesvrProcessor namesvrProcessor = new NamesvrProcessor(this);
         this.remotingServer.registerDefaultProcessor(namesvrProcessor, this.adminBrokerExecutor);
     }
 
@@ -448,6 +451,10 @@ public class RocketMQBrokerController {
         if (this.endTransactionExecutor != null) {
             this.endTransactionExecutor.shutdown();
         }
+
+        if (this.mqTopicManager != null) {
+            this.mqTopicManager.shutdown();
+        }
     }
 
     private void unregisterBrokerAll() {
@@ -475,6 +482,9 @@ public class RocketMQBrokerController {
             this.brokerStatsManager.start();
         }
 
+        if (this.mqTopicManager != null) {
+            this.mqTopicManager.start();
+        }
     }
 
     public void registerSendMessageHook(final SendMessageHook hook) {

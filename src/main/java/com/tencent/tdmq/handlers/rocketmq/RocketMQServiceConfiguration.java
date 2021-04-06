@@ -4,6 +4,7 @@ import lombok.Data;
 import org.apache.pulsar.broker.ServiceConfiguration;
 import org.apache.pulsar.common.configuration.Category;
 import org.apache.pulsar.common.configuration.FieldContext;
+import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.constant.PermName;
 
 /**
@@ -178,7 +179,7 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
             category = CATEGORY_ROCKETMQ,
             doc = "pool size for processing callback requests..\n"
     )
-    private String brokerName = "pulsar-broker";
+    private String brokerName = "rocketmq-broker";
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
             doc = "pool size for processing callback requests..\n"
@@ -259,22 +260,59 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
                     + "if exceed this value, this message will be discarded.\n"
     )
     private boolean notifyConsumerIdsChangedEnable = true;
+
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
             doc = "The maximum number of times the message was checked, "
                     + "if exceed this value, this message will be discarded.\n"
     )
     private boolean autoCreateSubscriptionGroup = true;
+
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
             doc = "The maximum number of times the message was checked, "
                     + "if exceed this value, this message will be discarded.\n"
     )
     private int defaultQueryMaxNum = 10000;
+
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
             doc = "The maximum number of times the message was checked, "
                     + "if exceed this value, this message will be discarded.\n"
     )
     private int serverChannelMaxIdleTimeSeconds = 120;
+
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
+            doc = "The maximum number of times the message was checked, "
+                    + "if exceed this value, this message will be discarded.\n"
+    )
+    private String consumerOffsetsTopicName = "__consumer_offsets";
+
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
+            doc = "The maximum number of times the message was checked, "
+                    + "if exceed this value, this message will be discarded.\n"
+    )
+    private String rmqSysTransHalfTopic = MixAll.RMQ_SYS_TRANS_HALF_TOPIC;
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
+            doc = "The maximum number of times the message was checked, "
+                    + "if exceed this value, this message will be discarded.\n"
+    )
+    private String rmqSysTransOpHalfTopic = MixAll.RMQ_SYS_TRANS_OP_HALF_TOPIC;
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
+            doc = "The maximum number of times the message was checked, "
+                    + "if exceed this value, this message will be discarded.\n"
+    )
+    private String rmqTransCheckMaxTimeTopic = MixAll.TRANS_CHECK_MAX_TIME_TOPIC;
+
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
+            doc = "The maximum number of times the message was checked, "
+                    + "if exceed this value, this message will be discarded.\n"
+    )
+    private String rmqScheduleTopic = "SCHEDULE_TOPIC_XXXX";
+
 }

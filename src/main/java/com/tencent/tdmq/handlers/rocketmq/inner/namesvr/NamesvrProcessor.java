@@ -1,0 +1,134 @@
+package com.tencent.tdmq.handlers.rocketmq.inner.namesvr;
+
+import static com.google.common.base.Preconditions.checkNotNull;
+import static org.apache.rocketmq.common.protocol.RequestCode.GET_ROUTEINTO_BY_TOPIC;
+
+import com.tencent.tdmq.handlers.rocketmq.RocketMQServiceConfiguration;
+import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
+import com.tencent.tdmq.handlers.rocketmq.utils.RocketMQTopic;
+import io.netty.channel.ChannelHandlerContext;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.logging.log4j.util.Strings;
+import org.apache.pulsar.broker.PulsarServerException;
+import org.apache.pulsar.common.partition.PartitionedTopicMetadata;
+import org.apache.rocketmq.common.help.FAQUrl;
+import org.apache.rocketmq.common.protocol.RequestCode;
+import org.apache.rocketmq.common.protocol.ResponseCode;
+import org.apache.rocketmq.common.protocol.header.namesrv.GetRouteInfoRequestHeader;
+import org.apache.rocketmq.common.protocol.route.TopicRouteData;
+import org.apache.rocketmq.remoting.common.RemotingHelper;
+import org.apache.rocketmq.remoting.exception.RemotingCommandException;
+import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
+import org.apache.rocketmq.remoting.protocol.RemotingCommand;
+
+@Slf4j
+public class NamesvrProcessor implements NettyRequestProcessor {
+
+    private final RocketMQBrokerController brokerController;
+    private final RocketMQServiceConfiguration config;
+    private final int defaultNumPartitions;
+    private final MQTopicManager mqTopicManager;
+
+    public NamesvrProcessor(RocketMQBrokerController brokerController) throws PulsarServerException {
+        this.brokerController = brokerController;
+        this.config = brokerController.getServerConfig();
+        this.defaultNumPartitions = config.getDefaultNumPartitions();
+        this.mqTopicManager = brokerController.getMqTopicManager();
+    }
+
+    @Override
+    public RemotingCommand processRequest(ChannelHandlerContext ctx, RemotingCommand request)
+            throws Exception {
+        if (ctx != null) {
+            log.debug("receive request, {} {} {}",
+                    request.getCode(),
+                    RemotingHelper.parseChannelRemoteAddr(ctx.channel()),
+                    request);
+        }
+
+        switch (request.getCode()) {
+            case RequestCode.PUT_KV_CONFIG:
+            case RequestCode.GET_KV_CONFIG:
+            case RequestCode.DELETE_KV_CONFIG:
+            case RequestCode.QUERY_DATA_VERSION:
+                // TODO return queryBrokerTopicConfig(ctx, request);
+            case RequestCode.REGISTER_BROKER:
+            case RequestCode.UNREGISTER_BROKER:
+            case GET_ROUTEINTO_BY_TOPIC:
+                // TODO return this.getRouteInfoByTopic(ctx, request);
+                return handleTopicMetadata(ctx, request);
+            case RequestCode.GET_BROKER_CLUSTER_INFO:
+                // return this.getBrokerClusterInfo(ctx, request);
+            case RequestCode.WIPE_WRITE_PERM_OF_BROKER:
+            case RequestCode.GET_ALL_TOPIC_LIST_FROM_NAMESERVER:
+                // return getAllTopicListFromNameserver(ctx, request);
+            case RequestCode.DELETE_TOPIC_IN_NAMESRV:
+                //return deleteTopicInNamesrv(ctx, request);
+            case RequestCode.GET_KVLIST_BY_NAMESPACE:
+            case RequestCode.GET_TOPICS_BY_CLUSTER:
+                //return this.getTopicsByCluster(ctx, request);
+            case RequestCode.GET_SYSTEM_TOPIC_LIST_FROM_NS:
+                //return this.getSystemTopicListFromNs(ctx, request);
+            case RequestCode.GET_UNIT_TOPIC_LIST:
+                //return this.getUnitTopicList(ctx, request);
+            case RequestCode.GET_HAS_UNIT_SUB_TOPIC_LIST:
+                //return this.getHasUnitSubTopicList(ctx, request);
+            case RequestCode.GET_HAS_UNIT_SUB_UNUNIT_TOPIC_LIST:
+                //return this.getHasUnitSubUnUnitTopicList(ctx, request);
+            case RequestCode.UPDATE_NAMESRV_CONFIG:
+            case RequestCode.GET_NAMESRV_CONFIG:
+            default:
+                break;
+        }
+        return null;
+    }
+
+    @Override
+    public boolean rejectRequest() {
+        return false;
+    }
+
+
+    protected RemotingCommand handleTopicMetadata(ChannelHandlerContext ctx, RemotingCommand request)
+            throws RemotingCommandException {
+        checkNotNull(request);
+        final RemotingCommand response = RemotingCommand.createResponseCommand(null);
+        final GetRouteInfoRequestHeader requestHeader =
+                (GetRouteInfoRequestHeader) request.decodeCommandCustomHeader(GetRouteInfoRequestHeader.class);
+
+        String requestTopic = requestHeader.getTopic();
+        TopicRouteData topicRouteData = new TopicRouteData();
+
+        if (Strings.isNotBlank(requestTopic)) {
+            RocketMQTopic mqTopic = new RocketMQTopic(requestTopic);
+            PartitionedTopicMetadata pTopicMeta = null;
+            try {
+                mqTopicManager.getTopic(mqTopic.getFullName());
+                pTopicMeta = mqTopicManager.getPartitionedTopicMetadata(mqTopic.getFullName());
+                if (pTopicMeta.partitions <= 0 && config.isAllowAutoTopicCreation()
+                        && config.isAllowAutoSubscriptionCreation()) {
+                    if (log.isDebugEnabled()) {
+                        log.debug("[{}] Request {}: Topic {} has single partition, "
+                                        + "auto create partitioned topic",
+                                ctx.channel(), request, mqTopic);
+                    }
+                    /*admin.topics().createPartitionedTopicAsync(mqTopic.getFullName(),
+                            defaultNumPartitions);*/
+                }
+            } catch (Exception e) {
+                response.setCode(ResponseCode.TOPIC_NOT_EXIST);
+                response.setRemark(
+                        "No topic route info in name server for the topic: " + requestHeader.getTopic()
+                                + FAQUrl.suggestTodo(FAQUrl.APPLY_TOPIC_URL));
+                log.warn(
+                        "[{}] Request {}: Failed to get partitioned pulsar topic {} metadata: {}",
+                        ctx.channel(), request,
+                        mqTopic.getFullName(), e.getMessage());
+            }
+            final int partitionsNumber = pTopicMeta.partitions;
+
+
+        }
+        return null;
+    }
+}
