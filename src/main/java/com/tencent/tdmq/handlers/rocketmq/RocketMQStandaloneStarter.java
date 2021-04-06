@@ -25,7 +25,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.pulsar.broker.ServiceConfigurationUtils;
 
 /**
- * Starter to start kafka-on-pulsar broker.
+ * Starter to start rocketMQ-on-pulsar broker.
  */
 @Slf4j
 public class RocketMQStandaloneStarter extends RocketMQStandalone {

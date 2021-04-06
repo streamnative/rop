@@ -45,7 +45,7 @@ public class RocketMQService extends PulsarService {
     @Override
     public Map<String, String> getProtocolDataToAdvertise() {
         return ImmutableMap.<String, String>builder()
-                .put("kafka", config.getRocketmqListeners())
+                .put("rocket", config.getRocketmqListeners())
                 .build();
     }
 
@@ -56,7 +56,7 @@ public class RocketMQService extends PulsarService {
         lock.lock();
 
         try {
-            // TODO: add Kafka on Pulsar Version support -- https://github.com/streamnative/kop/issues/3
+            // TODO: add rocketMQ on Pulsar Version support -- https://github.com/streamnative/kop/issues/3
             log.info("Starting Pulsar Broker service powered by Pulsar version: '{}'",
                     (getBrokerVersion() != null ? getBrokerVersion() : "unknown"));
 
@@ -65,7 +65,8 @@ public class RocketMQService extends PulsarService {
             }
 
             if (config.getRocketmqListeners() == null || config.getRocketmqListeners().isEmpty()) {
-                throw new IllegalArgumentException("Kafka Listeners should be provided through brokerConf.listeners");
+                throw new IllegalArgumentException(
+                        "RocketMQ Listeners should be provided through brokerConf.listeners");
             }
 
             if (config.getAdvertisedAddress() != null
@@ -79,7 +80,7 @@ public class RocketMQService extends PulsarService {
             setOrderedExecutor(OrderedExecutor.newBuilder().numThreads(8).name("pulsar-ordered")
                     .build());
 
-            // init KafkaProtocolHandler
+            // init RocketMQProtocolHandler
             RocketMQProtocolHandler rocketmqHandler = new RocketMQProtocolHandler();
             rocketmqHandler.initialize(config);
 
@@ -180,9 +181,9 @@ public class RocketMQService extends PulsarService {
                     ? "port = " + config.getWebServicePort().get() : "")
                     + (config.getWebServicePortTls().isPresent()
                     ? "tls-port = " + config.getWebServicePortTls() : "")
-                    + ("kafka listener url= " + config.getRocketmqListeners());
+                    + ("rocketMQ listener url= " + config.getRocketmqListeners());
 
-            // start Kafka protocol handler.
+            // start RocketMQ protocol handler.
             // put after load manager for the use of existing broker service to create internal topics.
             rocketmqHandler.start(this.getBrokerService());
 
@@ -196,7 +197,7 @@ public class RocketMQService extends PulsarService {
 
             setState(State.Started);
 
-            log.info("Kafka messaging service is ready, {}, cluster={}, configs={}",
+            log.info("RocketMQ messaging service is ready, {}, cluster={}, configs={}",
                     bootstrapMessage, config.getClusterName(),
                     ReflectionToStringBuilder.toString(config));
         } catch (Exception e) {

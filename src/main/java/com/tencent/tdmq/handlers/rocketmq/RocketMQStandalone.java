@@ -31,7 +31,7 @@ import org.apache.pulsar.common.policies.data.TenantInfo;
 import org.apache.pulsar.zookeeper.LocalBookkeeperEnsemble;
 
 /**
- * A standalone instance includes all the components for running Kafka-on-Pulsar.
+ * A standalone instance includes all the components for running RocketMQ-on-Pulsar.
  */
 @Slf4j
 public class RocketMQStandalone implements AutoCloseable {

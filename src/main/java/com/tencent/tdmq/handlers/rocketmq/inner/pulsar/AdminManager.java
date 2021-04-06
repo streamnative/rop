@@ -71,8 +71,8 @@ class AdminManager {
 
     CompletableFuture<Map<ConfigResource, DescribeConfigsResponse.Config>> describeConfigsAsync(
             Map<ConfigResource, Optional<Set<String>>> resourceToConfigNames) {
-        // Since Kafka's storage and policies are much different from Pulsar, here we just return a default config to
-        // avoid some Kafka based systems need to send DescribeConfigs request, like confluent schema registry.
+        // Since RocketMQ's storage and policies are much different from Pulsar, here we just return a default config to
+        // avoid some RocketMQ based systems need to send DescribeConfigs request, like confluent schema registry.
         final DescribeConfigsResponse.Config defaultTopicConfig = new DescribeConfigsResponse.Config(ApiError.NONE,
                 KafkaLogConfig.getEntries().entrySet().stream().map(entry ->
                         new DescribeConfigsResponse.ConfigEntry(entry.getKey(), entry.getValue(),
