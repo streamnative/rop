@@ -94,8 +94,8 @@ public class RocketMQBrokerController {
     private TransactionalMessageService transactionalMessageService;
     private AbstractTransactionalMessageCheckListener transactionalMessageCheckListener;
 
-    private BrokerService brokerService;
-    private MQTopicManager mqTopicManager;
+    private volatile BrokerService brokerService;
+    private final MQTopicManager mqTopicManager;
 
     public RocketMQBrokerController(final RocketMQServiceConfiguration serverConfig) throws PulsarServerException {
         this.serverConfig = serverConfig;

@@ -4,11 +4,11 @@ import static com.google.common.base.Preconditions.checkState;
 
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
-import com.google.common.collect.Sets;
 import com.tencent.tdmq.handlers.rocketmq.RocketMQServiceConfiguration;
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
 import com.tencent.tdmq.handlers.rocketmq.utils.RocketMQTopic;
 import java.net.InetSocketAddress;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
@@ -26,7 +26,6 @@ import org.apache.pulsar.common.naming.NamespaceBundle;
 import org.apache.pulsar.common.naming.NamespaceName;
 import org.apache.pulsar.common.naming.TopicName;
 import org.apache.pulsar.common.partition.PartitionedTopicMetadata;
-import org.apache.pulsar.common.policies.data.TenantInfo;
 
 @Slf4j
 public class MQTopicManager implements NamespaceBundleOwnershipListener {
@@ -145,24 +144,15 @@ public class MQTopicManager implements NamespaceBundleOwnershipListener {
     public PersistentTopic getTopic(String fullTopicName) {
         if (topics.getIfPresent(fullTopicName) == null) {
             try {
-
-                TenantInfo tenantInfo = new TenantInfo(
-                        Sets.newHashSet(brokerController.getServerConfig().getSuperUserRoles()),
-                        Sets.newHashSet(brokerController.getServerConfig().getClusterName()));
-
-                try {
-                    Topic topic = brokerService.getOrCreateTopic(fullTopicName).get();
-                    PartitionedTopicMetadata a = brokerService.getPulsar().getAdminClient().topics()
-                            .getPartitionedTopicMetadata("test/test/zhangyh");
-                    System.out.println(a);
-                } catch (PulsarAdminException e) {
-                    e.printStackTrace();
-                } catch (PulsarServerException e) {
-                    e.printStackTrace();
+                //Optional<Topic> optionalTopic = brokerService.getTopic(fullTopicName, true).get();
+                //adminClient.topics().createPartitionedTopic("public/default/zyh", 1);
+                Optional<Topic> optionalTopic = brokerService.getTopic("persistent://public/default/zyh-partition-0", true).get();
+                if (optionalTopic.isPresent()) {
+                    PersistentTopic persistentTopic = (PersistentTopic) optionalTopic.get();
+                    topics.put(fullTopicName, persistentTopic);
+                } else {
+                    log.error("topic[{}] couldn't be found.", fullTopicName);
                 }
-
-                Topic topic = brokerService.getOrCreateTopic(fullTopicName).get();
-                topics.put(fullTopicName, (PersistentTopic) topic);
             } catch (Exception e) {
                 log.error("[{}] Failed to getTopic {}. exception:", fullTopicName, e);
             }
