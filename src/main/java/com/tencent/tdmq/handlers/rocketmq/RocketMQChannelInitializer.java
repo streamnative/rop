@@ -7,6 +7,7 @@ import io.netty.channel.socket.SocketChannel;
 import io.netty.handler.codec.LengthFieldPrepender;
 import io.netty.handler.timeout.IdleStateHandler;
 import lombok.Getter;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.pulsar.broker.service.BrokerService;
 import org.apache.rocketmq.remoting.netty.NettyDecoder;
 
@@ -18,6 +19,7 @@ import org.apache.rocketmq.remoting.netty.NettyDecoder;
 /**
  * rocketmq output data encoder.
  */
+@Slf4j
 public class RocketMQChannelInitializer extends ChannelInitializer<SocketChannel> {
 
     @Getter
@@ -58,5 +60,7 @@ public class RocketMQChannelInitializer extends ChannelInitializer<SocketChannel
                         remoteServer.getConnectionManageHandler(),
                         remoteServer.getServerHandler()
                 );
+
+        log.info("Successfully init channel {}", ch.remoteAddress().getHostString());
     }
 }

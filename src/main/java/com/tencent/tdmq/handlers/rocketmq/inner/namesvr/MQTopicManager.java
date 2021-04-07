@@ -144,14 +144,15 @@ public class MQTopicManager implements NamespaceBundleOwnershipListener {
     public PersistentTopic getTopic(String fullTopicName) {
         if (topics.getIfPresent(fullTopicName) == null) {
             try {
-                //Optional<Topic> optionalTopic = brokerService.getTopic(fullTopicName, true).get();
-                //adminClient.topics().createPartitionedTopic("public/default/zyh", 1);
-                Optional<Topic> optionalTopic = brokerService.getTopic("persistent://public/default/zyh-partition-0", true).get();
+                Optional<Topic> optionalTopic = brokerService.getTopic(fullTopicName, true).get();
                 if (optionalTopic.isPresent()) {
                     PersistentTopic persistentTopic = (PersistentTopic) optionalTopic.get();
                     topics.put(fullTopicName, persistentTopic);
                 } else {
                     log.error("topic[{}] couldn't be found.", fullTopicName);
+                }
+                if (log.isDebugEnabled()) {
+                    log.debug("create topic [{}] successful", fullTopicName);
                 }
             } catch (Exception e) {
                 log.error("[{}] Failed to getTopic {}. exception:", fullTopicName, e);

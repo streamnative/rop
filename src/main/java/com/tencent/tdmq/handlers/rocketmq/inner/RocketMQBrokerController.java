@@ -252,7 +252,7 @@ public class RocketMQBrokerController {
                         log.error("printWaterMark error.", e);
                     }
                 }
-            }, 10, 1, TimeUnit.SECONDS);
+            }, 100, 20, TimeUnit.SECONDS);
 
             initialTransaction();
         }

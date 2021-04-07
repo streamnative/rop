@@ -5,19 +5,28 @@ import static org.apache.rocketmq.common.protocol.RequestCode.GET_ROUTEINTO_BY_T
 
 import com.tencent.tdmq.handlers.rocketmq.RocketMQServiceConfiguration;
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
+import com.tencent.tdmq.handlers.rocketmq.utils.Random;
 import com.tencent.tdmq.handlers.rocketmq.utils.RocketMQTopic;
 import io.netty.channel.ChannelHandlerContext;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.logging.log4j.util.Strings;
 import org.apache.pulsar.broker.PulsarServerException;
+import org.apache.pulsar.broker.service.persistent.PersistentTopic;
+import org.apache.pulsar.client.admin.Lookup;
+import org.apache.pulsar.client.admin.PulsarAdmin;
 import org.apache.pulsar.common.partition.PartitionedTopicMetadata;
 import org.apache.rocketmq.common.help.FAQUrl;
 import org.apache.rocketmq.common.protocol.RequestCode;
 import org.apache.rocketmq.common.protocol.ResponseCode;
 import org.apache.rocketmq.common.protocol.header.namesrv.GetRouteInfoRequestHeader;
+import org.apache.rocketmq.common.protocol.route.BrokerData;
+import org.apache.rocketmq.common.protocol.route.QueueData;
 import org.apache.rocketmq.common.protocol.route.TopicRouteData;
 import org.apache.rocketmq.remoting.common.RemotingHelper;
-import org.apache.rocketmq.remoting.exception.RemotingCommandException;
 import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 
@@ -90,45 +99,65 @@ public class NamesvrProcessor implements NettyRequestProcessor {
 
 
     protected RemotingCommand handleTopicMetadata(ChannelHandlerContext ctx, RemotingCommand request)
-            throws RemotingCommandException {
+            throws Exception {
         checkNotNull(request);
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
         final GetRouteInfoRequestHeader requestHeader =
                 (GetRouteInfoRequestHeader) request.decodeCommandCustomHeader(GetRouteInfoRequestHeader.class);
-
-        String requestTopic = requestHeader.getTopic();
         TopicRouteData topicRouteData = new TopicRouteData();
+        List<BrokerData> brokerDatas = new ArrayList<>();
+        List<QueueData> queueDatas = new ArrayList<>();
 
+        // 根据传入的请求获取指定的topic
+        String requestTopic = requestHeader.getTopic();
         if (Strings.isNotBlank(requestTopic)) {
             RocketMQTopic mqTopic = new RocketMQTopic(requestTopic);
             PartitionedTopicMetadata pTopicMeta = null;
-            try {
-                mqTopicManager.getTopic(mqTopic.getFullName());
-                pTopicMeta = mqTopicManager.getPartitionedTopicMetadata(mqTopic.getFullName());
-                if (pTopicMeta.partitions <= 0 && config.isAllowAutoTopicCreation()
-                        && config.isAllowAutoSubscriptionCreation()) {
-                    if (log.isDebugEnabled()) {
-                        log.debug("[{}] Request {}: Topic {} has single partition, "
-                                        + "auto create partitioned topic",
-                                ctx.channel(), request, mqTopic);
-                    }
-                    /*admin.topics().createPartitionedTopicAsync(mqTopic.getFullName(),
-                            defaultNumPartitions);*/
+
+            PersistentTopic topic = mqTopicManager.getTopic(mqTopic.getFullName());
+
+            Lookup lookupService = this.brokerController.getBrokerService().pulsar().getAdminClient().lookups();
+            PulsarAdmin adminClient = this.brokerController.getBrokerService().getPulsar().getAdminClient();
+            List<String> clusters = adminClient.clusters().getClusters();
+            String brokerAddress = lookupService.lookupTopic(topic.getName());
+            Long brokerID = Random.randomLong(8);
+            HashMap<Long, String> brokerAddrs = new HashMap<>();
+            brokerAddrs.put(brokerID, brokerAddress);
+
+            BrokerData brokerData = new BrokerData(clusters.get(0), brokerAddress, brokerAddrs);
+            brokerDatas.add(brokerData);
+            topicRouteData.setBrokerDatas(brokerDatas);
+
+            pTopicMeta = mqTopicManager.getPartitionedTopicMetadata(mqTopic.getFullName());
+            if (pTopicMeta.partitions <= 0 && config.isAllowAutoTopicCreation()
+                    && config.isAllowAutoSubscriptionCreation()) {
+                if (log.isDebugEnabled()) {
+                    log.debug("[{}] Request {}: Topic {} has single partition, "
+                                    + "auto create partitioned topic",
+                            ctx.channel(), request, mqTopic);
                 }
-            } catch (Exception e) {
-                response.setCode(ResponseCode.TOPIC_NOT_EXIST);
-                response.setRemark(
-                        "No topic route info in name server for the topic: " + requestHeader.getTopic()
-                                + FAQUrl.suggestTodo(FAQUrl.APPLY_TOPIC_URL));
-                log.warn(
-                        "[{}] Request {}: Failed to get partitioned pulsar topic {} metadata: {}",
-                        ctx.channel(), request,
-                        mqTopic.getFullName(), e.getMessage());
             }
-            final int partitionsNumber = pTopicMeta.partitions;
 
-
+            QueueData queueData = new QueueData();
+            queueData.setBrokerName(brokerAddress);
+            queueData.setReadQueueNums(pTopicMeta.partitions);
+            queueData.setWriteQueueNums(pTopicMeta.partitions);
+            queueDatas.add(queueData);
+            topicRouteData.setQueueDatas(queueDatas);
         }
-        return null;
+
+
+        if (topicRouteData != null) {
+            byte[] content = topicRouteData.encode();
+            response.setBody(content);
+            response.setCode(ResponseCode.SUCCESS);
+            response.setRemark(null);
+            return response;
+        }
+
+        response.setCode(ResponseCode.TOPIC_NOT_EXIST);
+        response.setRemark("No topic route info in name server for the topic: " + requestHeader.getTopic()
+                + FAQUrl.suggestTodo(FAQUrl.APPLY_TOPIC_URL));
+        return response;
     }
 }

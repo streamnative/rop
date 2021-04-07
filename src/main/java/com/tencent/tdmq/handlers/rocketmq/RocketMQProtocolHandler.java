@@ -206,7 +206,7 @@ public class RocketMQProtocolHandler implements ProtocolHandler {
                     builder.put(
                             new InetSocketAddress(brokerService.pulsar().getBindAddress(), getListenerPort(listener)),
                             new RocketMQChannelInitializer(rocketmqConfig, rocketMQBroker,
-                                    brokerService, false)); // todo: 这里看是否需要定义专门的 RocketmqBrokerService 来包装
+                                    brokerService, false));
                 } else {
                     log.error("Rocketmq listener {} not supported. supports {} and {}",
                             listener, PLAINTEXT_PREFIX, SSL_PREFIX);
