@@ -104,14 +104,21 @@ public class RocketMQProtocolHandler implements ProtocolHandler {
                 RopVersion.getBuildHost(),
                 RopVersion.getBuildTime());
         try {
-            createMetadataNamespaceIfNeeded(service);
-            createSystemTopic(service, rocketmqConfig.getRocketmqTenant(), rocketmqConfig.getRocketmqNamespace(),
+            String cluster = rocketmqConfig.getClusterName();
+            String metaTanant = rocketmqConfig.getRocketmqMetadataTenant();
+            String metaNs = rocketmqConfig.getRocketmqMetadataNamespace();
+            String defaultTanant = rocketmqConfig.getRocketmqTenant();
+            String defaultNs = rocketmqConfig.getRocketmqNamespace();
+
+            createSysNamespaceIfNeeded(service, cluster, metaTanant, metaNs);
+            createSysNamespaceIfNeeded(service, cluster, defaultTanant, defaultNs);
+            createSystemTopic(service, defaultTanant, defaultNs,
                     rocketmqConfig.getRmqScheduleTopic(), rocketmqConfig.getDefaultNumPartitions());
-            createSystemTopic(service, rocketmqConfig.getRocketmqTenant(), rocketmqConfig.getRocketmqNamespace(),
+            createSystemTopic(service, defaultTanant, defaultNs,
                     rocketmqConfig.getRmqSysTransHalfTopic(), rocketmqConfig.getDefaultNumPartitions());
-            createSystemTopic(service, rocketmqConfig.getRocketmqTenant(), rocketmqConfig.getRocketmqNamespace(),
+            createSystemTopic(service, defaultTanant, defaultNs,
                     rocketmqConfig.getRmqSysTransOpHalfTopic(), rocketmqConfig.getDefaultNumPartitions());
-            createSystemTopic(service, rocketmqConfig.getRocketmqTenant(), rocketmqConfig.getRocketmqNamespace(),
+            createSystemTopic(service, defaultTanant, defaultNs,
                     rocketmqConfig.getRmqTransCheckMaxTimeTopic(), 1);
             rocketMQBroker.start();
         } catch (Exception e) {
@@ -144,13 +151,10 @@ public class RocketMQProtocolHandler implements ProtocolHandler {
         return fullTopicName;
     }
 
-    private void createMetadataNamespaceIfNeeded(BrokerService service)
+    private void createSysNamespaceIfNeeded(BrokerService service, String cluster, String tanant, String ns)
             throws PulsarServerException, PulsarAdminException {
-        String cluster = rocketmqConfig.getClusterName();
-        String rocketmqMetadataTenant = rocketmqConfig.getRocketmqMetadataTenant();
-        String rocketmqMetadataNamespace = rocketmqMetadataTenant + "/" + rocketmqConfig.getRocketmqMetadataNamespace();
         PulsarAdmin pulsarAdmin = service.pulsar().getAdminClient();
-
+        String fullNs = Joiner.on('/').join(tanant, ns);
         try {
             ClusterData clusterData = new ClusterData(service.pulsar().getWebServiceAddress(),
                     null /* serviceUrlTls */,
@@ -162,15 +166,15 @@ public class RocketMQProtocolHandler implements ProtocolHandler {
                 pulsarAdmin.clusters().updateCluster(cluster, clusterData);
             }
 
-            if (!pulsarAdmin.tenants().getTenants().contains(rocketmqMetadataTenant)) {
-                pulsarAdmin.tenants().createTenant(rocketmqMetadataTenant,
+            if (!pulsarAdmin.tenants().getTenants().contains(tanant)) {
+                pulsarAdmin.tenants().createTenant(tanant,
                         new TenantInfo(Sets.newHashSet(rocketmqConfig.getSuperUserRoles()), Sets.newHashSet(cluster)));
             }
-            if (!pulsarAdmin.namespaces().getNamespaces(rocketmqMetadataTenant).contains(rocketmqMetadataNamespace)) {
+            if (!pulsarAdmin.namespaces().getNamespaces(tanant).contains(fullNs)) {
                 Set<String> clusters = Sets.newHashSet(rocketmqConfig.getClusterName());
-                pulsarAdmin.namespaces().createNamespace(rocketmqMetadataNamespace, clusters);
-                pulsarAdmin.namespaces().setNamespaceReplicationClusters(rocketmqMetadataNamespace, clusters);
-                pulsarAdmin.namespaces().setRetention(rocketmqMetadataNamespace,
+                pulsarAdmin.namespaces().createNamespace(fullNs, clusters);
+                pulsarAdmin.namespaces().setNamespaceReplicationClusters(fullNs, clusters);
+                pulsarAdmin.namespaces().setRetention(fullNs,
                         new RetentionPolicies(-1, -1));
             }
         } catch (PulsarAdminException e) {
@@ -178,9 +182,7 @@ public class RocketMQProtocolHandler implements ProtocolHandler {
                 log.info("Resources concurrent creating and cause e: ", e);
                 return;
             }
-
-            log.error("Failed to get retention policy for kafka metadata namespace {}",
-                    rocketmqMetadataNamespace, e);
+            log.error("Failed to get retention policy for kafka metadata namespace {}", fullNs, e);
             throw e;
         }
     }

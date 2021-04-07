@@ -15,19 +15,10 @@
 package com.tencent.tdmq.handlers.rocketmq;
 
 import com.beust.jcommander.Parameter;
-import com.google.common.collect.Sets;
 import java.io.File;
-import java.net.URL;
-import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bookkeeper.conf.ServerConfiguration;
 import org.apache.pulsar.broker.ServiceConfiguration;
-import org.apache.pulsar.client.admin.PulsarAdmin;
-import org.apache.pulsar.client.admin.PulsarAdminException;
-import org.apache.pulsar.common.naming.TopicName;
-import org.apache.pulsar.common.policies.data.ClusterData;
-import org.apache.pulsar.common.policies.data.RetentionPolicies;
-import org.apache.pulsar.common.policies.data.TenantInfo;
 import org.apache.pulsar.zookeeper.LocalBookkeeperEnsemble;
 
 /**
@@ -37,7 +28,6 @@ import org.apache.pulsar.zookeeper.LocalBookkeeperEnsemble;
 public class RocketMQStandalone implements AutoCloseable {
 
     RocketMQService rocketmqBroker;
-    PulsarAdmin admin;
     LocalBookkeeperEnsemble bkEnsemble;
     RocketMQServiceConfiguration config;
     @Parameter(names = {"-c", "--config"}, description = "Configuration file path", required = true)
@@ -69,10 +59,6 @@ public class RocketMQStandalone implements AutoCloseable {
 
     public void setRocketmqBroker(RocketMQService rocketmqBroker) {
         this.rocketmqBroker = rocketmqBroker;
-    }
-
-    public void setAdmin(PulsarAdmin admin) {
-        this.admin = admin;
     }
 
     public void setBkEnsemble(LocalBookkeeperEnsemble bkEnsemble) {
@@ -192,7 +178,6 @@ public class RocketMQStandalone implements AutoCloseable {
     }
 
     public void start() throws Exception {
-
         if (config == null) {
             throw new IllegalArgumentException("Null configuration is provided");
         }
@@ -204,7 +189,6 @@ public class RocketMQStandalone implements AutoCloseable {
             log.error(err);
             throw new IllegalArgumentException(err);
         }
-
         log.info("--- setup RocketMQStandaloneStarter ---");
 
         if (!this.isOnlyBroker()) {
@@ -225,49 +209,7 @@ public class RocketMQStandalone implements AutoCloseable {
         // Start Broker
         rocketmqBroker = new RocketMQService(config);
         rocketmqBroker.start();
-
-        URL webServiceUrl = new URL(
-                String.format("http://%s:%d", config.getAdvertisedAddress(), config.getWebServicePort().get()));
-        final String brokerServiceUrl = String.format("pulsar://%s:%d", config.getAdvertisedAddress(),
-                config.getBrokerServicePort().get());
-
-        admin = PulsarAdmin.builder().serviceHttpUrl(webServiceUrl.toString()).authentication(
-                config.getBrokerClientAuthenticationPlugin(), config.getBrokerClientAuthenticationParameters()).build();
-
-        final String cluster = config.getClusterName();
-
-        createDefaultNameSpace(webServiceUrl, brokerServiceUrl, cluster);
-
         log.info("--- setup completed ---");
-    }
-
-    private void createDefaultNameSpace(URL webServiceUrl, String brokerServiceUrl, String cluster) {
-        // Create a public tenant and default namespace
-        final String publicTenant = TopicName.PUBLIC_TENANT;
-        final String defaultNamespace = TopicName.PUBLIC_TENANT + "/" + TopicName.DEFAULT_NAMESPACE;
-        try {
-            ClusterData clusterData = new ClusterData(webServiceUrl.toString(), null /* serviceUrlTls */,
-                    brokerServiceUrl, null /* brokerServiceUrlTls */);
-            if (!admin.clusters().getClusters().contains(cluster)) {
-                admin.clusters().createCluster(cluster, clusterData);
-            } else {
-                admin.clusters().updateCluster(cluster, clusterData);
-            }
-
-            if (!admin.tenants().getTenants().contains(publicTenant)) {
-                admin.tenants().createTenant(publicTenant,
-                        new TenantInfo(Sets.newHashSet(config.getSuperUserRoles()), Sets.newHashSet(cluster)));
-            }
-            if (!admin.namespaces().getNamespaces(publicTenant).contains(defaultNamespace)) {
-                Set<String> clusters = Sets.newHashSet(config.getClusterName());
-                admin.namespaces().createNamespace(defaultNamespace, clusters);
-                admin.namespaces().setNamespaceReplicationClusters(defaultNamespace, clusters);
-                admin.namespaces().setRetention(defaultNamespace,
-                        new RetentionPolicies(20, 100));
-            }
-        } catch (PulsarAdminException e) {
-            log.info("error while create default namespace: {}", e.getMessage());
-        }
     }
 
     @Override

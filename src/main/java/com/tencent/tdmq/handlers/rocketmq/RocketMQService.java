@@ -52,9 +52,7 @@ public class RocketMQService extends PulsarService {
     @Override
     public void start() throws PulsarServerException {
         ReentrantLock lock = getMutex();
-
         lock.lock();
-
         try {
             log.info("Starting Pulsar Broker service powered by Pulsar version: '{}'",
                     (getBrokerVersion() != null ? getBrokerVersion() : "unknown"));
@@ -76,8 +74,7 @@ public class RocketMQService extends PulsarService {
                 throw new IllegalArgumentException(err);
             }
 
-            setOrderedExecutor(OrderedExecutor.newBuilder().numThreads(8).name("pulsar-ordered")
-                    .build());
+            setOrderedExecutor(OrderedExecutor.newBuilder().numThreads(8).name("pulsar-ordered").build());
 
             // init RocketMQProtocolHandler
             RocketMQProtocolHandler rocketmqHandler = new RocketMQProtocolHandler();
@@ -101,9 +98,7 @@ public class RocketMQService extends PulsarService {
 
             // Start load management service (even if load balancing is disabled)
             getLoadManager().set(LoadManager.create(this));
-
             setDefaultOffloader(createManagedLedgerOffloader(OffloadPolicies.create(config.getProperties())));
-
             getBrokerService().start();
 
             WebService webService = new WebService(this);
@@ -144,9 +139,7 @@ public class RocketMQService extends PulsarService {
                 log.debug("Attempting to add static directory");
             }
             webService.addStaticResources("/static", "/static");
-
             setSchemaRegistryService(SchemaRegistryService.create(null, new HashSet<>()));
-
             webService.start();
 
             // Refresh addresses, since the port might have been dynamically assigned
@@ -165,14 +158,12 @@ public class RocketMQService extends PulsarService {
 
             // Register heartbeat and bootstrap namespaces.
             getNsService().registerBootstrapNamespaces();
-
             setMetricsGenerator(new MetricsGenerator(this));
 
             // By starting the Load manager service, the broker will also become visible
             // to the rest of the broker by creating the registration z-node. This needs
             // to be done only when the broker is fully operative.
             startLoadManagementService();
-
             acquireSLANamespace();
 
             final String bootstrapMessage = "bootstrap service "
@@ -185,7 +176,6 @@ public class RocketMQService extends PulsarService {
             // start RocketMQ protocol handler.
             // put after load manager for the use of existing broker service to create internal topics.
             rocketmqHandler.start(this.getBrokerService());
-
             Map<InetSocketAddress, ChannelInitializer<SocketChannel>> channelInitializer =
                     rocketmqHandler.newChannelInitializers();
             Map<String, Map<InetSocketAddress, ChannelInitializer<SocketChannel>>> protocolHandlers = ImmutableMap
@@ -193,9 +183,7 @@ public class RocketMQService extends PulsarService {
                     .put("rocketmq", channelInitializer)
                     .build();
             getBrokerService().startProtocolHandlers(protocolHandlers);
-
             setState(State.Started);
-
             log.info("RocketMQ messaging service is ready, {}, cluster={}, configs={}",
                     bootstrapMessage, config.getClusterName(),
                     ReflectionToStringBuilder.toString(config));

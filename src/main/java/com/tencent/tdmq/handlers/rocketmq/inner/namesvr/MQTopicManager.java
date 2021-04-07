@@ -142,8 +142,8 @@ public class MQTopicManager implements NamespaceBundleOwnershipListener {
     // or will meet error: "Service unit is not ready when loading the topic".
     // If getTopic is called after lookup, then no needLookup.
     // Returned Future wil complete with null when meet error.
-    public PersistentTopic getTopic(String topicName) {
-        if (topics.getIfPresent(topicName) == null) {
+    public PersistentTopic getTopic(String fullTopicName) {
+        if (topics.getIfPresent(fullTopicName) == null) {
             try {
 
                 TenantInfo tenantInfo = new TenantInfo(
@@ -151,13 +151,7 @@ public class MQTopicManager implements NamespaceBundleOwnershipListener {
                         Sets.newHashSet(brokerController.getServerConfig().getClusterName()));
 
                 try {
-                    //brokerService.pulsar().getNamespaceService().getOwnedTopicListForNamespaceBundle(bundle)
-
-                    Topic topic = brokerService.getOrCreateTopic("persistent://test/test/zzzzz").get();
-                    brokerService.getPulsar().getAdminClient().tenants().createTenant("test4", tenantInfo);
-                    brokerService.getPulsar().getAdminClient().namespaces().createNamespace("test/test2");
-                    brokerService.getPulsar().getAdminClient().topics()
-                            .createPartitionedTopic("test/test/zhangyh2", 10);
+                    Topic topic = brokerService.getOrCreateTopic(fullTopicName).get();
                     PartitionedTopicMetadata a = brokerService.getPulsar().getAdminClient().topics()
                             .getPartitionedTopicMetadata("test/test/zhangyh");
                     System.out.println(a);
@@ -167,35 +161,24 @@ public class MQTopicManager implements NamespaceBundleOwnershipListener {
                     e.printStackTrace();
                 }
 
-                Topic topic = brokerService.getOrCreateTopic(topicName).get();
-                topics.put(topicName, (PersistentTopic) topic);
+                Topic topic = brokerService.getOrCreateTopic(fullTopicName).get();
+                topics.put(fullTopicName, (PersistentTopic) topic);
             } catch (Exception e) {
-                log.error("[{}] Failed to getTopic {}. exception:", topicName, e);
+                log.error("[{}] Failed to getTopic {}. exception:", fullTopicName, e);
             }
         }
-        return topics.getIfPresent(topicName);
+        return topics.getIfPresent(fullTopicName);
     }
 
     @Override
     public void onLoad(NamespaceBundle bundle) {
-        // 1. get new partitions owned by this pulsar service.
-        // 2. load partitions by GroupCoordinator.handleGroupImmigration.
+        // get new partitions owned by this pulsar service.
         pulsarService.getNamespaceService().getOwnedTopicListForNamespaceBundle(bundle)
                 .whenComplete((topics, ex) -> {
                     if (ex == null) {
                         log.info("get owned topic list when onLoad bundle {}, topic size {} ", bundle, topics.size());
                         for (String topic : topics) {
                             TopicName name = TopicName.get(topic);
-/*                            // already filtered namespace, check the local name without partition
-                            if (Topic.GROUP_METADATA_TOPIC_NAME.equals(getRocketmqTopicNameFromPulsarTopicName(name))) {
-                                checkState(name.isPartitioned(),
-                                        "OffsetTopic should be partitioned in onLoad, but get " + name);
-
-                                if (log.isDebugEnabled()) {
-                                    log.debug("New offset partition load:  {}, broker: {}",
-                                            name, pulsarService.getBrokerServiceUrl());
-                                }
-                            }*/
                             topics.remove(name.toString());
                             // update lookup cache when onload
                             try {
@@ -212,8 +195,9 @@ public class MQTopicManager implements NamespaceBundleOwnershipListener {
                                         });
                                 this.lookupBrokerCache.put(topic, retFuture.get());
                             } catch (Exception e) {
-                                log.error("onLoad Exception ", e);
+                                log.error("onLoad topic routine Exception ", e);
                             }
+
                         }
                     } else {
                         log.error("Failed to get owned topic list for "
@@ -224,8 +208,21 @@ public class MQTopicManager implements NamespaceBundleOwnershipListener {
     }
 
     @Override
-    public void unLoad(NamespaceBundle namespaceBundle) {
-
+    public void unLoad(NamespaceBundle bundle) {
+        pulsarService.getNamespaceService().getOwnedTopicListForNamespaceBundle(bundle)
+                .whenComplete((topics, ex) -> {
+                    if (ex == null) {
+                        log.info("get owned topic list when unLoad bundle {}, topic size {} ", bundle, topics.size());
+                        for (String topic : topics) {
+                            TopicName name = TopicName.get(topic);
+                            lookupBrokerCache.invalidate(name.toString());
+                        }
+                    } else {
+                        log.error("Failed to get owned topic list for "
+                                        + "OffsetAndTopicListener when triggering un-loading bundle {}.",
+                                bundle, ex);
+                    }
+                });
     }
 
     @Override
