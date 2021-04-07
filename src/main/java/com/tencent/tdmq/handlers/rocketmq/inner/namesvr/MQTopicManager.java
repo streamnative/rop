@@ -31,21 +31,21 @@ import org.apache.pulsar.common.partition.PartitionedTopicMetadata;
 public class MQTopicManager implements NamespaceBundleOwnershipListener {
 
     private final int MAX_CACHE_SIZE = 2000;
-    private PulsarService pulsarService;
-    private BrokerService brokerService;
-    private PulsarAdmin adminClient;
+    public final Cache<String, InetSocketAddress> lookupBrokerCache = CacheBuilder.newBuilder()
+            .initialCapacity(MAX_CACHE_SIZE).maximumSize(MAX_CACHE_SIZE)
+            .build();
     private final RocketMQBrokerController brokerController;
-    private NamespaceName rocketmqMetaNs;
-    private NamespaceName rocketmqTopicNs;
     private final Cache<String, PersistentTopic> topics = CacheBuilder.newBuilder()
             .initialCapacity(MAX_CACHE_SIZE).maximumSize(MAX_CACHE_SIZE)
             .build();
     private final Cache<String, PartitionedTopicMetadata> partitionedMetaCache = CacheBuilder.newBuilder()
             .initialCapacity(MAX_CACHE_SIZE).maximumSize(MAX_CACHE_SIZE)
             .build();
-    public final Cache<String, InetSocketAddress> lookupBrokerCache = CacheBuilder.newBuilder()
-            .initialCapacity(MAX_CACHE_SIZE).maximumSize(MAX_CACHE_SIZE)
-            .build();
+    private PulsarService pulsarService;
+    private BrokerService brokerService;
+    private PulsarAdmin adminClient;
+    private NamespaceName rocketmqMetaNs;
+    private NamespaceName rocketmqTopicNs;
 
     public MQTopicManager(RocketMQBrokerController brokerController) throws PulsarServerException {
         this.brokerController = brokerController;
