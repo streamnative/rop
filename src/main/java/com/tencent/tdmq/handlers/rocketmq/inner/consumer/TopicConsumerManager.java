@@ -31,18 +31,16 @@ public class TopicConsumerManager {
     // the lock for closed status change.
     // once closed, should not add new cursor back, since consumers are cleared.
     private final ReentrantReadWriteLock rwLock;
-    private boolean closed;
-
     // keep fetch offset and related cursor. keep cursor and its last offset in Pair. <offset, pair>
     @Getter
     private final ConcurrentLongHashMap<Pair<ManagedCursor, Long>> consumers;
     // used to track all created cursor, since above consumers may be remove and in fly,
     // use this map will not leak cursor when close.
     private final ConcurrentMap<String, ManagedCursor> createdCursors;
-
     // track last access time(millis) for offsets <offset, time>
     @Getter
     private final ConcurrentLongHashMap<Long> lastAccessTimes;
+    private boolean closed;
 
     public TopicConsumerManager(RocketMQBrokerController brokerController, PersistentTopic topic) {
         this.topic = topic;
