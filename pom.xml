@@ -14,6 +14,10 @@
 
     <properties>
         <!-- dependencies -->
+
+        <redirectTestOutputToFile>true</redirectTestOutputToFile>
+        <maven-surefire-plugin.version>3.0.0-M1</maven-surefire-plugin.version>
+
         <commons-lang3.version>3.4</commons-lang3.version>
         <guava.version>21.0</guava.version>
         <grpc.version>1.18.0</grpc.version>
@@ -213,6 +217,42 @@
 
     <build>
         <plugins>
+
+            <plugin>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>${maven-surefire-plugin.version}</version>
+                <configuration>
+                    <argLine> -Xmx2G
+                        -Dpulsar.allocator.pooled=false
+                        -Dpulsar.allocator.leak_detection=Advanced
+                        -Dlog4j.configurationFile="log4j2.xml"
+                    </argLine>
+                    <reuseForks>false</reuseForks>
+                    <forkCount>1</forkCount>
+                    <redirectTestOutputToFile>${redirectTestOutputToFile}</redirectTestOutputToFile>
+                    <trimStackTrace>false</trimStackTrace>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.nifi</groupId>
+                <artifactId>nifi-nar-maven-plugin</artifactId>
+                <version>1.2.0</version>
+                <extensions>true</extensions>
+                <configuration>
+                    <finalName>${project.artifactId}-${project.version}</finalName>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>default-nar</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>nar</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>templating-maven-plugin</artifactId>
