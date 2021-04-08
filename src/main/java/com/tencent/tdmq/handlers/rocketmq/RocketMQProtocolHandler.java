@@ -44,9 +44,9 @@ public class RocketMQProtocolHandler implements ProtocolHandler {
 
     public static final String PROTOCOL_NAME = "rocketmq";
     public static final String SSL_PREFIX = "SSL://";
-    public static final String PLAINTEXT_PREFIX = "PLAINTEXT://";
+    public static final String PLAINTEXT_PREFIX = "rocketmq://";
     public static final String LISTENER_DEL = ",";
-    public static final String LISTENER_PATTEN = "^(PLAINTEXT?|SSL)://[-a-zA-Z0-9+&@#/%?=~_|!:,.;]*:([0-9]+)";
+    public static final String LISTENER_PATTEN = "^(rocketmq?|SSL)://[-a-zA-Z0-9+&@#/%?=~_|!:,.;]*:([0-9]+)";
 
     private RocketMQServiceConfiguration rocketmqConfig;
     private BrokerService brokerService;
@@ -97,7 +97,8 @@ public class RocketMQProtocolHandler implements ProtocolHandler {
     public void start(BrokerService service) {
         brokerService = service;
         rocketMQBroker.setBrokerService(brokerService);
-        log.info("Starting RocketmqProtocolHandler, rop version is: '{}'", RopVersion.getVersion());
+        log.info("Starting RocketmqProtocolHandler, listener: {}, rop version is: '{}'",
+                rocketmqConfig.getRocketmqListeners(), RopVersion.getVersion());
         log.info("Git Revision {}", RopVersion.getGitSha());
         log.info("Built by {} on {} at {}",
                 RopVersion.getBuildUser(),

@@ -56,7 +56,7 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
                     + "e.g. PLAINTEXT://localhost:9096.\n"
                     + "If hostname is not set, bind to the default interface."
     )
-    private String rocketmqListeners = "PLAINTEXT://127.0.0.1:9876";
+    private String rocketmqListeners = "rocketmq://127.0.0.1:9876";
 
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
