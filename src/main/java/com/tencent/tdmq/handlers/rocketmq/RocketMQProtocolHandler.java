@@ -8,7 +8,9 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
+import com.tencent.tdmq.handlers.rocketmq.inner.namesvr.MQTopicManager;
 import com.tencent.tdmq.handlers.rocketmq.utils.ConfigurationUtils;
+import com.tencent.tdmq.handlers.rocketmq.utils.RocketMQTopic;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.socket.SocketChannel;
 import java.net.InetSocketAddress;
@@ -87,6 +89,7 @@ public class RocketMQProtocolHandler implements ProtocolHandler {
         this.bindAddress = ServiceConfigurationUtils.getDefaultOrConfiguredAddress(rocketmqConfig.getBindAddress());
         this.rocketMQBroker = new RocketMQBrokerController(rocketmqConfig);
         this.rocketMQBroker.initialize();
+        RocketMQTopic.initialize(rocketmqConfig.getRocketmqTenant() + "/" + rocketmqConfig.getRocketmqNamespace());
     }
 
     @Override

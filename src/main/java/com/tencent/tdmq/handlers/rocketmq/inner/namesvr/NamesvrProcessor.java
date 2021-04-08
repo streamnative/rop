@@ -113,13 +113,10 @@ public class NamesvrProcessor implements NettyRequestProcessor {
         if (Strings.isNotBlank(requestTopic)) {
             RocketMQTopic mqTopic = new RocketMQTopic(requestTopic);
             PartitionedTopicMetadata pTopicMeta = null;
-
-            PersistentTopic topic = mqTopicManager.getTopic(mqTopic.getFullName());
-
             Lookup lookupService = this.brokerController.getBrokerService().pulsar().getAdminClient().lookups();
             PulsarAdmin adminClient = this.brokerController.getBrokerService().getPulsar().getAdminClient();
             List<String> clusters = adminClient.clusters().getClusters();
-            String brokerAddress = lookupService.lookupTopic(topic.getName());
+            String brokerAddress = lookupService.lookupTopic(requestTopic);
             Long brokerID = Random.randomLong(8);
             HashMap<Long, String> brokerAddrs = new HashMap<>();
             brokerAddrs.put(brokerID, brokerAddress);
