@@ -133,8 +133,7 @@ public class RocketMQBrokerController {
     }
 
     public boolean initialize() throws Exception {
-        boolean result = this.topicConfigManager.load();
-        result = result && this.consumerOffsetManager.load();
+        boolean result = this.consumerOffsetManager.load();
         result = result && this.subscriptionGroupManager.load();
         if (result) {
             try {
@@ -252,7 +251,7 @@ public class RocketMQBrokerController {
                         log.error("printWaterMark error.", e);
                     }
                 }
-            }, 100, 20, TimeUnit.SECONDS);
+            }, 60, 30, TimeUnit.SECONDS);
 
             initialTransaction();
         }

@@ -26,28 +26,30 @@ import org.apache.pulsar.common.naming.NamespaceBundle;
 import org.apache.pulsar.common.naming.NamespaceName;
 import org.apache.pulsar.common.naming.TopicName;
 import org.apache.pulsar.common.partition.PartitionedTopicMetadata;
+import org.apache.rocketmq.broker.topic.TopicConfigManager;
 
 @Slf4j
-public class MQTopicManager implements NamespaceBundleOwnershipListener {
+public class MQTopicManager extends TopicConfigManager implements NamespaceBundleOwnershipListener {
 
     private final int MAX_CACHE_SIZE = 2000;
     public final Cache<String, InetSocketAddress> lookupBrokerCache = CacheBuilder.newBuilder()
             .initialCapacity(MAX_CACHE_SIZE).maximumSize(MAX_CACHE_SIZE)
             .build();
-    private final RocketMQBrokerController brokerController;
     private final Cache<String, PersistentTopic> topics = CacheBuilder.newBuilder()
             .initialCapacity(MAX_CACHE_SIZE).maximumSize(MAX_CACHE_SIZE)
             .build();
     private final Cache<String, PartitionedTopicMetadata> partitionedMetaCache = CacheBuilder.newBuilder()
             .initialCapacity(MAX_CACHE_SIZE).maximumSize(MAX_CACHE_SIZE)
             .build();
+
+    private final RocketMQBrokerController brokerController;
     private PulsarService pulsarService;
     private BrokerService brokerService;
     private PulsarAdmin adminClient;
     private NamespaceName rocketmqMetaNs;
     private NamespaceName rocketmqTopicNs;
 
-    public MQTopicManager(RocketMQBrokerController brokerController) throws PulsarServerException {
+    public MQTopicManager(RocketMQBrokerController brokerController) {
         this.brokerController = brokerController;
         RocketMQServiceConfiguration config = brokerController.getServerConfig();
         RocketMQTopic.initialize(config.getRocketmqTenant() + "/" + config.getRocketmqNamespace());
