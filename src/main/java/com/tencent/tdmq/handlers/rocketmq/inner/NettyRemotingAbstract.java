@@ -130,9 +130,11 @@ public abstract class NettyRemotingAbstract {
         if (cmd != null) {
             switch (cmd.getType()) {
                 case REQUEST_COMMAND:
+                    log.info("process request command:{}", cmd);
                     processRequestCommand(ctx, cmd);
                     break;
                 case RESPONSE_COMMAND:
+                    log.info("process response command:{}", cmd);
                     processResponseCommand(ctx, cmd);
                     break;
                 default:
@@ -191,6 +193,7 @@ public abstract class NettyRemotingAbstract {
                                         log.debug("Will write and flush the response{} to channel", response);
                                     }
 
+                                    log.info("Write and flush route topic command response: {}", response);
                                     ctx.writeAndFlush(response);
                                 } catch (Throwable e) {
                                     log.error("process request over, but response failed", e);

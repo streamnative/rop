@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.util.Strings;
 import org.apache.pulsar.broker.PulsarServerException;
 import org.apache.pulsar.client.admin.Lookup;
@@ -30,6 +31,8 @@ import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 
 @Slf4j
 public class NamesvrProcessor implements NettyRequestProcessor {
+
+    private final String rocketMQServerPort = "9876";
 
     private final RocketMQBrokerController brokerController;
     private final RocketMQServiceConfiguration config;
@@ -119,12 +122,13 @@ public class NamesvrProcessor implements NettyRequestProcessor {
             pTopicMeta = mqTopicManager.getPartitionedTopicMetadata(mqTopic.getFullName());
             if (pTopicMeta.partitions > 0) {
                 for (int i = 0; i < pTopicMeta.partitions; i++) {
-                    String brokerAddress = lookupService.lookupTopic(mqTopic.getPartitionName(i));
+                    String ownerBrokerAddress = lookupService.lookupTopic(mqTopic.getPartitionName(i));
+                    String brokerAddress = parseBrokerAddress(ownerBrokerAddress, rocketMQServerPort);
                     Long brokerID = Random.randomLong(8);
                     HashMap<Long, String> brokerAddrs = new HashMap<>();
                     brokerAddrs.put(brokerID, brokerAddress);
 
-                    BrokerData brokerData = new BrokerData(clusters.get(0), brokerAddress, brokerAddrs);
+                    BrokerData brokerData = new BrokerData(clusters.get(0), ownerBrokerAddress, brokerAddrs);
                     brokerDatas.add(brokerData);
                     topicRouteData.setBrokerDatas(brokerDatas);
 
@@ -142,12 +146,13 @@ public class NamesvrProcessor implements NettyRequestProcessor {
                             ctx.channel(), request, mqTopic);
                 }
 
-                String brokerAddress = lookupService.lookupTopic(mqTopic.getFullName());
+                String ownerBrokerAddress = lookupService.lookupTopic(mqTopic.getFullName());
+                String brokerAddress = parseBrokerAddress(ownerBrokerAddress, rocketMQServerPort);
                 Long brokerID = Random.randomLong(8);
                 HashMap<Long, String> brokerAddrs = new HashMap<>();
                 brokerAddrs.put(brokerID, brokerAddress);
 
-                BrokerData brokerData = new BrokerData(clusters.get(0), brokerAddress, brokerAddrs);
+                BrokerData brokerData = new BrokerData(clusters.get(0), ownerBrokerAddress, brokerAddrs);
                 brokerDatas.add(brokerData);
                 topicRouteData.setBrokerDatas(brokerDatas);
 
@@ -170,5 +175,18 @@ public class NamesvrProcessor implements NettyRequestProcessor {
         response.setRemark("No topic route info in name server for the topic: " + requestHeader.getTopic()
                 + FAQUrl.suggestTodo(FAQUrl.APPLY_TOPIC_URL));
         return response;
+    }
+
+    public String parseBrokerAddress(String brokerAddress, String port) {
+        // pulsar://localhost:6650
+        if (null == brokerAddress) {
+            log.error("The brokerAddress is null, please check.");
+            return "";
+        }
+
+        String subStr = brokerAddress.substring(9);
+        String[] parts = StringUtils.split(subStr, ':');
+        String ipString = parts[0];
+        return ipString + ":" + port;
     }
 }
