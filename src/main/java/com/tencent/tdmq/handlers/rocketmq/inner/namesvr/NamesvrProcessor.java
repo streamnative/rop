@@ -11,11 +11,9 @@ import io.netty.channel.ChannelHandlerContext;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.logging.log4j.util.Strings;
 import org.apache.pulsar.broker.PulsarServerException;
-import org.apache.pulsar.broker.service.persistent.PersistentTopic;
 import org.apache.pulsar.client.admin.Lookup;
 import org.apache.pulsar.client.admin.PulsarAdmin;
 import org.apache.pulsar.common.partition.PartitionedTopicMetadata;
@@ -108,43 +106,59 @@ public class NamesvrProcessor implements NettyRequestProcessor {
         List<BrokerData> brokerDatas = new ArrayList<>();
         List<QueueData> queueDatas = new ArrayList<>();
 
+        Lookup lookupService = this.brokerController.getBrokerService().pulsar().getAdminClient().lookups();
+        PulsarAdmin adminClient = this.brokerController.getBrokerService().getPulsar().getAdminClient();
+        List<String> clusters = adminClient.clusters().getClusters();
+
         // 根据传入的请求获取指定的topic
         String requestTopic = requestHeader.getTopic();
         if (Strings.isNotBlank(requestTopic)) {
             RocketMQTopic mqTopic = new RocketMQTopic(requestTopic);
             PartitionedTopicMetadata pTopicMeta = null;
-            Lookup lookupService = this.brokerController.getBrokerService().pulsar().getAdminClient().lookups();
-            PulsarAdmin adminClient = this.brokerController.getBrokerService().getPulsar().getAdminClient();
-            List<String> clusters = adminClient.clusters().getClusters();
-            String brokerAddress = lookupService.lookupTopic(requestTopic);
-            Long brokerID = Random.randomLong(8);
-            HashMap<Long, String> brokerAddrs = new HashMap<>();
-            brokerAddrs.put(brokerID, brokerAddress);
-
-            BrokerData brokerData = new BrokerData(clusters.get(0), brokerAddress, brokerAddrs);
-            brokerDatas.add(brokerData);
-            topicRouteData.setBrokerDatas(brokerDatas);
 
             pTopicMeta = mqTopicManager.getPartitionedTopicMetadata(mqTopic.getFullName());
-            if (pTopicMeta.partitions <= 0 && config.isAllowAutoTopicCreation()
-                    && config.isAllowAutoSubscriptionCreation()) {
+            if (pTopicMeta.partitions > 0) {
+                for (int i = 0; i < pTopicMeta.partitions; i++) {
+                    String brokerAddress = lookupService.lookupTopic(mqTopic.getPartitionName(i));
+                    Long brokerID = Random.randomLong(8);
+                    HashMap<Long, String> brokerAddrs = new HashMap<>();
+                    brokerAddrs.put(brokerID, brokerAddress);
+
+                    BrokerData brokerData = new BrokerData(clusters.get(0), brokerAddress, brokerAddrs);
+                    brokerDatas.add(brokerData);
+                    topicRouteData.setBrokerDatas(brokerDatas);
+
+                    QueueData queueData = new QueueData();
+                    queueData.setBrokerName(brokerAddress);
+                    queueData.setReadQueueNums(pTopicMeta.partitions);
+                    queueData.setWriteQueueNums(pTopicMeta.partitions);
+                    queueDatas.add(queueData);
+                    topicRouteData.setQueueDatas(queueDatas);
+                }
+            } else {
                 if (log.isDebugEnabled()) {
                     log.debug("[{}] Request {}: Topic {} has single partition, "
                                     + "auto create partitioned topic",
                             ctx.channel(), request, mqTopic);
                 }
+
+                String brokerAddress = lookupService.lookupTopic(mqTopic.getFullName());
+                Long brokerID = Random.randomLong(8);
+                HashMap<Long, String> brokerAddrs = new HashMap<>();
+                brokerAddrs.put(brokerID, brokerAddress);
+
+                BrokerData brokerData = new BrokerData(clusters.get(0), brokerAddress, brokerAddrs);
+                brokerDatas.add(brokerData);
+                topicRouteData.setBrokerDatas(brokerDatas);
+
+                QueueData queueData = new QueueData();
+                queueData.setBrokerName(brokerAddress);
+                queueData.setReadQueueNums(pTopicMeta.partitions);
+                queueData.setWriteQueueNums(pTopicMeta.partitions);
+                queueDatas.add(queueData);
+                topicRouteData.setQueueDatas(queueDatas);
             }
 
-            QueueData queueData = new QueueData();
-            queueData.setBrokerName(brokerAddress);
-            queueData.setReadQueueNums(pTopicMeta.partitions);
-            queueData.setWriteQueueNums(pTopicMeta.partitions);
-            queueDatas.add(queueData);
-            topicRouteData.setQueueDatas(queueDatas);
-        }
-
-
-        if (topicRouteData != null) {
             byte[] content = topicRouteData.encode();
             response.setBody(content);
             response.setCode(ResponseCode.SUCCESS);
