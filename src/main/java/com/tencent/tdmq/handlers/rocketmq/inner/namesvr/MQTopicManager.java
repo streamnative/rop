@@ -1,16 +1,23 @@
 package com.tencent.tdmq.handlers.rocketmq.inner.namesvr;
 
 import static com.google.common.base.Preconditions.checkState;
+import static org.apache.pulsar.common.naming.TopicName.PARTITIONED_TOPIC_SUFFIX;
 
+import com.google.common.base.Joiner;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
-import com.tencent.tdmq.handlers.rocketmq.RocketMQServiceConfiguration;
+import com.google.common.collect.Sets;
+import com.tencent.tdmq.handlers.rocketmq.RocketMQProtocolHandler;
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
-import com.tencent.tdmq.handlers.rocketmq.utils.RocketMQTopic;
+import com.tencent.tdmq.handlers.rocketmq.utils.TopicNameUtils;
 import java.net.InetSocketAddress;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.IntStream;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.pulsar.broker.PulsarServerException;
 import org.apache.pulsar.broker.PulsarService;
@@ -19,88 +26,110 @@ import org.apache.pulsar.broker.service.BrokerService;
 import org.apache.pulsar.broker.service.Topic;
 import org.apache.pulsar.broker.service.persistent.PersistentTopic;
 import org.apache.pulsar.client.admin.PulsarAdmin;
-import org.apache.pulsar.client.admin.PulsarAdminException;
+import org.apache.pulsar.client.admin.PulsarAdminException.ConflictException;
 import org.apache.pulsar.client.impl.Backoff;
 import org.apache.pulsar.client.impl.PulsarClientImpl;
 import org.apache.pulsar.common.naming.NamespaceBundle;
 import org.apache.pulsar.common.naming.NamespaceName;
 import org.apache.pulsar.common.naming.TopicName;
 import org.apache.pulsar.common.partition.PartitionedTopicMetadata;
-import org.apache.rocketmq.broker.topic.TopicConfigManager;
+import org.apache.pulsar.common.policies.data.ClusterData;
+import org.apache.pulsar.common.policies.data.RetentionPolicies;
+import org.apache.pulsar.common.policies.data.TenantInfo;
+import org.apache.rocketmq.common.Pair;
+import org.apache.rocketmq.common.TopicConfig;
 
 @Slf4j
 public class MQTopicManager extends TopicConfigManager implements NamespaceBundleOwnershipListener {
 
-    private final int MAX_CACHE_SIZE = 2000;
-    public final Cache<String, InetSocketAddress> lookupBrokerCache = CacheBuilder.newBuilder()
+    private final int MAX_CACHE_SIZE = 10000;
+    private final int MAX_CACHE_TIME_IN_SEC = 120;
+    //cache-key TopicName = {tenant/ns/topic}, Map key={partition id} nonPartitionedTopic, only one record in map.
+    public final Cache<TopicName, Map<Integer, InetSocketAddress>> lookupCache = CacheBuilder
+            .newBuilder()
             .initialCapacity(MAX_CACHE_SIZE).maximumSize(MAX_CACHE_SIZE)
-            .build();
-    private final Cache<String, PersistentTopic> topics = CacheBuilder.newBuilder()
-            .initialCapacity(MAX_CACHE_SIZE).maximumSize(MAX_CACHE_SIZE)
-            .build();
-    private final Cache<String, PartitionedTopicMetadata> partitionedMetaCache = CacheBuilder.newBuilder()
-            .initialCapacity(MAX_CACHE_SIZE).maximumSize(MAX_CACHE_SIZE)
+            .expireAfterWrite(MAX_CACHE_TIME_IN_SEC, TimeUnit.SECONDS)
             .build();
 
-    private final RocketMQBrokerController brokerController;
     private PulsarService pulsarService;
     private BrokerService brokerService;
     private PulsarAdmin adminClient;
     private NamespaceName rocketmqMetaNs;
     private NamespaceName rocketmqTopicNs;
+    private final int servicePort;
 
     public MQTopicManager(RocketMQBrokerController brokerController) {
-        this.brokerController = brokerController;
-        RocketMQServiceConfiguration config = brokerController.getServerConfig();
-        RocketMQTopic.initialize(config.getRocketmqTenant() + "/" + config.getRocketmqNamespace());
+        super(brokerController);
+        this.servicePort = RocketMQProtocolHandler.getListenerPort(config.getRocketmqListeners());
         this.rocketmqMetaNs = NamespaceName
                 .get(config.getRocketmqMetadataTenant(), config.getRocketmqMetadataNamespace());
         this.rocketmqTopicNs = NamespaceName.get(config.getRocketmqTenant(), config.getRocketmqNamespace());
     }
 
-    public void start() throws PulsarServerException {
+    public void start() throws Exception {
         this.pulsarService = brokerController.getBrokerService().pulsar();
         this.brokerService = pulsarService.getBrokerService();
         this.adminClient = this.pulsarService.getAdminClient();
+        createSysResource();
         this.pulsarService.getNamespaceService().addNamespaceBundleOwnershipListener(this);
     }
 
     public void shutdown() {
-        this.topics.cleanUp();
-        this.partitionedMetaCache.cleanUp();
-        this.lookupBrokerCache.cleanUp();
+        this.lookupCache.cleanUp();
     }
 
     // call pulsarclient.lookup.getbroker to get and own a topic.
     // when error happens, the returned future will complete with null.
-    public InetSocketAddress getTopicBroker(String topicName) {
-        InetSocketAddress address = null;
-        if (lookupBrokerCache.getIfPresent(topicName) == null) {
-            log.debug("topic {} not in Lookup_cache, call lookupBroker", topicName);
-            CompletableFuture<InetSocketAddress> resultFuture = new CompletableFuture<>();
-            Backoff backoff = new Backoff(
-                    100, TimeUnit.MILLISECONDS,
-                    15, TimeUnit.SECONDS,
-                    15, TimeUnit.SECONDS
-            );
-            lookupBroker(topicName, backoff, resultFuture);
-            try {
-                address = resultFuture.get();
-                lookupBrokerCache.put(topicName, address);
-            } catch (Exception e) {
-                log.error("getTopicBroker info error for the topic[{}].", topicName, e);
-            }
+    public Map<Integer, InetSocketAddress> getTopicBrokerAddr(TopicName topicName) {
+        if (lookupCache.getIfPresent(topicName) != null) {
+            return lookupCache.getIfPresent(topicName);
         }
-        return lookupBrokerCache.getIfPresent(topicName);
+        Map<Integer, InetSocketAddress> partitionedTopicAddr = new HashMap<>();
+        try {
+            String noDomainTopicName = TopicNameUtils.getNoDomainTopicName(topicName);
+            PartitionedTopicMetadata partitionedMetadata = adminClient.topics().getPartitionedTopicMetadata(noDomainTopicName);
+
+            CompletableFuture<InetSocketAddress> resultFuture = new CompletableFuture<>();
+
+            //non-partitioned topic
+            if (partitionedMetadata.partitions <= 0) {
+                Backoff backoff = new Backoff(
+                        100, TimeUnit.MILLISECONDS,
+                        15, TimeUnit.SECONDS,
+                        15, TimeUnit.SECONDS
+                );
+                lookupBroker(topicName, backoff, resultFuture);
+                partitionedTopicAddr.put(0, resultFuture.get());
+            } else {
+                IntStream.range(0, partitionedMetadata.partitions).forEach(i -> {
+                    try {
+                        Backoff backoff = new Backoff(
+                                100, TimeUnit.MILLISECONDS,
+                                15, TimeUnit.SECONDS,
+                                15, TimeUnit.SECONDS
+                        );
+                        lookupBroker(topicName.getPartition(i), backoff, resultFuture);
+                        partitionedTopicAddr.put(i, resultFuture.get());
+                    } catch (Exception e) {
+                        log.warn("getTopicBrokerAddr error.", e);
+                    }
+                });
+            }
+            lookupCache.put(topicName, partitionedTopicAddr);
+        } catch (Exception e) {
+            log.error("getTopicBroker info error for the topic[{}].", topicName, e);
+        }
+
+        return partitionedTopicAddr;
     }
 
     // this method do the real lookup into Pulsar broker.
     // retFuture will be completed with null when meet error.
-    private void lookupBroker(String topicName, Backoff backoff,
+    private void lookupBroker(TopicName topicName, Backoff backoff,
             CompletableFuture<InetSocketAddress> retFuture) {
         try {
             ((PulsarClientImpl) pulsarService.getClient()).getLookup()
-                    .getBroker(TopicName.get(topicName))
+                    .getBroker(topicName)
                     .thenAccept(pair -> {
                         checkState(pair.getLeft().equals(pair.getRight()));
                         retFuture.complete(pair.getLeft());
@@ -126,43 +155,6 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
         }
     }
 
-    public PartitionedTopicMetadata getPartitionedTopicMetadata(String fullTopicName) {
-        if (partitionedMetaCache.getIfPresent(fullTopicName) == null) {
-            try {
-                PartitionedTopicMetadata partitionedMetadata = adminClient.topics()
-                        .getPartitionedTopicMetadata(fullTopicName);
-                partitionedMetaCache.put(fullTopicName, partitionedMetadata);
-            } catch (PulsarAdminException e) {
-                log.error("getPartitionedTopicMetadata info error for the topic[{}].", fullTopicName, e);
-            }
-        }
-        return partitionedMetaCache.getIfPresent(fullTopicName);
-    }
-
-    // For Produce/Consume we need to lookup, to make sure topic served by brokerService,
-    // or will meet error: "Service unit is not ready when loading the topic".
-    // If getTopic is called after lookup, then no needLookup.
-    // Returned Future wil complete with null when meet error.
-    public PersistentTopic getTopic(String fullTopicName) {
-        if (topics.getIfPresent(fullTopicName) == null) {
-            try {
-                Optional<Topic> optionalTopic = brokerService.getTopic(fullTopicName, true).get();
-                if (optionalTopic.isPresent()) {
-                    PersistentTopic persistentTopic = (PersistentTopic) optionalTopic.get();
-                    topics.put(fullTopicName, persistentTopic);
-                } else {
-                    log.error("topic[{}] couldn't be found.", fullTopicName);
-                }
-                if (log.isDebugEnabled()) {
-                    log.debug("create topic [{}] successful", fullTopicName);
-                }
-            } catch (Exception e) {
-                log.error("[{}] Failed to getTopic {}. exception:", fullTopicName, e);
-            }
-        }
-        return topics.getIfPresent(fullTopicName);
-    }
-
     @Override
     public void onLoad(NamespaceBundle bundle) {
         // get new partitions owned by this pulsar service.
@@ -171,26 +163,8 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                     if (ex == null) {
                         log.info("get owned topic list when onLoad bundle {}, topic size {} ", bundle, topics.size());
                         for (String topic : topics) {
-                            TopicName name = TopicName.get(topic);
-                            topics.remove(name.toString());
-                            // update lookup cache when onload
-                            try {
-                                CompletableFuture<InetSocketAddress> retFuture = new CompletableFuture<>();
-                                ((PulsarClientImpl) pulsarService.getClient()).getLookup()
-                                        .getBroker(TopicName.get(topic))
-                                        .whenComplete((pair, throwable) -> {
-                                            if (throwable != null) {
-                                                log.warn("cloud not get broker", throwable);
-                                                retFuture.complete(null);
-                                            }
-                                            checkState(pair.getLeft().equals(pair.getRight()));
-                                            retFuture.complete(pair.getLeft());
-                                        });
-                                this.lookupBrokerCache.put(topic, retFuture.get());
-                            } catch (Exception e) {
-                                log.error("onLoad topic routine Exception ", e);
-                            }
-
+                            TopicName name = TopicName.get(TopicName.get(topic).getPartitionedTopicName());
+                            getTopicBrokerAddr(name);
                         }
                     } else {
                         log.error("Failed to get owned topic list for "
@@ -208,7 +182,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                         log.info("get owned topic list when unLoad bundle {}, topic size {} ", bundle, topics.size());
                         for (String topic : topics) {
                             TopicName name = TopicName.get(topic);
-                            lookupBrokerCache.invalidate(name.toString());
+                            lookupCache.invalidate(name);
                         }
                     } else {
                         log.error("Failed to get owned topic list for "
@@ -224,44 +198,90 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                 || namespaceBundle.getNamespaceObject().equals(rocketmqTopicNs);
     }
 
-   /* private void getAllTopicsAsync(CompletableFuture<Map<String, List<TopicName>>> topicMapFuture) {
-        admin.tenants().getTenantsAsync().thenApply(tenants -> {
-            if (tenants.isEmpty()) {
-                topicMapFuture.complete(Maps.newHashMap());
-                return null;
-            }
-            Map<String, List<TopicName>> topicMap = Maps.newConcurrentMap();
+    private void createSysResource() throws Exception {
+        String cluster = config.getClusterName();
+        String metaTanant = config.getRocketmqMetadataTenant();
+        String metaNs = config.getRocketmqMetadataNamespace();
+        String defaultTanant = config.getRocketmqTenant();
+        String defaultNs = config.getRocketmqNamespace();
 
-            AtomicInteger numTenants = new AtomicInteger(tenants.size());
-            for (String tenant : tenants) {
-                admin.namespaces().getNamespacesAsync(tenant).thenApply(namespaces -> {
-                    if (namespaces.isEmpty() && numTenants.decrementAndGet() == 0) {
-                        topicMapFuture.complete(topicMap);
-                        return null;
-                    }
-                    AtomicInteger numNamespaces = new AtomicInteger(namespaces.size());
-                    for (String namespace : namespaces) {
-                        pulsarService.getNamespaceService().getListOfPersistentTopics(NamespaceName.get(namespace))
-                                .thenApply(topics -> {
-                                    for (String topic : topics) {
-                                        TopicName topicName = TopicName.get(topic);
-                                        String key = topicName.getPartitionedTopicName();
-                                        topicMap.computeIfAbsent(RocketMQTopic.removeDefaultNamespacePrefix(key),
-                                                ignored ->
-                                                        Collections.synchronizedList(new ArrayList<>())
-                                        ).add(topicName);
-                                    }
-                                    if (numNamespaces.decrementAndGet() == 0 && numTenants.decrementAndGet() == 0) {
-                                        topicMapFuture.complete(topicMap);
-                                    }
-                                    return null;
-                                });
-                    }
-                    return null;
-                });
+        //create system namespace & default namespace
+        createSysNamespaceIfNeeded(brokerService, cluster, metaTanant, metaNs);
+        createSysNamespaceIfNeeded(brokerService, cluster, defaultTanant, defaultNs);
+
+        //for test
+        createSysNamespaceIfNeeded(brokerService, cluster, "test1", "InstanceTest");
+
+        this.topicConfigTable.values().stream().forEach(tc -> {
+            loadSysTopics(tc);
+            createSystemTopic(tc);
+        });
+    }
+
+    private void loadSysTopics(TopicConfig tc) {
+        String fullTopicName = tc.getTopicName();
+        try {
+            adminClient.lookups().lookupTopic(fullTopicName);
+        } catch (Exception e) {
+            log.warn("load system topic [{}] error.", fullTopicName, e);
+        }
+    }
+
+    private String createSystemTopic(TopicConfig tc) {
+        String fullTopicName = tc.getTopicName();
+        try {
+            PartitionedTopicMetadata topicMetadata =
+                    adminClient.topics().getPartitionedTopicMetadata(fullTopicName);
+            if (topicMetadata.partitions <= 0) {
+                log.info("RocketMQ metadata topic {} doesn't exist. Creating it ...", fullTopicName);
+                adminClient.topics().createPartitionedTopic(
+                        fullTopicName,
+                        tc.getWriteQueueNums());
+                for (int i = 0; i < tc.getWriteQueueNums(); i++) {
+                    adminClient.topics()
+                            .createNonPartitionedTopic(fullTopicName + PARTITIONED_TOPIC_SUFFIX + i);
+                }
             }
-            return null;
-        }).exceptionally(topicMapFuture::completeExceptionally);
-    }*/
+        } catch (Exception e) {
+            log.info("Topic {} concurrent creating and cause e: ", fullTopicName, e);
+            return fullTopicName;
+        }
+        return fullTopicName;
+    }
+
+    private void createSysNamespaceIfNeeded(BrokerService service, String cluster, String tenant, String ns)
+            throws Exception {
+        String fullNs = Joiner.on('/').join(tenant, ns);
+        try {
+            ClusterData clusterData = new ClusterData(service.pulsar().getWebServiceAddress(),
+                    null /* serviceUrlTls */,
+                    service.pulsar().getBrokerServiceUrl(),
+                    null /* brokerServiceUrlTls */);
+            if (!adminClient.clusters().getClusters().contains(cluster)) {
+                adminClient.clusters().createCluster(cluster, clusterData);
+            } else {
+                adminClient.clusters().updateCluster(cluster, clusterData);
+            }
+
+            if (!adminClient.tenants().getTenants().contains(tenant)) {
+                adminClient.tenants().createTenant(tenant,
+                        new TenantInfo(Sets.newHashSet(this.config.getSuperUserRoles()), Sets.newHashSet(cluster)));
+            }
+            if (!adminClient.namespaces().getNamespaces(tenant).contains(fullNs)) {
+                Set<String> clusters = Sets.newHashSet(this.config.getClusterName());
+                adminClient.namespaces().createNamespace(fullNs, clusters);
+                adminClient.namespaces().setNamespaceReplicationClusters(fullNs, clusters);
+                adminClient.namespaces().setRetention(fullNs,
+                        new RetentionPolicies(-1, -1));
+            }
+        } catch (Exception e) {
+            if (e instanceof ConflictException) {
+                log.info("Resources concurrent creating and cause e: ", e);
+                return;
+            }
+            log.error("Failed to create sysName metadata namespace {}", fullNs, e);
+            throw e;
+        }
+    }
 
 }

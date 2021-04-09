@@ -7,6 +7,7 @@ package com.tencent.tdmq.handlers.rocketmq.utils;
 
 import static org.apache.pulsar.common.naming.TopicName.PARTITIONED_TOPIC_SUFFIX;
 
+import com.google.common.base.Joiner;
 import org.apache.pulsar.common.naming.NamespaceName;
 import org.apache.pulsar.common.naming.TopicDomain;
 import org.apache.pulsar.common.naming.TopicName;
@@ -50,7 +51,7 @@ public class TopicNameUtils {
                 topic + PARTITIONED_TOPIC_SUFFIX + partitionIndex);
     }
 
-    public static String getPartitionedTopicNameWithoutPartitions(TopicName topicName) {
+    public static String getTopicNameWithoutPartitions(TopicName topicName) {
         String localName = topicName.getPartitionedTopicName();
         if (localName.contains(PARTITIONED_TOPIC_SUFFIX)) {
             return localName.substring(0, localName.lastIndexOf(PARTITIONED_TOPIC_SUFFIX));
@@ -60,11 +61,15 @@ public class TopicNameUtils {
     }
 
     // get local name without partition part
-    public static String getRocketmqTopicNameFromPulsarTopicName(TopicName topicName) {
+    public static String getTopicNameFromPulsarTopicName(TopicName topicName) {
         // remove partition part
         String localName = topicName.getPartitionedTopicName();
         // remove persistent://tenant/ns
         return TopicName.get(localName).getLocalName();
+    }
+
+    public static String getNoDomainTopicName(TopicName topicName) {
+        return Joiner.on("/").join(topicName.getTenant(), topicName.getNamespacePortion(), topicName.getLocalName());
     }
 
 }

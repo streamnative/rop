@@ -1,6 +1,8 @@
 package com.tencent.tdmq.handlers.rocketmq.inner.namesvr;
 
 import static com.google.common.base.Preconditions.checkNotNull;
+import static org.apache.rocketmq.common.constant.PermName.PERM_READ;
+import static org.apache.rocketmq.common.constant.PermName.PERM_WRITE;
 import static org.apache.rocketmq.common.protocol.RequestCode.GET_ROUTEINTO_BY_TOPIC;
 
 import com.tencent.tdmq.handlers.rocketmq.RocketMQServiceConfiguration;
@@ -8,16 +10,18 @@ import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
 import com.tencent.tdmq.handlers.rocketmq.utils.Random;
 import com.tencent.tdmq.handlers.rocketmq.utils.RocketMQTopic;
 import io.netty.channel.ChannelHandlerContext;
+import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.util.Strings;
-import org.apache.pulsar.broker.PulsarServerException;
+import org.apache.pulsar.broker.service.persistent.PersistentTopic;
 import org.apache.pulsar.client.admin.Lookup;
-import org.apache.pulsar.client.admin.PulsarAdmin;
-import org.apache.pulsar.common.partition.PartitionedTopicMetadata;
+import org.apache.rocketmq.common.Pair;
 import org.apache.rocketmq.common.help.FAQUrl;
 import org.apache.rocketmq.common.protocol.RequestCode;
 import org.apache.rocketmq.common.protocol.ResponseCode;
@@ -32,14 +36,13 @@ import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 @Slf4j
 public class NamesvrProcessor implements NettyRequestProcessor {
 
-    private final String rocketMQServerPort = "9876";
-
+    private int servicePort = 9876;
     private final RocketMQBrokerController brokerController;
     private final RocketMQServiceConfiguration config;
     private final int defaultNumPartitions;
     private final MQTopicManager mqTopicManager;
 
-    public NamesvrProcessor(RocketMQBrokerController brokerController) throws PulsarServerException {
+    public NamesvrProcessor(RocketMQBrokerController brokerController) {
         this.brokerController = brokerController;
         this.config = brokerController.getServerConfig();
         this.defaultNumPartitions = config.getDefaultNumPartitions();
@@ -108,67 +111,46 @@ public class NamesvrProcessor implements NettyRequestProcessor {
         TopicRouteData topicRouteData = new TopicRouteData();
         List<BrokerData> brokerDatas = new ArrayList<>();
         List<QueueData> queueDatas = new ArrayList<>();
+        topicRouteData.setBrokerDatas(brokerDatas);
+        topicRouteData.setQueueDatas(queueDatas);
 
-        Lookup lookupService = this.brokerController.getBrokerService().pulsar().getAdminClient().lookups();
-        PulsarAdmin adminClient = this.brokerController.getBrokerService().getPulsar().getAdminClient();
-        List<String> clusters = adminClient.clusters().getClusters();
-
+        String clusterName = config.getClusterName();
         // 根据传入的请求获取指定的topic
         String requestTopic = requestHeader.getTopic();
         if (Strings.isNotBlank(requestTopic)) {
             RocketMQTopic mqTopic = new RocketMQTopic(requestTopic);
-            PartitionedTopicMetadata pTopicMeta = null;
+            Map<Integer,  InetSocketAddress> topicBrokerAddr = mqTopicManager
+                    .getTopicBrokerAddr(mqTopic.getPulsarTopicName());
+            int partitionNum = topicBrokerAddr.size();
+            if (partitionNum > 0) {
+                mqTopicManager.getTopicBrokerAddr(mqTopic.getPulsarTopicName()).forEach((i, addr) -> {
+                    String ownerBrokerAddress = addr.toString();
+                    String hostName = addr.getHostName();
+                    String brokerAddress = parseBrokerAddress(ownerBrokerAddress, brokerController.getRemotingServer().getPort());
+                   // long brokerID = Math.abs(addr.hashCode());
 
-            pTopicMeta = mqTopicManager.getPartitionedTopicMetadata(mqTopic.getFullName());
-            if (pTopicMeta.partitions > 0) {
-                for (int i = 0; i < pTopicMeta.partitions; i++) {
-                    String ownerBrokerAddress = lookupService.lookupTopic(mqTopic.getPartitionName(i));
-                    String brokerAddress = parseBrokerAddress(ownerBrokerAddress, rocketMQServerPort);
-                    Long brokerID = Random.randomLong(8);
                     HashMap<Long, String> brokerAddrs = new HashMap<>();
-                    brokerAddrs.put(brokerID, brokerAddress);
-
-                    BrokerData brokerData = new BrokerData(clusters.get(0), ownerBrokerAddress, brokerAddrs);
+                    brokerAddrs.put(0L, brokerAddress);
+                    BrokerData brokerData = new BrokerData(clusterName, hostName, brokerAddrs);
                     brokerDatas.add(brokerData);
                     topicRouteData.setBrokerDatas(brokerDatas);
 
                     QueueData queueData = new QueueData();
-                    queueData.setBrokerName(brokerAddress);
-                    queueData.setReadQueueNums(pTopicMeta.partitions);
-                    queueData.setWriteQueueNums(pTopicMeta.partitions);
+                    queueData.setBrokerName(hostName);
+                    queueData.setReadQueueNums(partitionNum);
+                    queueData.setWriteQueueNums(partitionNum);
+                    queueData.setPerm(PERM_WRITE|PERM_READ);
                     queueDatas.add(queueData);
                     topicRouteData.setQueueDatas(queueDatas);
-                }
-            } else {
-                if (log.isDebugEnabled()) {
-                    log.debug("[{}] Request {}: Topic {} has single partition, "
-                                    + "auto create partitioned topic",
-                            ctx.channel(), request, mqTopic);
-                }
 
-                String ownerBrokerAddress = lookupService.lookupTopic(mqTopic.getFullName());
-                String brokerAddress = parseBrokerAddress(ownerBrokerAddress, rocketMQServerPort);
-                Long brokerID = Random.randomLong(8);
-                HashMap<Long, String> brokerAddrs = new HashMap<>();
-                brokerAddrs.put(brokerID, brokerAddress);
+                });
 
-                BrokerData brokerData = new BrokerData(clusters.get(0), ownerBrokerAddress, brokerAddrs);
-                brokerDatas.add(brokerData);
-                topicRouteData.setBrokerDatas(brokerDatas);
-
-                QueueData queueData = new QueueData();
-                queueData.setBrokerName(brokerAddress);
-                queueData.setReadQueueNums(pTopicMeta.partitions);
-                queueData.setWriteQueueNums(pTopicMeta.partitions);
-                queueDatas.add(queueData);
-                topicRouteData.setQueueDatas(queueDatas);
+                byte[] content = topicRouteData.encode();
+                response.setBody(content);
+                response.setCode(ResponseCode.SUCCESS);
+                response.setRemark(null);
+                return response;
             }
-
-            byte[] content = topicRouteData.encode();
-            response.setBody(content);
-            response.setCode(ResponseCode.SUCCESS);
-            response.setRemark(null);
-            return response;
         }
 
         response.setCode(ResponseCode.TOPIC_NOT_EXIST);
@@ -177,16 +159,19 @@ public class NamesvrProcessor implements NettyRequestProcessor {
         return response;
     }
 
-    public String parseBrokerAddress(String brokerAddress, String port) {
+    public static final Pattern BROKER_ADDR_PAT = Pattern.compile("([^/:]+:)(\\d+)");
+
+    public String parseBrokerAddress(String brokerAddress, int port) {
         // pulsar://localhost:6650
         if (null == brokerAddress) {
             log.error("The brokerAddress is null, please check.");
             return "";
         }
-
-        String subStr = brokerAddress.substring(9);
-        String[] parts = StringUtils.split(subStr, ':');
-        String ipString = parts[0];
-        return ipString + ":" + port;
+        Matcher matcher = BROKER_ADDR_PAT.matcher(brokerAddress);
+        String result = brokerAddress;
+        if (matcher.find()) {
+            result = matcher.group(1) + servicePort;
+        }
+        return result;
     }
 }

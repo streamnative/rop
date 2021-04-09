@@ -2,8 +2,14 @@ package com.tencent.tdmq.handlers.rocketmq.utils;
 
 import static org.apache.pulsar.common.naming.TopicName.PARTITIONED_TOPIC_SUFFIX;
 
+import com.google.common.base.Joiner;
+import lombok.Data;
 import lombok.Getter;
+import org.apache.logging.log4j.util.Strings;
+import org.apache.pulsar.common.naming.TopicDomain;
+import org.apache.pulsar.common.naming.TopicName;
 import org.apache.rocketmq.common.message.MessageQueue;
+import org.apache.rocketmq.common.protocol.NamespaceUtil;
 
 /**
  * RocketMQTopic maintains two topic name, one is the original topic name, the other is the full topic name used in
@@ -13,67 +19,52 @@ import org.apache.rocketmq.common.message.MessageQueue;
  * 2. getFullName() when access Pulsar resources.
  */
 public class RocketMQTopic {
-
-    private static final String persistentDomain = "persistent://";
-    private static volatile String namespacePrefix;  // the full namespace prefix, e.g. "public/default"
+    private static final String TENANT_NAMESPACE_SEP = "|";
+    private static final TopicDomain domain = TopicDomain.persistent;
+    private static volatile String tenant = "rocketmq";
+    private static volatile String namespace = "public";
     @Getter
-    private final String originalName;
-    @Getter
-    private final String fullName;
+    private TopicName pulsarTopicName;
 
-    public RocketMQTopic(String topic) {
-        if (namespacePrefix == null) {
-            throw new RuntimeException("RocketMQTopic is not initialized");
-        }
-        originalName = topic;
-        fullName = expandToFullName(topic);
+    public final static void init(String tenant, String namespace) {
+        RocketMQTopic.tenant = tenant;
+        RocketMQTopic.namespace = namespace;
     }
 
-    public static String removeDefaultNamespacePrefix(String fullTopicName) {
-        final String topicPrefix = persistentDomain + namespacePrefix + "/";
-        if (fullTopicName.startsWith(topicPrefix)) {
-            return fullTopicName.substring(topicPrefix.length());
-        } else {
-            return fullTopicName;
-        }
+    //rocketmq topicname => namespace%originaltopic   namespace%DLQ%originaltopic  originaltopic %DLQ%originaltopic
+    public RocketMQTopic(String tenant, String namespace, String rmqTopicName) {
+        String prefix = NamespaceUtil.getNamespaceFromResource(rmqTopicName);
+        String realNs = Strings.isNotBlank(prefix)? prefix : namespace;
+        String realTenant = realNs.indexOf(TENANT_NAMESPACE_SEP) > 0 ? prefix.substring(0, realNs.indexOf(TENANT_NAMESPACE_SEP)) : tenant;
+        realNs = realNs.indexOf(TENANT_NAMESPACE_SEP) > 0 ? realNs.substring(realNs.indexOf(TENANT_NAMESPACE_SEP) + 1) : realNs;
+        this.pulsarTopicName = TopicName.get(domain.name(), realTenant, realNs, NamespaceUtil.withoutNamespace(rmqTopicName));
     }
 
-    public static void initialize(String namespace) {
-        if (namespace.split("/").length != 2) {
-            throw new IllegalArgumentException("Invalid namespace: " + namespace);
-        }
-        RocketMQTopic.namespacePrefix = namespace;
+    public RocketMQTopic(String rmqTopicName) {
+        this(tenant, namespace, rmqTopicName);
     }
 
-    public static String toString(MessageQueue messageQueue) {
-        return (new RocketMQTopic(messageQueue.getTopic())).getPartitionName(messageQueue.getQueueId());
+    public String getNoDomainTopicName() {
+       return Joiner.on('/').join(pulsarTopicName.getTenant(), pulsarTopicName.getNamespacePortion(), pulsarTopicName.getLocalName());
     }
 
-    private String expandToFullName(String topic) {
-        if (topic.startsWith(persistentDomain)) {
-            if (topic.substring(persistentDomain.length()).split("/").length != 3) {
-                throw new IllegalArgumentException("Invalid topic name '" + topic + "', it should be "
-                        + " persistent://<tenant>/<namespace>/<topic>");
-            }
-            return topic;
-        }
-
-        String[] parts = topic.split("/");
-        if (parts.length == 3) {
-            return persistentDomain + topic;
-        } else if (parts.length == 1) {
-            return persistentDomain + namespacePrefix + "/" + topic;
-        } else {
-            throw new IllegalArgumentException("Invalid short topic name '" + topic + "', it should be in the format"
-                    + " of <tenant>/<namespace>/<topic> or <topic>");
-        }
+    public String getPulsarFullName() {
+        return this.pulsarTopicName.toString();
     }
 
     public String getPartitionName(int partition) {
         if (partition < 0) {
             throw new IllegalArgumentException("Invalid partition " + partition + ", it should be non-negative number");
         }
-        return fullName + PARTITIONED_TOPIC_SUFFIX + partition;
+        return this.pulsarTopicName.getPartition(partition).toString();
     }
+
+    public TopicName getPartitionTopicName(int partition) {
+        if (partition < 0) {
+            throw new IllegalArgumentException("Invalid partition " + partition + ", it should be non-negative number");
+        }
+        return this.pulsarTopicName.getPartition(partition);
+    }
+
 }
 
