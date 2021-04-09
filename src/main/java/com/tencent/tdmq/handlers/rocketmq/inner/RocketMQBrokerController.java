@@ -1,6 +1,7 @@
 package com.tencent.tdmq.handlers.rocketmq.inner;
 
 import com.tencent.tdmq.handlers.rocketmq.RocketMQServiceConfiguration;
+import com.tencent.tdmq.handlers.rocketmq.inner.consumer.ConsumerFilterManager;
 import com.tencent.tdmq.handlers.rocketmq.inner.listener.AbstractTransactionalMessageCheckListener;
 import com.tencent.tdmq.handlers.rocketmq.inner.listener.DefaultConsumerIdsChangeListener;
 import com.tencent.tdmq.handlers.rocketmq.inner.listener.DefaultTransactionalMessageCheckListener;
@@ -58,6 +59,7 @@ public class RocketMQBrokerController {
     private final MessageArrivingListener messageArrivingListener;
     private final SubscriptionGroupManager subscriptionGroupManager;
     private final ConsumerIdsChangeListener consumerIdsChangeListener;
+    private final ConsumerFilterManager consumerFilterManager;
     private final RebalanceLockManager rebalanceLockManager = new RebalanceLockManager();
     private final ScheduledExecutorService scheduledExecutorService = Executors
             .newSingleThreadScheduledExecutor(new ThreadFactoryImpl(
@@ -105,6 +107,7 @@ public class RocketMQBrokerController {
         this.pullRequestHoldService = new PullRequestHoldService(this);
         this.messageArrivingListener = new NotifyMessageArrivingListener(this.pullRequestHoldService);
         this.consumerIdsChangeListener = new DefaultConsumerIdsChangeListener(this);
+        this.consumerFilterManager = new ConsumerFilterManager(this);
         this.consumerManager = new ConsumerManager(this.consumerIdsChangeListener);
         this.producerManager = new ProducerManager();
         this.clientHousekeepingService = new ClientHousekeepingService(this);

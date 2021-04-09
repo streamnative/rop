@@ -126,6 +126,25 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
 
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
+            doc = "Error rate of bloom filter, 1~100.\n"
+    )
+    private int maxErrorRateOfBloomFilter = 20;
+
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
+            doc = "Expect num of consumers will use filter.\n"
+    )
+    private int expectConsumerNumUseFilter = 32;
+
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
+            doc = "how long to clean filter data after dead.Default: 24h\n"
+    )
+    private int filterDataCleanTimeSpan = 24 * 3600 * 1000;
+
+
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
             doc = "pool size for processing callback requests..\n"
     )
     private int sendMessageThreadPoolNums = 16 + Runtime.getRuntime().availableProcessors() * 2;
