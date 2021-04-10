@@ -292,6 +292,13 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
             doc = "The maximum number of times the message was checked, "
                     + "if exceed this value, this message will be discarded.\n"
     )
+    private boolean transferMsgByHeap = true;
+
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
+            doc = "The maximum number of times the message was checked, "
+                    + "if exceed this value, this message will be discarded.\n"
+    )
     private int defaultQueryMaxNum = 10000;
 
     @FieldContext(

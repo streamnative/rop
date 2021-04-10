@@ -5,19 +5,37 @@ import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.FileRegion;
 import java.nio.ByteBuffer;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.broker.client.ConsumerGroupInfo;
+import org.apache.rocketmq.broker.longpolling.PullRequest;
 import org.apache.rocketmq.broker.mqtrace.ConsumeMessageContext;
 import org.apache.rocketmq.broker.mqtrace.ConsumeMessageHook;
+import org.apache.rocketmq.broker.pagecache.ManyMessageTransfer;
+import org.apache.rocketmq.common.MixAll;
+import org.apache.rocketmq.common.TopicConfig;
+import org.apache.rocketmq.common.constant.PermName;
+import org.apache.rocketmq.common.filter.FilterAPI;
+import org.apache.rocketmq.common.help.FAQUrl;
 import org.apache.rocketmq.common.message.MessageDecoder;
+import org.apache.rocketmq.common.protocol.ResponseCode;
+import org.apache.rocketmq.common.protocol.header.PullMessageRequestHeader;
+import org.apache.rocketmq.common.protocol.header.PullMessageResponseHeader;
+import org.apache.rocketmq.common.protocol.heartbeat.MessageModel;
+import org.apache.rocketmq.common.protocol.heartbeat.SubscriptionData;
 import org.apache.rocketmq.common.protocol.topic.OffsetMovedEvent;
+import org.apache.rocketmq.common.subscription.SubscriptionGroupConfig;
 import org.apache.rocketmq.common.sysflag.MessageSysFlag;
+import org.apache.rocketmq.common.sysflag.PullSysFlag;
+import org.apache.rocketmq.remoting.common.RemotingHelper;
 import org.apache.rocketmq.remoting.exception.RemotingCommandException;
 import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
 import org.apache.rocketmq.remoting.netty.RequestTask;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.store.GetMessageResult;
+import org.apache.rocketmq.store.stats.BrokerStatsManager;
 
 @Slf4j
 public class PullMessageProcessor implements NettyRequestProcessor {
@@ -42,19 +60,19 @@ public class PullMessageProcessor implements NettyRequestProcessor {
 
     private RemotingCommand processRequest(final Channel channel, RemotingCommand request, boolean brokerAllowSuspend)
             throws RemotingCommandException {
-       /* RemotingCommand response = RemotingCommand.createResponseCommand(PullMessageResponseHeader.class);
+        RemotingCommand response = RemotingCommand.createResponseCommand(PullMessageResponseHeader.class);
         final PullMessageResponseHeader responseHeader = (PullMessageResponseHeader) response.readCustomHeader();
         final PullMessageRequestHeader requestHeader =
                 (PullMessageRequestHeader) request.decodeCommandCustomHeader(PullMessageRequestHeader.class);
 
         response.setOpaque(request.getOpaque());
 
-        log.debug("receive PullMessage request command, {}", request);
+        log.info("receive PullMessage request command, {}", request);
 
         if (!PermName.isReadable(this.brokerController.getServerConfig().getBrokerPermission())) {
             response.setCode(ResponseCode.NO_PERMISSION);
-            response.setRemark(String.format("the broker[%s] pulling message is forbidden",
-                    this.brokerController.getServerConfig().getBrokerIP1()));
+            response.setRemark(String.format("the broker[" //+ this.brokerController.getBrokerConfig().getBrokerIP1()
+                    + "] pulling message is forbidden"));
             return response;
         }
 
@@ -110,19 +128,11 @@ public class PullMessageProcessor implements NettyRequestProcessor {
         }
 
         SubscriptionData subscriptionData = null;
-        ConsumerFilterData consumerFilterData = null;
         if (hasSubscriptionFlag) {
             try {
                 subscriptionData = FilterAPI.build(
                         requestHeader.getTopic(), requestHeader.getSubscription(), requestHeader.getExpressionType()
                 );
-                if (!ExpressionType.isTagType(subscriptionData.getExpressionType())) {
-                    consumerFilterData = ConsumerFilterManager.build(
-                            requestHeader.getTopic(), requestHeader.getConsumerGroup(), requestHeader.getSubscription(),
-                            requestHeader.getExpressionType(), requestHeader.getSubVersion()
-                    );
-                    assert consumerFilterData != null;
-                }
             } catch (Exception e) {
                 log.warn("Parse the consumer's subscription[{}] failed, group: {}", requestHeader.getSubscription(),
                         requestHeader.getConsumerGroup());
@@ -168,6 +178,7 @@ public class PullMessageProcessor implements NettyRequestProcessor {
             }
         }
 
+        // TODO: brokerController.getMessageStore() 需要实现 MessageStore 的逻辑
         final GetMessageResult getMessageResult =
                 this.brokerController.getMessageStore()
                         .getMessage(requestHeader.getConsumerGroup(), requestHeader.getTopic(),
@@ -294,6 +305,7 @@ public class PullMessageProcessor implements NettyRequestProcessor {
 
                     this.brokerController.getBrokerStatsManager().incBrokerGetNums(getMessageResult.getMessageCount());
                     if (this.brokerController.getServerConfig().isTransferMsgByHeap()) {
+                        // TODO: brokerController.getMessageStore() 需要实现 MessageStore 的逻辑
                         final long beginTimeMills = this.brokerController.getMessageStore().now();
                         final byte[] r = this.readGetMessageResult(getMessageResult, requestHeader.getConsumerGroup(),
                                 requestHeader.getTopic(), requestHeader.getQueueId());
@@ -337,8 +349,9 @@ public class PullMessageProcessor implements NettyRequestProcessor {
                         String topic = requestHeader.getTopic();
                         long offset = requestHeader.getQueueOffset();
                         int queueId = requestHeader.getQueueId();
+                        // TODO: brokerController.getMessageStore() 需要实现 MessageStore 的逻辑
                         PullRequest pullRequest = new PullRequest(request, channel, pollingTimeMills,
-                                this.brokerController.getMessageStore().now(), offset, subscriptionData, messageFilter);
+                                this.brokerController.getMessageStore().now(), offset, subscriptionData, null);
                         this.brokerController.getPullRequestHoldService()
                                 .suspendPullRequest(topic, queueId, pullRequest);
                         response = null;
@@ -364,17 +377,18 @@ public class PullMessageProcessor implements NettyRequestProcessor {
             response.setRemark("store getMessage return null");
         }
 
-        boolean storeOffsetEnable = brokerAllowSuspend;
-        storeOffsetEnable = storeOffsetEnable && hasCommitOffsetFlag;
-        storeOffsetEnable = storeOffsetEnable
-                && this.brokerController.getMessageStoreConfig().getBrokerRole() != BrokerRole.SLAVE;
-        if (storeOffsetEnable) {
-            this.brokerController.getConsumerOffsetManager()
-                    .commitOffset(RemotingHelper.parseChannelRemoteAddr(channel),
-                            requestHeader.getConsumerGroup(), requestHeader.getTopic(), requestHeader.getQueueId(),
-                            requestHeader.getCommitOffset());
-        }
-        */
+        // TODO： impl offset store and this data should be stored in Pulsar
+
+//        boolean storeOffsetEnable = brokerAllowSuspend;
+//        storeOffsetEnable = storeOffsetEnable && hasCommitOffsetFlag;
+//        storeOffsetEnable = storeOffsetEnable
+//                && this.brokerController.getMessageStoreConfig().getBrokerRole() != BrokerRole.SLAVE;
+//        if (storeOffsetEnable) {
+//            this.brokerController.getConsumerOffsetManager()
+//                    .commitOffset(RemotingHelper.parseChannelRemoteAddr(channel),
+//                            requestHeader.getConsumerGroup(), requestHeader.getTopic(), requestHeader.getQueueId(),
+//                            requestHeader.getCommitOffset());
+//        }
 
         return null;
     }
@@ -424,6 +438,7 @@ public class PullMessageProcessor implements NettyRequestProcessor {
             getMessageResult.release();
         }
 
+        // TODO: brokerController.getMessageStore() 需要实现 MessageStore 的逻辑
         this.brokerController.getBrokerStatsManager().recordDiskFallBehindTime(group, topic, queueId,
                 this.brokerController.getMessageStore().now() - storeTimestamp);
         return byteBuffer.array();
