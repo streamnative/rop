@@ -1,12 +1,12 @@
 package com.tencent.tdmq.handlers.rocketmq.inner.processor;
 
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
+import com.tencent.tdmq.handlers.rocketmq.inner.RopClientChannelCnx;
 import io.netty.channel.ChannelHandlerContext;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.broker.client.ClientChannelInfo;
 import org.apache.rocketmq.common.MixAll;
-import org.apache.rocketmq.common.constant.LoggerName;
 import org.apache.rocketmq.common.constant.PermName;
-import org.apache.rocketmq.common.filter.ExpressionType;
 import org.apache.rocketmq.common.protocol.RequestCode;
 import org.apache.rocketmq.common.protocol.ResponseCode;
 import org.apache.rocketmq.common.protocol.body.CheckClientRequestBody;
@@ -15,20 +15,16 @@ import org.apache.rocketmq.common.protocol.header.UnregisterClientResponseHeader
 import org.apache.rocketmq.common.protocol.heartbeat.ConsumerData;
 import org.apache.rocketmq.common.protocol.heartbeat.HeartbeatData;
 import org.apache.rocketmq.common.protocol.heartbeat.ProducerData;
-import org.apache.rocketmq.common.protocol.heartbeat.SubscriptionData;
 import org.apache.rocketmq.common.subscription.SubscriptionGroupConfig;
 import org.apache.rocketmq.common.sysflag.TopicSysFlag;
-import org.apache.rocketmq.filter.FilterFactory;
-import org.apache.rocketmq.logging.InternalLogger;
-import org.apache.rocketmq.logging.InternalLoggerFactory;
 import org.apache.rocketmq.remoting.common.RemotingHelper;
 import org.apache.rocketmq.remoting.exception.RemotingCommandException;
 import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 
+@Slf4j
 public class ClientManageProcessor implements NettyRequestProcessor {
 
-    private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
     private final RocketMQBrokerController brokerController;
 
     public ClientManageProcessor(final RocketMQBrokerController brokerController) {
@@ -59,12 +55,11 @@ public class ClientManageProcessor implements NettyRequestProcessor {
     public RemotingCommand heartBeat(ChannelHandlerContext ctx, RemotingCommand request) {
         RemotingCommand response = RemotingCommand.createResponseCommand(null);
         HeartbeatData heartbeatData = HeartbeatData.decode(request.getBody(), HeartbeatData.class);
-        ClientChannelInfo clientChannelInfo = new ClientChannelInfo(
-                ctx.channel(),
+        ClientChannelInfo clientChannelInfo = new RopClientChannelCnx(this.brokerController,
+                ctx,
                 heartbeatData.getClientID(),
                 request.getLanguage(),
-                request.getVersion()
-        );
+                request.getVersion());
 
         for (ConsumerData data : heartbeatData.getConsumerDataSet()) {
             SubscriptionGroupConfig subscriptionGroupConfig =
@@ -156,34 +151,6 @@ public class ClientManageProcessor implements NettyRequestProcessor {
 
         CheckClientRequestBody requestBody = CheckClientRequestBody.decode(request.getBody(),
                 CheckClientRequestBody.class);
-
-        if (requestBody != null && requestBody.getSubscriptionData() != null) {
-            SubscriptionData subscriptionData = requestBody.getSubscriptionData();
-
-            if (ExpressionType.isTagType(subscriptionData.getExpressionType())) {
-                response.setCode(ResponseCode.SUCCESS);
-                response.setRemark(null);
-                return response;
-            }
-
-/*            if (!this.brokerController.getServerConfig().isEnablePropertyFilter()) {
-                response.setCode(ResponseCode.SYSTEM_ERROR);
-                response.setRemark("The broker does not support consumer to filter message by " + subscriptionData.getExpressionType());
-                return response;
-            }*/
-
-            try {
-                FilterFactory.INSTANCE.get(subscriptionData.getExpressionType())
-                        .compile(subscriptionData.getSubString());
-            } catch (Exception e) {
-                log.warn("Client {}@{} filter message, but failed to compile expression! sub={}, error={}",
-                        requestBody.getClientId(), requestBody.getGroup(), requestBody.getSubscriptionData(),
-                        e.getMessage());
-                response.setCode(ResponseCode.SUBSCRIPTION_PARSE_FAILED);
-                response.setRemark(e.getMessage());
-                return response;
-            }
-        }
 
         response.setCode(ResponseCode.SUCCESS);
         response.setRemark(null);

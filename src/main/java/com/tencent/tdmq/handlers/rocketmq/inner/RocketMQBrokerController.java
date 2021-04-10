@@ -2,6 +2,8 @@ package com.tencent.tdmq.handlers.rocketmq.inner;
 
 import com.tencent.tdmq.handlers.rocketmq.RocketMQServiceConfiguration;
 import com.tencent.tdmq.handlers.rocketmq.inner.consumer.ConsumerFilterManager;
+import com.tencent.tdmq.handlers.rocketmq.inner.consumer.ConsumerManager;
+import com.tencent.tdmq.handlers.rocketmq.inner.consumer.ConsumerOffsetManager;
 import com.tencent.tdmq.handlers.rocketmq.inner.listener.AbstractTransactionalMessageCheckListener;
 import com.tencent.tdmq.handlers.rocketmq.inner.listener.DefaultConsumerIdsChangeListener;
 import com.tencent.tdmq.handlers.rocketmq.inner.listener.DefaultTransactionalMessageCheckListener;
@@ -16,6 +18,7 @@ import com.tencent.tdmq.handlers.rocketmq.inner.processor.EndTransactionProcesso
 import com.tencent.tdmq.handlers.rocketmq.inner.processor.PullMessageProcessor;
 import com.tencent.tdmq.handlers.rocketmq.inner.processor.QueryMessageProcessor;
 import com.tencent.tdmq.handlers.rocketmq.inner.processor.SendMessageProcessor;
+import com.tencent.tdmq.handlers.rocketmq.inner.producer.ProducerManager;
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.List;

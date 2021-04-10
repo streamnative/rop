@@ -1,4 +1,4 @@
-package com.tencent.tdmq.handlers.rocketmq.inner;
+package com.tencent.tdmq.handlers.rocketmq.inner.consumer;
 
 import io.netty.channel.Channel;
 import java.util.HashSet;
