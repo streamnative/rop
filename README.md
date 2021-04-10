@@ -8,6 +8,8 @@ Pulsar [ProtocolHandler](https://github.com/apache/pulsar/blob/master/pulsar-bro
 with protocol name "rocketmq". ProtocolHandler is build as a nar file, and is loaded when Pulsar
 Broker starts.
 
+![](docs/rop-architecture.png)
+
 ## Limitations
 
 RoP is implemented based on Pulsar features. However, the methods of using Pulsar and using RocketMQ
