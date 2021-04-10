@@ -78,6 +78,7 @@ public class RocketMQBrokerController {
     private final List<ConsumeMessageHook> consumeMessageHookList = new ArrayList<>();
     private final RocketMQRemoteServer remotingServer;
     private final Broker2Client broker2Client = new Broker2Client(this);
+    private final MQTopicManager mqTopicManager;
     private MessageStore messageStore;
     private TopicConfigManager topicConfigManager;
     private ExecutorService sendMessageExecutor;
@@ -89,15 +90,12 @@ public class RocketMQBrokerController {
     private ExecutorService heartbeatExecutor;
     private ExecutorService consumerManageExecutor;
     private ExecutorService endTransactionExecutor;
-
     private BrokerStats brokerStats;
     private InetSocketAddress storeHost;
     private TransactionalMessageCheckService transactionalMessageCheckService;
     private TransactionalMessageService transactionalMessageService;
     private AbstractTransactionalMessageCheckListener transactionalMessageCheckListener;
-
     private volatile BrokerService brokerService;
-    private final MQTopicManager mqTopicManager;
 
     public RocketMQBrokerController(final RocketMQServiceConfiguration serverConfig) throws PulsarServerException {
         this.serverConfig = serverConfig;

@@ -5,20 +5,16 @@ import static org.apache.pulsar.common.naming.TopicName.PARTITIONED_TOPIC_SUFFIX
 
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
-import com.tencent.tdmq.handlers.rocketmq.inner.namesvr.MQTopicManager;
 import com.tencent.tdmq.handlers.rocketmq.utils.ConfigurationUtils;
 import com.tencent.tdmq.handlers.rocketmq.utils.RocketMQTopic;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.socket.SocketChannel;
 import java.net.InetSocketAddress;
-import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.pulsar.broker.PulsarServerException;
@@ -33,7 +29,6 @@ import org.apache.pulsar.common.partition.PartitionedTopicMetadata;
 import org.apache.pulsar.common.policies.data.ClusterData;
 import org.apache.pulsar.common.policies.data.RetentionPolicies;
 import org.apache.pulsar.common.policies.data.TenantInfo;
-import org.apache.pulsar.common.util.FutureUtil;
 
 /**
  * @author xiaolongran@tencent.com
@@ -140,6 +135,7 @@ public class RocketMQProtocolHandler implements ProtocolHandler {
         }
 
     }
+
     private String loadSysTopics(BrokerService brokerService, String tenant, String ns, String topicName) {
         String fullTopicName = Joiner.on('/').join(tenant, ns, topicName);
         String broker = null;
