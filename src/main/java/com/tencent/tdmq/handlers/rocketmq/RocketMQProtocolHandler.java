@@ -84,7 +84,7 @@ public class RocketMQProtocolHandler implements ProtocolHandler {
         this.bindAddress = ServiceConfigurationUtils.getDefaultOrConfiguredAddress(rocketmqConfig.getBindAddress());
         this.rocketMQBroker = new RocketMQBrokerController(rocketmqConfig);
         this.rocketMQBroker.initialize();
-        RocketMQTopic.initialize(rocketmqConfig.getRocketmqTenant() + "/" + rocketmqConfig.getRocketmqNamespace());
+        RocketMQTopic.init(rocketmqConfig.getRocketmqTenant(), rocketmqConfig.getRocketmqNamespace());
     }
 
     @Override
@@ -107,28 +107,6 @@ public class RocketMQProtocolHandler implements ProtocolHandler {
                 RopVersion.getBuildHost(),
                 RopVersion.getBuildTime());
         try {
-            String cluster = rocketmqConfig.getClusterName();
-            String metaTanant = rocketmqConfig.getRocketmqMetadataTenant();
-            String metaNs = rocketmqConfig.getRocketmqMetadataNamespace();
-            String defaultTanant = rocketmqConfig.getRocketmqTenant();
-            String defaultNs = rocketmqConfig.getRocketmqNamespace();
-
-            createSysNamespaceIfNeeded(service, cluster, metaTanant, metaNs);
-            createSysNamespaceIfNeeded(service, cluster, defaultTanant, defaultNs);
-            createSystemTopic(service, defaultTanant, defaultNs,
-                    rocketmqConfig.getRmqScheduleTopic(), rocketmqConfig.getDefaultNumPartitions());
-            createSystemTopic(service, defaultTanant, defaultNs,
-                    rocketmqConfig.getRmqSysTransHalfTopic(), rocketmqConfig.getDefaultNumPartitions());
-            createSystemTopic(service, defaultTanant, defaultNs,
-                    rocketmqConfig.getRmqSysTransOpHalfTopic(), rocketmqConfig.getDefaultNumPartitions());
-            createSystemTopic(service, defaultTanant, defaultNs,
-                    rocketmqConfig.getRmqTransCheckMaxTimeTopic(), 1);
-
-            loadSysTopics(service, defaultTanant, defaultNs, rocketmqConfig.getRmqScheduleTopic());
-            loadSysTopics(service, defaultTanant, defaultNs, rocketmqConfig.getRmqSysTransHalfTopic());
-            loadSysTopics(service, defaultTanant, defaultNs, rocketmqConfig.getRmqSysTransOpHalfTopic());
-            loadSysTopics(service, defaultTanant, defaultNs, rocketmqConfig.getRmqTransCheckMaxTimeTopic());
-
             rocketMQBroker.start();
         } catch (Exception e) {
             log.error("start rop error.", e);

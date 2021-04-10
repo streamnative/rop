@@ -75,8 +75,9 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
 
     @Override
     public boolean rejectRequest() {
-        return this.brokerController.getMessageStore().isOSPageCacheBusy() ||
-                this.brokerController.getMessageStore().isTransientStorePoolDeficient();
+        return false;
+       /* return this.brokerController.getMessageStore().isOSPageCacheBusy() ||
+                this.brokerController.getMessageStore().isTransientStorePoolDeficient();*/
     }
 
     private RemotingCommand consumerSendMsgBack(final ChannelHandlerContext ctx, final RemotingCommand request)
