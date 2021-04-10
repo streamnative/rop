@@ -1,14 +1,10 @@
 package com.tencent.tdmq.handlers.rocketmq.utils;
 
-import static org.apache.pulsar.common.naming.TopicName.PARTITIONED_TOPIC_SUFFIX;
-
 import com.google.common.base.Joiner;
-import lombok.Data;
 import lombok.Getter;
 import org.apache.logging.log4j.util.Strings;
 import org.apache.pulsar.common.naming.TopicDomain;
 import org.apache.pulsar.common.naming.TopicName;
-import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.common.protocol.NamespaceUtil;
 
 /**
@@ -19,6 +15,7 @@ import org.apache.rocketmq.common.protocol.NamespaceUtil;
  * 2. getFullName() when access Pulsar resources.
  */
 public class RocketMQTopic {
+
     private static final String TENANT_NAMESPACE_SEP = "|";
     private static final TopicDomain domain = TopicDomain.persistent;
     private static volatile String tenant = "rocketmq";
@@ -26,26 +23,31 @@ public class RocketMQTopic {
     @Getter
     private TopicName pulsarTopicName;
 
-    public final static void init(String tenant, String namespace) {
-        RocketMQTopic.tenant = tenant;
-        RocketMQTopic.namespace = namespace;
-    }
-
     //rocketmq topicname => namespace%originaltopic   namespace%DLQ%originaltopic  originaltopic %DLQ%originaltopic
     public RocketMQTopic(String tenant, String namespace, String rmqTopicName) {
         String prefix = NamespaceUtil.getNamespaceFromResource(rmqTopicName);
-        String realNs = Strings.isNotBlank(prefix)? prefix : namespace;
-        String realTenant = realNs.indexOf(TENANT_NAMESPACE_SEP) > 0 ? prefix.substring(0, realNs.indexOf(TENANT_NAMESPACE_SEP)) : tenant;
-        realNs = realNs.indexOf(TENANT_NAMESPACE_SEP) > 0 ? realNs.substring(realNs.indexOf(TENANT_NAMESPACE_SEP) + 1) : realNs;
-        this.pulsarTopicName = TopicName.get(domain.name(), realTenant, realNs, NamespaceUtil.withoutNamespace(rmqTopicName));
+        String realNs = Strings.isNotBlank(prefix) ? prefix : namespace;
+        String realTenant =
+                realNs.indexOf(TENANT_NAMESPACE_SEP) > 0 ? prefix.substring(0, realNs.indexOf(TENANT_NAMESPACE_SEP))
+                        : tenant;
+        realNs = realNs.indexOf(TENANT_NAMESPACE_SEP) > 0 ? realNs.substring(realNs.indexOf(TENANT_NAMESPACE_SEP) + 1)
+                : realNs;
+        this.pulsarTopicName = TopicName
+                .get(domain.name(), realTenant, realNs, NamespaceUtil.withoutNamespace(rmqTopicName));
     }
 
     public RocketMQTopic(String rmqTopicName) {
         this(tenant, namespace, rmqTopicName);
     }
 
+    public final static void init(String tenant, String namespace) {
+        RocketMQTopic.tenant = tenant;
+        RocketMQTopic.namespace = namespace;
+    }
+
     public String getNoDomainTopicName() {
-       return Joiner.on('/').join(pulsarTopicName.getTenant(), pulsarTopicName.getNamespacePortion(), pulsarTopicName.getLocalName());
+        return Joiner.on('/').join(pulsarTopicName.getTenant(), pulsarTopicName.getNamespacePortion(),
+                pulsarTopicName.getLocalName());
     }
 
     public String getPulsarFullName() {

@@ -33,6 +33,7 @@ public class ConsumerFilterManager {
 //                this.bloomFilter.getM()
 //        );
     }
+
     public void register(final String consumerGroup, final Collection<SubscriptionData> subList) {
         for (SubscriptionData subscriptionData : subList) {
             register(

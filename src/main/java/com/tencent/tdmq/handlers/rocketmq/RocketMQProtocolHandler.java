@@ -1,11 +1,8 @@
 package com.tencent.tdmq.handlers.rocketmq;
 
 import static com.google.common.base.Preconditions.checkState;
-import static org.apache.pulsar.common.naming.TopicName.PARTITIONED_TOPIC_SUFFIX;
 
-import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.Sets;
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
 import com.tencent.tdmq.handlers.rocketmq.utils.ConfigurationUtils;
 import com.tencent.tdmq.handlers.rocketmq.utils.RocketMQTopic;
@@ -14,21 +11,12 @@ import io.netty.channel.socket.SocketChannel;
 import java.net.InetSocketAddress;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.pulsar.broker.PulsarServerException;
 import org.apache.pulsar.broker.ServiceConfiguration;
 import org.apache.pulsar.broker.ServiceConfigurationUtils;
 import org.apache.pulsar.broker.protocol.ProtocolHandler;
 import org.apache.pulsar.broker.service.BrokerService;
-import org.apache.pulsar.client.admin.PulsarAdmin;
-import org.apache.pulsar.client.admin.PulsarAdminException;
-import org.apache.pulsar.client.admin.PulsarAdminException.ConflictException;
-import org.apache.pulsar.common.partition.PartitionedTopicMetadata;
-import org.apache.pulsar.common.policies.data.ClusterData;
-import org.apache.pulsar.common.policies.data.RetentionPolicies;
-import org.apache.pulsar.common.policies.data.TenantInfo;
 
 /**
  * @author xiaolongran@tencent.com
@@ -112,77 +100,6 @@ public class RocketMQProtocolHandler implements ProtocolHandler {
             log.error("start rop error.", e);
         }
 
-    }
-
-    private String loadSysTopics(BrokerService brokerService, String tenant, String ns, String topicName) {
-        String fullTopicName = Joiner.on('/').join(tenant, ns, topicName);
-        String broker = null;
-        try {
-            broker = brokerService.pulsar().getAdminClient().lookups().lookupTopic(fullTopicName);
-        } catch (Exception e) {
-            log.warn("load system topic [{}] error.", fullTopicName, e);
-        }
-        return broker;
-    }
-
-    private String createSystemTopic(BrokerService service, String tenant, String ns, String topicName, int pNum)
-            throws PulsarServerException, PulsarAdminException {
-        String fullTopicName = Joiner.on('/').join(tenant, ns, topicName);
-        PartitionedTopicMetadata topicMetadata =
-                service.pulsar().getAdminClient().topics().getPartitionedTopicMetadata(fullTopicName);
-        if (topicMetadata.partitions <= 0) {
-            log.info("RocketMQ metadata topic {} doesn't exist. Creating it ...", fullTopicName);
-            try {
-                service.pulsar().getAdminClient().topics().createPartitionedTopic(
-                        fullTopicName,
-                        pNum);
-
-                for (int i = 0; i < pNum; i++) {
-                    service.pulsar().getAdminClient().topics()
-                            .createNonPartitionedTopic(fullTopicName + PARTITIONED_TOPIC_SUFFIX + i);
-                }
-            } catch (ConflictException e) {
-                log.info("Topic {} concurrent creating and cause e: ", fullTopicName, e);
-                return fullTopicName;
-            }
-        }
-        return fullTopicName;
-    }
-
-    private void createSysNamespaceIfNeeded(BrokerService service, String cluster, String tanant, String ns)
-            throws PulsarServerException, PulsarAdminException {
-        PulsarAdmin pulsarAdmin = service.pulsar().getAdminClient();
-        String fullNs = Joiner.on('/').join(tanant, ns);
-        try {
-            ClusterData clusterData = new ClusterData(service.pulsar().getWebServiceAddress(),
-                    null /* serviceUrlTls */,
-                    service.pulsar().getBrokerServiceUrl(),
-                    null /* brokerServiceUrlTls */);
-            if (!pulsarAdmin.clusters().getClusters().contains(cluster)) {
-                pulsarAdmin.clusters().createCluster(cluster, clusterData);
-            } else {
-                pulsarAdmin.clusters().updateCluster(cluster, clusterData);
-            }
-
-            if (!pulsarAdmin.tenants().getTenants().contains(tanant)) {
-                pulsarAdmin.tenants().createTenant(tanant,
-                        new TenantInfo(Sets.newHashSet(rocketmqConfig.getSuperUserRoles()), Sets.newHashSet(cluster)));
-            }
-            if (!pulsarAdmin.namespaces().getNamespaces(tanant).contains(fullNs)) {
-                Set<String> clusters = Sets.newHashSet(rocketmqConfig.getClusterName());
-                pulsarAdmin.namespaces().createNamespace(fullNs, clusters);
-                pulsarAdmin.namespaces().setNamespaceReplicationClusters(fullNs, clusters);
-                pulsarAdmin.namespaces().setRetention(fullNs,
-                        new RetentionPolicies(-1, -1));
-            }
-        } catch (PulsarAdminException e) {
-            if (e instanceof ConflictException) {
-                log.info("Resources concurrent creating and cause e: ", e);
-                return;
-            }
-            log.error("Failed to get retention policy for kafka metadata namespace {}", fullNs, e);
-            throw e;
-        }
     }
 
     @Override

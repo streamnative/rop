@@ -13,7 +13,6 @@ import com.tencent.tdmq.handlers.rocketmq.utils.TopicNameUtils;
 import java.net.InetSocketAddress;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -23,8 +22,6 @@ import org.apache.pulsar.broker.PulsarServerException;
 import org.apache.pulsar.broker.PulsarService;
 import org.apache.pulsar.broker.namespace.NamespaceBundleOwnershipListener;
 import org.apache.pulsar.broker.service.BrokerService;
-import org.apache.pulsar.broker.service.Topic;
-import org.apache.pulsar.broker.service.persistent.PersistentTopic;
 import org.apache.pulsar.client.admin.PulsarAdmin;
 import org.apache.pulsar.client.admin.PulsarAdminException.ConflictException;
 import org.apache.pulsar.client.impl.Backoff;
@@ -36,7 +33,6 @@ import org.apache.pulsar.common.partition.PartitionedTopicMetadata;
 import org.apache.pulsar.common.policies.data.ClusterData;
 import org.apache.pulsar.common.policies.data.RetentionPolicies;
 import org.apache.pulsar.common.policies.data.TenantInfo;
-import org.apache.rocketmq.common.Pair;
 import org.apache.rocketmq.common.TopicConfig;
 
 @Slf4j
@@ -50,13 +46,12 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
             .initialCapacity(MAX_CACHE_SIZE).maximumSize(MAX_CACHE_SIZE)
             .expireAfterWrite(MAX_CACHE_TIME_IN_SEC, TimeUnit.SECONDS)
             .build();
-
+    private final int servicePort;
     private PulsarService pulsarService;
     private BrokerService brokerService;
     private PulsarAdmin adminClient;
     private NamespaceName rocketmqMetaNs;
     private NamespaceName rocketmqTopicNs;
-    private final int servicePort;
 
     public MQTopicManager(RocketMQBrokerController brokerController) {
         super(brokerController);
@@ -87,7 +82,8 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
         Map<Integer, InetSocketAddress> partitionedTopicAddr = new HashMap<>();
         try {
             String noDomainTopicName = TopicNameUtils.getNoDomainTopicName(topicName);
-            PartitionedTopicMetadata partitionedMetadata = adminClient.topics().getPartitionedTopicMetadata(noDomainTopicName);
+            PartitionedTopicMetadata partitionedMetadata = adminClient.topics()
+                    .getPartitionedTopicMetadata(noDomainTopicName);
 
             CompletableFuture<InetSocketAddress> resultFuture = new CompletableFuture<>();
 

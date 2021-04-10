@@ -30,8 +30,8 @@ public class TopicConfigManager {
             1024);
     protected final DataVersion dataVersion = new DataVersion();
     protected final Set<String> systemTopicList = new HashSet<String>();
-    protected transient RocketMQBrokerController brokerController;
     protected final RocketMQServiceConfiguration config;
+    protected transient RocketMQBrokerController brokerController;
 
     public TopicConfigManager(RocketMQBrokerController brokerController) {
         this.brokerController = brokerController;

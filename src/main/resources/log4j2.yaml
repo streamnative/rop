@@ -72,13 +72,13 @@ Configuration:
           size: 1 GB
       # Delete file older than 30days
       DefaultRolloverStrategy:
-          Delete:
-            basePath: ${sys:pulsar.log.dir}
-            maxDepth: 2
-            IfFileName:
-              glob: "*/${sys:pulsar.log.file}*log.gz"
-            IfLastModified:
-              age: 30d
+        Delete:
+          basePath: ${sys:pulsar.log.dir}
+          maxDepth: 2
+          IfFileName:
+            glob: "*/${sys:pulsar.log.file}*log.gz"
+          IfLastModified:
+            age: 30d
 
     Prometheus:
       name: Prometheus
@@ -89,17 +89,15 @@ Configuration:
       Routes:
         pattern: "$${ctx:function}"
         Route:
-          -
-            Routing:
+          - Routing:
               name: InstanceRoutingAppender
               Routes:
                 pattern: "$${ctx:instance}"
                 Route:
-                  -
-                    RollingFile:
+                  - RollingFile:
                       name: "Rolling-${ctx:function}"
-                      fileName : "${sys:pulsar.log.dir}/functions/${ctx:function}/${ctx:functionname}-${ctx:instance}.log"
-                      filePattern : "${sys:pulsar.log.dir}/functions/${sys:pulsar.log.file}-${ctx:instance}-%d{MM-dd-yyyy}-%i.log.gz"
+                      fileName: "${sys:pulsar.log.dir}/functions/${ctx:function}/${ctx:functionname}-${ctx:instance}.log"
+                      filePattern: "${sys:pulsar.log.dir}/functions/${sys:pulsar.log.file}-${ctx:instance}-%d{MM-dd-yyyy}-%i.log.gz"
                       PatternLayout:
                         Pattern: "%d{ABSOLUTE} %level{length=5} [%thread] [instance: %X{instance}] %logger{1} - %msg%n"
                       Policies:
@@ -114,13 +112,13 @@ Configuration:
                           schedule: "0 0 0 * * ?"
                       # Delete file older than 30days
                       DefaultRolloverStrategy:
-                          Delete:
-                            basePath: ${sys:pulsar.log.dir}
-                            maxDepth: 2
-                            IfFileName:
-                              glob: "*/${sys:pulsar.log.file}*log.gz"
-                            IfLastModified:
-                              age: 30d
+                        Delete:
+                          basePath: ${sys:pulsar.log.dir}
+                          maxDepth: 2
+                          IfFileName:
+                            glob: "*/${sys:pulsar.log.file}*log.gz"
+                          IfLastModified:
+                            age: 30d
                   - ref: "${sys:pulsar.routing.appender.default}"
                     key: "${ctx:function}"
           - ref: "${sys:pulsar.routing.appender.default}"

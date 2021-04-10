@@ -7,7 +7,6 @@ import static org.apache.rocketmq.common.protocol.RequestCode.GET_ROUTEINTO_BY_T
 
 import com.tencent.tdmq.handlers.rocketmq.RocketMQServiceConfiguration;
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
-import com.tencent.tdmq.handlers.rocketmq.utils.Random;
 import com.tencent.tdmq.handlers.rocketmq.utils.RocketMQTopic;
 import io.netty.channel.ChannelHandlerContext;
 import java.net.InetSocketAddress;
@@ -19,9 +18,6 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.logging.log4j.util.Strings;
-import org.apache.pulsar.broker.service.persistent.PersistentTopic;
-import org.apache.pulsar.client.admin.Lookup;
-import org.apache.rocketmq.common.Pair;
 import org.apache.rocketmq.common.help.FAQUrl;
 import org.apache.rocketmq.common.protocol.RequestCode;
 import org.apache.rocketmq.common.protocol.ResponseCode;
@@ -36,11 +32,12 @@ import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 @Slf4j
 public class NamesvrProcessor implements NettyRequestProcessor {
 
-    private int servicePort = 9876;
+    public static final Pattern BROKER_ADDR_PAT = Pattern.compile("([^/:]+:)(\\d+)");
     private final RocketMQBrokerController brokerController;
     private final RocketMQServiceConfiguration config;
     private final int defaultNumPartitions;
     private final MQTopicManager mqTopicManager;
+    private int servicePort = 9876;
 
     public NamesvrProcessor(RocketMQBrokerController brokerController) {
         this.brokerController = brokerController;
@@ -101,7 +98,6 @@ public class NamesvrProcessor implements NettyRequestProcessor {
         return false;
     }
 
-
     protected RemotingCommand handleTopicMetadata(ChannelHandlerContext ctx, RemotingCommand request)
             throws Exception {
         checkNotNull(request);
@@ -119,15 +115,16 @@ public class NamesvrProcessor implements NettyRequestProcessor {
         String requestTopic = requestHeader.getTopic();
         if (Strings.isNotBlank(requestTopic)) {
             RocketMQTopic mqTopic = new RocketMQTopic(requestTopic);
-            Map<Integer,  InetSocketAddress> topicBrokerAddr = mqTopicManager
+            Map<Integer, InetSocketAddress> topicBrokerAddr = mqTopicManager
                     .getTopicBrokerAddr(mqTopic.getPulsarTopicName());
             int partitionNum = topicBrokerAddr.size();
             if (partitionNum > 0) {
                 mqTopicManager.getTopicBrokerAddr(mqTopic.getPulsarTopicName()).forEach((i, addr) -> {
                     String ownerBrokerAddress = addr.toString();
                     String hostName = addr.getHostName();
-                    String brokerAddress = parseBrokerAddress(ownerBrokerAddress, brokerController.getRemotingServer().getPort());
-                   // long brokerID = Math.abs(addr.hashCode());
+                    String brokerAddress = parseBrokerAddress(ownerBrokerAddress,
+                            brokerController.getRemotingServer().getPort());
+                    // long brokerID = Math.abs(addr.hashCode());
 
                     HashMap<Long, String> brokerAddrs = new HashMap<>();
                     brokerAddrs.put(0L, brokerAddress);
@@ -139,7 +136,7 @@ public class NamesvrProcessor implements NettyRequestProcessor {
                     queueData.setBrokerName(hostName);
                     queueData.setReadQueueNums(partitionNum);
                     queueData.setWriteQueueNums(partitionNum);
-                    queueData.setPerm(PERM_WRITE|PERM_READ);
+                    queueData.setPerm(PERM_WRITE | PERM_READ);
                     queueDatas.add(queueData);
                     topicRouteData.setQueueDatas(queueDatas);
 
@@ -158,8 +155,6 @@ public class NamesvrProcessor implements NettyRequestProcessor {
                 + FAQUrl.suggestTodo(FAQUrl.APPLY_TOPIC_URL));
         return response;
     }
-
-    public static final Pattern BROKER_ADDR_PAT = Pattern.compile("([^/:]+:)(\\d+)");
 
     public String parseBrokerAddress(String brokerAddress, int port) {
         // pulsar://localhost:6650
