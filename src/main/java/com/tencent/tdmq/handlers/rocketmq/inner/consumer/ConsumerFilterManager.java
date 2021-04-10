@@ -1,5 +1,6 @@
 package com.tencent.tdmq.handlers.rocketmq.inner.consumer;
 
+import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -19,12 +20,19 @@ import org.apache.rocketmq.common.protocol.heartbeat.SubscriptionData;
 public class ConsumerFilterManager {
 
     private static final long MS_24_HOUR = 24 * 3600 * 1000;
+    private transient RocketMQBrokerController brokerController;
 
     private ConcurrentMap<String/*Topic*/, FilterDataMapByTopic>
             filterDataByTopic = new ConcurrentHashMap<String/*Topic*/, FilterDataMapByTopic>(
             256);
 
-
+    public ConsumerFilterManager(RocketMQBrokerController brokerController) {
+        this.brokerController = brokerController;
+        // then set bit map length of store config.
+//        brokerController.getMessageStoreConfig().setBitMapLengthConsumeQueueExt(
+//                this.bloomFilter.getM()
+//        );
+    }
     public void register(final String consumerGroup, final Collection<SubscriptionData> subList) {
         for (SubscriptionData subscriptionData : subList) {
             register(
