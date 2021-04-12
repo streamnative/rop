@@ -855,42 +855,42 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
     }
 
     @Override
-    public GetMessageResult getMessage(String s, String s1, int i, long l, int i1, MessageFilter messageFilter) {
+    public GetMessageResult getMessage(String group, String topic, int queueId, long offset, int maxMsgNums, MessageFilter messageFilter) {
         return null;
     }
 
     @Override
-    public long getMaxOffsetInQueue(String s, int i) {
+    public long getMaxOffsetInQueue(String topic, int queueId) {
         return 0;
     }
 
     @Override
-    public long getMinOffsetInQueue(String s, int i) {
+    public long getMinOffsetInQueue(String topic, int queueId) {
         return 0;
     }
 
     @Override
-    public long getCommitLogOffsetInQueue(String s, int i, long l) {
+    public long getCommitLogOffsetInQueue(String topic, int queueId, long consumeQueueOffset) {
         return 0;
     }
 
     @Override
-    public long getOffsetInQueueByTime(String s, int i, long l) {
+    public long getOffsetInQueueByTime(String topic, int queueId, long timestamp) {
         return 0;
     }
 
     @Override
-    public MessageExt lookMessageByOffset(long l) {
+    public MessageExt lookMessageByOffset(long commitLogOffset) {
         return null;
     }
 
     @Override
-    public SelectMappedBufferResult selectOneMessageByOffset(long l) {
+    public SelectMappedBufferResult selectOneMessageByOffset(long commitLogOffset) {
         return null;
     }
 
     @Override
-    public SelectMappedBufferResult selectOneMessageByOffset(long l, int i) {
+    public SelectMappedBufferResult selectOneMessageByOffset(long commitLogOffset, int msgSize) {
         return null;
     }
 
@@ -915,7 +915,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
     }
 
     @Override
-    public long getEarliestMessageTime(String s, int i) {
+    public long getEarliestMessageTime(String topic, int queueId) {
         return 0;
     }
 
@@ -925,22 +925,22 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
     }
 
     @Override
-    public long getMessageStoreTimeStamp(String s, int i, long l) {
+    public long getMessageStoreTimeStamp(String topic, int queueId, long consumeQueueOffset) {
         return 0;
     }
 
     @Override
-    public long getMessageTotalInQueue(String s, int i) {
+    public long getMessageTotalInQueue(String topic, int queueId) {
         return 0;
     }
 
     @Override
-    public SelectMappedBufferResult getCommitLogData(long l) {
+    public SelectMappedBufferResult getCommitLogData(long offset) {
         return null;
     }
 
     @Override
-    public boolean appendToCommitLog(long l, byte[] bytes) {
+    public boolean appendToCommitLog(long startOffset, byte[] data) {
         return false;
     }
 
@@ -950,12 +950,12 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
     }
 
     @Override
-    public QueryMessageResult queryMessage(String s, String s1, int i, long l, long l1) {
+    public QueryMessageResult queryMessage(String topic, String key, int maxNum, long begin, long end) {
         return null;
     }
 
     @Override
-    public void updateHaMasterAddress(String s) {
+    public void updateHaMasterAddress(String newAddr) {
 
     }
 
@@ -970,7 +970,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
     }
 
     @Override
-    public int cleanUnusedTopic(Set<String> set) {
+    public int cleanUnusedTopic(Set<String> topics) {
         return 0;
     }
 
@@ -980,7 +980,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
     }
 
     @Override
-    public boolean checkInDiskByConsumeOffset(String s, int i, long l) {
+    public boolean checkInDiskByConsumeOffset(String topic, int queueId, long consumeOffset) {
         return false;
     }
 
@@ -995,7 +995,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
     }
 
     @Override
-    public boolean resetWriteOffset(long l) {
+    public boolean resetWriteOffset(long phyOffset) {
         return false;
     }
 
@@ -1005,7 +1005,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
     }
 
     @Override
-    public void setConfirmOffset(long l) {
+    public void setConfirmOffset(long phyOffset) {
 
     }
 
@@ -1030,7 +1030,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
     }
 
     @Override
-    public ConsumeQueue getConsumeQueue(String s, int i) {
+    public ConsumeQueue getConsumeQueue(String topic, int queueId) {
         return null;
     }
 
