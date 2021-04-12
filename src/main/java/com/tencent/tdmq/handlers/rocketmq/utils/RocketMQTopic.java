@@ -45,6 +45,10 @@ public class RocketMQTopic {
         RocketMQTopic.namespace = namespace;
     }
 
+    public final static String getPulsarNoDomainTopic(String rmqTopic) {
+        return new RocketMQTopic(rmqTopic).getNoDomainTopicName();
+    }
+
     public String getNoDomainTopicName() {
         return Joiner.on('/').join(pulsarTopicName.getTenant(), pulsarTopicName.getNamespacePortion(),
                 pulsarTopicName.getLocalName());

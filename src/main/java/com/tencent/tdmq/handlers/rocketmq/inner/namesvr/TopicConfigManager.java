@@ -176,7 +176,7 @@ public class TopicConfigManager {
     }
 
     public boolean isSystemTopic(final String topic) {
-        return this.systemTopicList.contains(topic);
+        return this.systemTopicList.contains(RocketMQTopic.getPulsarNoDomainTopic(topic));
     }
 
     public Set<String> getSystemTopic() {
@@ -184,7 +184,7 @@ public class TopicConfigManager {
     }
 
     public TopicConfig selectTopicConfig(final String topic) {
-        return this.topicConfigTable.get(topic);
+        return this.topicConfigTable.get(RocketMQTopic.getPulsarNoDomainTopic(topic));
     }
 
     public TopicConfig createTopicInSendMessageMethod(final String topic, final String defaultTopic,

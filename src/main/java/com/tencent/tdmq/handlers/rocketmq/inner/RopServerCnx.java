@@ -9,6 +9,8 @@ import io.netty.handler.codec.haproxy.HAProxyMessage;
 import io.netty.util.concurrent.Promise;
 import java.net.SocketAddress;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
@@ -72,10 +74,23 @@ import org.apache.pulsar.common.util.FutureUtil;
 import org.apache.pulsar.common.util.SafeCollectionUtils;
 import org.apache.pulsar.common.util.collections.ConcurrentLongHashMap;
 import org.apache.pulsar.shaded.com.google.protobuf.v241.GeneratedMessageLite;
+import org.apache.rocketmq.common.message.MessageExt;
+import org.apache.rocketmq.common.message.MessageExtBatch;
+import org.apache.rocketmq.store.CommitLogDispatcher;
+import org.apache.rocketmq.store.ConsumeQueue;
+import org.apache.rocketmq.store.GetMessageResult;
+import org.apache.rocketmq.store.MessageExtBrokerInner;
+import org.apache.rocketmq.store.MessageFilter;
+import org.apache.rocketmq.store.MessageStore;
+import org.apache.rocketmq.store.PutMessageResult;
+import org.apache.rocketmq.store.QueryMessageResult;
+import org.apache.rocketmq.store.SelectMappedBufferResult;
+import org.apache.rocketmq.store.config.BrokerRole;
+import org.apache.rocketmq.store.stats.BrokerStatsManager;
 
 @Slf4j
 @Getter
-public class RopServerCnx extends ChannelInboundHandlerAdapter implements TransportCnx {
+public class RopServerCnx extends ChannelInboundHandlerAdapter implements TransportCnx, MessageStore {
 
     private RocketMQBrokerController brokerController;
     private ChannelHandlerContext ctx;
@@ -807,6 +822,226 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
 
     protected void close() {
         this.ctx.close();
+    }
+
+    @Override
+    public boolean load() {
+        return true;
+    }
+
+    @Override
+    public void start() throws Exception {
+
+    }
+
+    @Override
+    public void shutdown() {
+
+    }
+
+    @Override
+    public void destroy() {
+
+    }
+
+    @Override
+    public PutMessageResult putMessage(MessageExtBrokerInner messageExtBrokerInner) {
+        return null;
+    }
+
+    @Override
+    public PutMessageResult putMessages(MessageExtBatch messageExtBatch) {
+        return null;
+    }
+
+    @Override
+    public GetMessageResult getMessage(String s, String s1, int i, long l, int i1, MessageFilter messageFilter) {
+        return null;
+    }
+
+    @Override
+    public long getMaxOffsetInQueue(String s, int i) {
+        return 0;
+    }
+
+    @Override
+    public long getMinOffsetInQueue(String s, int i) {
+        return 0;
+    }
+
+    @Override
+    public long getCommitLogOffsetInQueue(String s, int i, long l) {
+        return 0;
+    }
+
+    @Override
+    public long getOffsetInQueueByTime(String s, int i, long l) {
+        return 0;
+    }
+
+    @Override
+    public MessageExt lookMessageByOffset(long l) {
+        return null;
+    }
+
+    @Override
+    public SelectMappedBufferResult selectOneMessageByOffset(long l) {
+        return null;
+    }
+
+    @Override
+    public SelectMappedBufferResult selectOneMessageByOffset(long l, int i) {
+        return null;
+    }
+
+    @Override
+    public String getRunningDataInfo() {
+        return null;
+    }
+
+    @Override
+    public HashMap<String, String> getRuntimeInfo() {
+        return null;
+    }
+
+    @Override
+    public long getMaxPhyOffset() {
+        return 0;
+    }
+
+    @Override
+    public long getMinPhyOffset() {
+        return 0;
+    }
+
+    @Override
+    public long getEarliestMessageTime(String s, int i) {
+        return 0;
+    }
+
+    @Override
+    public long getEarliestMessageTime() {
+        return 0;
+    }
+
+    @Override
+    public long getMessageStoreTimeStamp(String s, int i, long l) {
+        return 0;
+    }
+
+    @Override
+    public long getMessageTotalInQueue(String s, int i) {
+        return 0;
+    }
+
+    @Override
+    public SelectMappedBufferResult getCommitLogData(long l) {
+        return null;
+    }
+
+    @Override
+    public boolean appendToCommitLog(long l, byte[] bytes) {
+        return false;
+    }
+
+    @Override
+    public void executeDeleteFilesManually() {
+
+    }
+
+    @Override
+    public QueryMessageResult queryMessage(String s, String s1, int i, long l, long l1) {
+        return null;
+    }
+
+    @Override
+    public void updateHaMasterAddress(String s) {
+
+    }
+
+    @Override
+    public long slaveFallBehindMuch() {
+        return 0;
+    }
+
+    @Override
+    public long now() {
+        return 0;
+    }
+
+    @Override
+    public int cleanUnusedTopic(Set<String> set) {
+        return 0;
+    }
+
+    @Override
+    public void cleanExpiredConsumerQueue() {
+
+    }
+
+    @Override
+    public boolean checkInDiskByConsumeOffset(String s, int i, long l) {
+        return false;
+    }
+
+    @Override
+    public long dispatchBehindBytes() {
+        return 0;
+    }
+
+    @Override
+    public long flush() {
+        return 0;
+    }
+
+    @Override
+    public boolean resetWriteOffset(long l) {
+        return false;
+    }
+
+    @Override
+    public long getConfirmOffset() {
+        return 0;
+    }
+
+    @Override
+    public void setConfirmOffset(long l) {
+
+    }
+
+    @Override
+    public boolean isOSPageCacheBusy() {
+        return false;
+    }
+
+    @Override
+    public long lockTimeMills() {
+        return 0;
+    }
+
+    @Override
+    public boolean isTransientStorePoolDeficient() {
+        return false;
+    }
+
+    @Override
+    public LinkedList<CommitLogDispatcher> getDispatcherList() {
+        return null;
+    }
+
+    @Override
+    public ConsumeQueue getConsumeQueue(String s, int i) {
+        return null;
+    }
+
+    @Override
+    public BrokerStatsManager getBrokerStatsManager() {
+        return null;
+    }
+
+    @Override
+    public void handleScheduleMessageService(BrokerRole brokerRole) {
+
     }
 
     static enum State {
