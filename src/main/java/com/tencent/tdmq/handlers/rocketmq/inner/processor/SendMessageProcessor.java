@@ -349,7 +349,8 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             putMessageResult = this.brokerController.getTransactionalMessageService().prepareMessage(msgInner);
  */
         } else {
-            putMessageResult = this.getServerCnxMsgStore(ctx, requestHeader.getProducerGroup()).putMessage(msgInner, request, requestHeader);
+            putMessageResult = this.getServerCnxMsgStore(ctx, requestHeader.getProducerGroup())
+                    .putMessage(msgInner, request, requestHeader);
         }
 
         return handlePutMessageResult(putMessageResult, response, request, msgInner, responseHeader, sendMessageContext,

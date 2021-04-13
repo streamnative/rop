@@ -15,7 +15,7 @@ public interface EntryFormatter<T> {
      */
     ByteBuf encode(final T record, final int numMessages);
 
-    T decode(final Entry entry, final byte magic);
+    T decode(final List<Entry> entries, final byte magic);
 
     default int parseNumMessages(final T record) {
         return 1;

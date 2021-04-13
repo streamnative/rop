@@ -35,6 +35,14 @@ public class RopPulsarCommandSender implements PulsarCommandSender {
         producerResultMap = new ConcurrentLongHashMap<>(1024);
     }
 
+    public static String createMessageId(long ledgerId, long entryId) {
+        ByteBuffer byteBuffer = ByteBuffer.allocate(16);
+        byteBuffer.putLong(ledgerId);
+        byteBuffer.putLong(entryId);
+        byteBuffer.flip();
+        return UtilAll.bytes2string(byteBuffer.array());
+    }
+
     public void put(long seqId, CompletableFuture<PutMessageResult> putMessageFuture) {
         CompletableFuture<PutMessageResult> oldResult = producerResultMap.put(seqId, putMessageFuture);
         if (oldResult != null) {
@@ -150,13 +158,5 @@ public class RopPulsarCommandSender implements PulsarCommandSender {
             int partitionIdx, List<Entry> entries, EntryBatchSizes batchSizes, EntryBatchIndexesAcks batchIndexesAcks,
             RedeliveryTracker redeliveryTracker) {
         return null;
-    }
-
-    public static String createMessageId(long ledgerId, long entryId) {
-        ByteBuffer byteBuffer = ByteBuffer.allocate(16);
-        byteBuffer.putLong(ledgerId);
-        byteBuffer.putLong(entryId);
-        byteBuffer.flip();
-        return UtilAll.bytes2string(byteBuffer.array());
     }
 }

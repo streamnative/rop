@@ -4,13 +4,10 @@ import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
 import com.tencent.tdmq.handlers.rocketmq.inner.RopClientChannelCnx;
 import com.tencent.tdmq.handlers.rocketmq.inner.pulsar.PulsarMessageStore;
 import io.netty.channel.ChannelHandlerContext;
-import java.net.InetSocketAddress;
-import java.net.SocketAddress;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.pulsar.broker.service.PulsarCommandSender;
 import org.apache.rocketmq.broker.mqtrace.SendMessageContext;
 import org.apache.rocketmq.broker.mqtrace.SendMessageHook;
 import org.apache.rocketmq.broker.topic.TopicValidator;
@@ -18,7 +15,6 @@ import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.TopicConfig;
 import org.apache.rocketmq.common.TopicFilterType;
 import org.apache.rocketmq.common.constant.DBMsgConstants;
-import org.apache.rocketmq.common.constant.LoggerName;
 import org.apache.rocketmq.common.constant.PermName;
 import org.apache.rocketmq.common.help.FAQUrl;
 import org.apache.rocketmq.common.message.MessageAccessor;
@@ -33,17 +29,15 @@ import org.apache.rocketmq.common.protocol.header.SendMessageResponseHeader;
 import org.apache.rocketmq.common.sysflag.MessageSysFlag;
 import org.apache.rocketmq.common.sysflag.TopicSysFlag;
 import org.apache.rocketmq.common.utils.ChannelUtil;
-import org.apache.rocketmq.logging.InternalLogger;
-import org.apache.rocketmq.logging.InternalLoggerFactory;
 import org.apache.rocketmq.remoting.common.RemotingHelper;
 import org.apache.rocketmq.remoting.exception.RemotingCommandException;
 import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.store.MessageExtBrokerInner;
-import org.apache.rocketmq.store.MessageStore;
 
 @Slf4j
 public abstract class AbstractSendMessageProcessor implements NettyRequestProcessor {
+
     protected final static int DLQ_NUMS_PER_GROUP = 1;
     protected final RocketMQBrokerController brokerController;
     protected final Random random = new Random(System.currentTimeMillis());
@@ -54,7 +48,8 @@ public abstract class AbstractSendMessageProcessor implements NettyRequestProces
     }
 
     protected PulsarMessageStore getServerCnxMsgStore(ChannelHandlerContext ctx, String groupName) {
-        RopClientChannelCnx channelCnx = (RopClientChannelCnx)this.brokerController.getProducerManager().findChlInfo(groupName, ctx.channel());
+        RopClientChannelCnx channelCnx = (RopClientChannelCnx) this.brokerController.getProducerManager()
+                .findChlInfo(groupName, ctx.channel());
         return channelCnx != null ? channelCnx.getServerCnx() : null;
     }
 

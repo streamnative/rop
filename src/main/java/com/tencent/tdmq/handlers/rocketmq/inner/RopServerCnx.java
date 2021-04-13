@@ -104,40 +104,40 @@ import org.apache.rocketmq.store.stats.BrokerStatsManager;
 @Getter
 public class RopServerCnx extends ChannelInboundHandlerAdapter implements TransportCnx, PulsarMessageStore {
 
-    private RocketMQBrokerController brokerController;
-    private ChannelHandlerContext ctx;
-    private SocketAddress remoteAddress;
+    private static final AtomicLongFieldUpdater<RopServerCnx> MSG_PUBLISH_BUFFER_SIZE_UPDATER = AtomicLongFieldUpdater
+            .newUpdater(RopServerCnx.class, "messagePublishBufferSize");
     private final BrokerService service;
     private final ConcurrentLongHashMap<Producer> producers;
     private final ConcurrentLongHashMap<Consumer> consumers;
-    private State state;
-    private volatile boolean isActive = true;
     private final int maxPendingSendRequests;
     private final int resumeReadsThreshold;
-    private int pendingSendRequest = 0;
     private final String replicatorPrefix;
-    private int nonPersistentPendingMessages = 0;
     private final int MaxNonPersistentPendingMessages;
-    private Set<String> proxyRoles;
     private final int maxMessageSize;
+    private final RopEntryFormatter entryFormatter = new RopEntryFormatter();
+    private final RopPulsarCommandSender commandSender;
+    private final AtomicLong seqGenerator = new AtomicLong();
+    private final int SEND_TIMEOUT_IN_SEC = 15;
+    private RocketMQBrokerController brokerController;
+    private ChannelHandlerContext ctx;
+    private SocketAddress remoteAddress;
+    private State state;
+    private volatile boolean isActive = true;
+    private int pendingSendRequest = 0;
+    private int nonPersistentPendingMessages = 0;
+    private Set<String> proxyRoles;
     private boolean preciseDispatcherFlowControl;
     private boolean preciseTopicPublishRateLimitingEnable;
     private boolean encryptionRequireOnProducer;
     private volatile boolean autoReadDisabledRateLimiting = false;
     private FeatureFlags features;
     private volatile boolean autoReadDisabledPublishBufferLimiting = false;
-    private static final AtomicLongFieldUpdater<RopServerCnx> MSG_PUBLISH_BUFFER_SIZE_UPDATER = AtomicLongFieldUpdater
-            .newUpdater(RopServerCnx.class, "messagePublishBufferSize");
     private volatile long messagePublishBufferSize = 0L;
     private AuthenticationDataSource originalAuthData;
     private AuthenticationDataSource authenticationData;
     private String authRole = null;
     private String clientVersion = null;
     private String originalPrincipal = null;
-    private final RopEntryFormatter entryFormatter = new RopEntryFormatter();
-    private final RopPulsarCommandSender commandSender;
-    private final AtomicLong seqGenerator = new AtomicLong();
-    private final int SEND_TIMEOUT_IN_SEC = 15;
 
     public RopServerCnx(RocketMQBrokerController brokerController, ChannelHandlerContext ctx) {
         this.brokerController = brokerController;
