@@ -2,9 +2,9 @@ package com.tencent.tdmq.handlers.rocketmq.inner.processor;
 
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
 import io.netty.channel.ChannelHandlerContext;
-import java.net.SocketAddress;
 import java.util.List;
 import java.util.Map;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.logging.log4j.util.Strings;
 import org.apache.rocketmq.broker.mqtrace.ConsumeMessageContext;
 import org.apache.rocketmq.broker.mqtrace.ConsumeMessageHook;
@@ -37,6 +37,7 @@ import org.apache.rocketmq.store.MessageExtBrokerInner;
 import org.apache.rocketmq.store.PutMessageResult;
 import org.apache.rocketmq.store.stats.BrokerStatsManager;
 
+@Slf4j
 public class SendMessageProcessor extends AbstractSendMessageProcessor implements NettyRequestProcessor {
 
     private List<ConsumeMessageHook> consumeMessageHookList;
@@ -202,7 +203,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         msgInner.setSysFlag(msgExt.getSysFlag());
         msgInner.setBornTimestamp(msgExt.getBornTimestamp());
         msgInner.setBornHost(msgExt.getBornHost());
-        msgInner.setStoreHost(this.getStoreHost());
+        msgInner.setStoreHost(ctx.channel().localAddress());
         msgInner.setReconsumeTimes(msgExt.getReconsumeTimes() + 1);
 
         String originMsgId = MessageAccessor.getOriginMessageId(msgExt);
@@ -327,7 +328,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         MessageAccessor.setProperties(msgInner, MessageDecoder.string2messageProperties(requestHeader.getProperties()));
         msgInner.setBornTimestamp(requestHeader.getBornTimestamp());
         msgInner.setBornHost(ctx.channel().remoteAddress());
-        msgInner.setStoreHost(this.getStoreHost());
+        msgInner.setStoreHost(ctx.channel().localAddress());
         msgInner.setReconsumeTimes(requestHeader.getReconsumeTimes() == null ? 0 : requestHeader.getReconsumeTimes());
         String clusterName = this.brokerController.getServerConfig().getClusterName();
         MessageAccessor.putProperty(msgInner, MessageConst.PROPERTY_CLUSTER, clusterName);
@@ -344,10 +345,11 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
                         "the broker[" + this.brokerController.getBrokerConfig().getBrokerIP1()
                                 + "] sending transaction message is forbidden");
                 return response;
-            }*/
+            }
             putMessageResult = this.brokerController.getTransactionalMessageService().prepareMessage(msgInner);
+ */
         } else {
-            putMessageResult = this.brokerController.getMessageStore().putMessage(msgInner);
+            putMessageResult = this.getServerCnxMsgStore(ctx, requestHeader.getProducerGroup()).putMessage(msgInner, request, requestHeader);
         }
 
         return handlePutMessageResult(putMessageResult, response, request, msgInner, responseHeader, sendMessageContext,
@@ -475,16 +477,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
 
 /* TODO:       response.addExtField(MessageConst.PROPERTY_MSG_REGION, this.brokerController.getServerConfig().getRegionId());
         response.addExtField(MessageConst.PROPERTY_TRACE_SWITCH, String.valueOf(this.brokerController.getServerConfig().isTraceOn()));
-
-        log.debug("Receive SendMessage request command {}", request);
-
-        final long startTimstamp = this.brokerController.getServerConfig().getStartAcceptSendRequestTimeStamp();
-        if (this.brokerController.getMessageStore().now() < startTimstamp) {
-            response.setCode(ResponseCode.SYSTEM_ERROR);
-            response.setRemark(String.format("broker unable to service, until %s", UtilAll.timeMillisToHumanString2(startTimstamp)));
-            return response;
-        }*/
-
+*/
         response.setCode(-1);
         super.msgCheck(ctx, requestHeader, response);
         if (response.getCode() != -1) {
@@ -526,7 +519,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         messageExtBatch.setBody(request.getBody());
         messageExtBatch.setBornTimestamp(requestHeader.getBornTimestamp());
         messageExtBatch.setBornHost(ctx.channel().remoteAddress());
-        messageExtBatch.setStoreHost(this.getStoreHost());
+        messageExtBatch.setStoreHost(ctx.channel().localAddress());
         messageExtBatch
                 .setReconsumeTimes(requestHeader.getReconsumeTimes() == null ? 0 : requestHeader.getReconsumeTimes());
         String clusterName = this.brokerController.getServerConfig().getClusterName();
@@ -552,10 +545,6 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
                 }
             }
         }
-    }
-
-    public SocketAddress getStoreHost() {
-        return storeHost;
     }
 
     private String diskUtil() {

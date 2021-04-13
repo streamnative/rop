@@ -13,7 +13,7 @@ public class RopBatchEntriesFormatter implements EntryFormatter<MessageExtBatch>
     }
 
     @Override
-    public MessageExtBatch decode(List<Entry> entries, byte magic) {
+    public MessageExtBatch decode(Entry entries, byte magic) {
         return null;
     }
 

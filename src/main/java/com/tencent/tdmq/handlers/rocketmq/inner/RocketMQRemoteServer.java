@@ -22,6 +22,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
 import lombok.Data;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.remoting.ChannelEventListener;
 import org.apache.rocketmq.remoting.InvokeCallback;
@@ -43,7 +44,6 @@ import org.apache.rocketmq.remoting.netty.TlsSystemConfig;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 
 @Slf4j
-@Data
 public class RocketMQRemoteServer extends NettyRemotingAbstract implements RemotingServer {
 
     public static final String HANDSHAKE_HANDLER_NAME = "handshakeHandler";
@@ -52,13 +52,20 @@ public class RocketMQRemoteServer extends NettyRemotingAbstract implements Remot
     private final ExecutorService publicExecutor;
     private final ChannelEventListener channelEventListener;
     private final Timer timer = new Timer("ServerHouseKeepingService", true);
+    @Getter
     private DefaultEventExecutorGroup defaultEventExecutorGroup;
+    @Getter
     private RocketMQServiceConfiguration config;
+    @Getter
     private int port = 0;
     // sharable handlers
+    @Getter
     private HandshakeHandler handshakeHandler;
+    @Getter
     private NettyEncoder encoder;
+    @Getter
     private NettyConnectManageHandler connectionManageHandler;
+    @Getter
     private NettyServerHandler serverHandler;
 
     public RocketMQRemoteServer(final RocketMQServiceConfiguration config,

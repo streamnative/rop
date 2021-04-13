@@ -1,12 +1,16 @@
 package com.tencent.tdmq.handlers.rocketmq.inner.processor;
 
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
+import com.tencent.tdmq.handlers.rocketmq.inner.RopClientChannelCnx;
+import com.tencent.tdmq.handlers.rocketmq.inner.pulsar.PulsarMessageStore;
 import io.netty.channel.ChannelHandlerContext;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.pulsar.broker.service.PulsarCommandSender;
 import org.apache.rocketmq.broker.mqtrace.SendMessageContext;
 import org.apache.rocketmq.broker.mqtrace.SendMessageHook;
 import org.apache.rocketmq.broker.topic.TopicValidator;
@@ -36,22 +40,22 @@ import org.apache.rocketmq.remoting.exception.RemotingCommandException;
 import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.store.MessageExtBrokerInner;
+import org.apache.rocketmq.store.MessageStore;
 
+@Slf4j
 public abstract class AbstractSendMessageProcessor implements NettyRequestProcessor {
-
-    protected static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
-
     protected final static int DLQ_NUMS_PER_GROUP = 1;
     protected final RocketMQBrokerController brokerController;
     protected final Random random = new Random(System.currentTimeMillis());
-    protected final SocketAddress storeHost;
     private List<SendMessageHook> sendMessageHookList;
 
     public AbstractSendMessageProcessor(final RocketMQBrokerController brokerController) {
         this.brokerController = brokerController;
-        this.storeHost =
-                new InetSocketAddress("brokerController.getServerConfig()", brokerController
-                        .getServerConfig().getBrokerServicePort().get());
+    }
+
+    protected PulsarMessageStore getServerCnxMsgStore(ChannelHandlerContext ctx, String groupName) {
+        RopClientChannelCnx channelCnx = (RopClientChannelCnx)this.brokerController.getProducerManager().findChlInfo(groupName, ctx.channel());
+        return channelCnx != null ? channelCnx.getServerCnx() : null;
     }
 
     protected SendMessageContext buildMsgContext(ChannelHandlerContext ctx,
@@ -114,14 +118,10 @@ public abstract class AbstractSendMessageProcessor implements NettyRequestProces
         msgInner.setSysFlag(sysFlag);
         msgInner.setBornTimestamp(requestHeader.getBornTimestamp());
         msgInner.setBornHost(ctx.channel().remoteAddress());
-        msgInner.setStoreHost(this.getStoreHost());
+        msgInner.setStoreHost(ctx.channel().localAddress());
         msgInner.setReconsumeTimes(requestHeader.getReconsumeTimes() == null ? 0 : requestHeader
                 .getReconsumeTimes());
         return msgInner;
-    }
-
-    public SocketAddress getStoreHost() {
-        return storeHost;
     }
 
     protected RemotingCommand msgContentCheck(final ChannelHandlerContext ctx,

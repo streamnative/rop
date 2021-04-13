@@ -8,16 +8,15 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.logging.log4j.util.Strings;
 import org.apache.rocketmq.broker.client.ClientChannelInfo;
 import org.apache.rocketmq.broker.util.PositiveAtomicCounter;
-import org.apache.rocketmq.common.constant.LoggerName;
-import org.apache.rocketmq.logging.InternalLogger;
-import org.apache.rocketmq.logging.InternalLoggerFactory;
 import org.apache.rocketmq.remoting.common.RemotingHelper;
 import org.apache.rocketmq.remoting.common.RemotingUtil;
 
 @Slf4j
 public class ProducerManager {
+
     private static final long CHANNEL_EXPIRED_TIMEOUT = 1000 * 120;
     private static final int GET_AVALIABLE_CHANNEL_RETRY_COUNT = 3;
     private final ConcurrentHashMap<String /* group name */, ConcurrentHashMap<Channel, ClientChannelInfo>> groupChannelTable =
@@ -94,7 +93,6 @@ public class ProducerManager {
                     clientChannelInfo.toString());
         }
 
-
         if (clientChannelInfoFound != null) {
             clientChannelInfoFound.setLastUpdateTimestamp(System.currentTimeMillis());
         }
@@ -161,5 +159,18 @@ public class ProducerManager {
 
     public Channel findChannel(String clientId) {
         return clientChannelTable.get(clientId);
+    }
+
+    public ClientChannelInfo findChlInfo(String groupName, Channel channel) {
+        if (Strings.isNotBlank(groupName) && groupChannelTable.containsKey(groupName)) {
+            return groupChannelTable.get(groupName).get(channel);
+        } else {
+            for (Map<Channel, ClientChannelInfo> m : groupChannelTable.values()) {
+                if (m.containsKey(channel)) {
+                    return m.get(channel);
+                }
+            }
+        }
+        return null;
     }
 }

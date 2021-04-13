@@ -1,21 +1,45 @@
 package com.tencent.tdmq.handlers.rocketmq.inner.format;
 
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufAllocator;
+import io.netty.buffer.Unpooled;
+import java.nio.ByteBuffer;
 import java.util.List;
 import org.apache.bookkeeper.mledger.Entry;
+import org.apache.pulsar.common.api.proto.PulsarApi;
+import org.apache.pulsar.common.protocol.Commands;
 import org.apache.rocketmq.store.MessageExtBrokerInner;
 
 public class RopEntryFormatter implements EntryFormatter<MessageExtBrokerInner> {
 
     @Override
-    public MessageExtBrokerInner decode(List<Entry> list, byte magic) {
+    public MessageExtBrokerInner decode(Entry list, byte magic) {
 
         return null;
     }
 
     @Override
     public ByteBuf encode(MessageExtBrokerInner record, int numMessages) {
-        return null;
+        final ByteBuf recordsWrapper = Unpooled.wrappedBuffer(record.getBody());
+        final ByteBuf buf = Commands.serializeMetadataAndPayload(
+                Commands.ChecksumType.None,
+                getMessageMetadataWithNumberMessages(numMessages),
+                recordsWrapper);
+        recordsWrapper.release();
+        return buf;
+    }
+
+    private static PulsarApi.MessageMetadata getMessageMetadataWithNumberMessages(int numMessages) {
+        final PulsarApi.MessageMetadata.Builder builder = PulsarApi.MessageMetadata.newBuilder();
+        builder.addProperties(PulsarApi.KeyValue.newBuilder()
+                .setKey("entry.format")
+                .setValue("rocketmq")
+                .build());
+        builder.setProducerName("");
+        builder.setSequenceId(0L);
+        builder.setPublishTime(0L);
+        builder.setNumMessagesInBatch(numMessages);
+        return builder.build();
     }
 
 //    @Override

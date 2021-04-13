@@ -1,6 +1,11 @@
 package com.tencent.tdmq.handlers.rocketmq.inner;
 
+import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
+import com.tencent.tdmq.handlers.rocketmq.inner.format.RopEntryFormatter;
+import com.tencent.tdmq.handlers.rocketmq.inner.pulsar.PulsarMessageStore;
+import com.tencent.tdmq.handlers.rocketmq.inner.pulsar.RopPulsarCommandSender;
+import com.tencent.tdmq.handlers.rocketmq.utils.RocketMQTopic;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
@@ -16,6 +21,8 @@ import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicLongFieldUpdater;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
@@ -51,6 +58,7 @@ import org.apache.pulsar.common.api.proto.PulsarApi.CommandGetLastMessageId;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandGetTopicsOfNamespace;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandGetTopicsOfNamespace.Mode;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandProducer;
+import org.apache.pulsar.common.api.proto.PulsarApi.CommandProducer.Builder;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandRedeliverUnacknowledgedMessages;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandSeek;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandSend;
@@ -76,13 +84,17 @@ import org.apache.pulsar.common.util.collections.ConcurrentLongHashMap;
 import org.apache.pulsar.shaded.com.google.protobuf.v241.GeneratedMessageLite;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageExtBatch;
+import org.apache.rocketmq.common.protocol.header.SendMessageRequestHeader;
+import org.apache.rocketmq.remoting.protocol.RemotingCommand;
+import org.apache.rocketmq.store.AppendMessageResult;
+import org.apache.rocketmq.store.AppendMessageStatus;
 import org.apache.rocketmq.store.CommitLogDispatcher;
 import org.apache.rocketmq.store.ConsumeQueue;
 import org.apache.rocketmq.store.GetMessageResult;
 import org.apache.rocketmq.store.MessageExtBrokerInner;
 import org.apache.rocketmq.store.MessageFilter;
-import org.apache.rocketmq.store.MessageStore;
 import org.apache.rocketmq.store.PutMessageResult;
+import org.apache.rocketmq.store.PutMessageStatus;
 import org.apache.rocketmq.store.QueryMessageResult;
 import org.apache.rocketmq.store.SelectMappedBufferResult;
 import org.apache.rocketmq.store.config.BrokerRole;
@@ -90,7 +102,7 @@ import org.apache.rocketmq.store.stats.BrokerStatsManager;
 
 @Slf4j
 @Getter
-public class RopServerCnx extends ChannelInboundHandlerAdapter implements TransportCnx, MessageStore {
+public class RopServerCnx extends ChannelInboundHandlerAdapter implements TransportCnx, PulsarMessageStore {
 
     private RocketMQBrokerController brokerController;
     private ChannelHandlerContext ctx;
@@ -122,13 +134,17 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
     private String authRole = null;
     private String clientVersion = null;
     private String originalPrincipal = null;
+    private final RopEntryFormatter entryFormatter = new RopEntryFormatter();
+    private final RopPulsarCommandSender commandSender;
+    private final AtomicLong seqGenerator = new AtomicLong();
+    private final int SEND_TIMEOUT_IN_SEC = 15;
 
     public RopServerCnx(RocketMQBrokerController brokerController, ChannelHandlerContext ctx) {
         this.brokerController = brokerController;
         this.service = brokerController.getBrokerService();
         this.ctx = ctx;
         this.remoteAddress = ctx.channel().remoteAddress();
-        this.state = State.Start;
+        this.state = State.Connected;
         this.producers = new ConcurrentLongHashMap(8, 1);
         this.consumers = new ConcurrentLongHashMap(8, 1);
         this.replicatorPrefix = this.service.pulsar().getConfiguration().getReplicatorPrefix();
@@ -143,6 +159,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
         this.preciseTopicPublishRateLimitingEnable = this.service.pulsar().getConfiguration()
                 .isPreciseTopicPublishRateLimiterEnable();
         this.encryptionRequireOnProducer = this.service.pulsar().getConfiguration().isEncryptionRequireOnProducer();
+        this.commandSender = new RopPulsarCommandSender(this);
+        ctx.channel().pipeline().addLast(this);
     }
 
     protected void handleSubscribe(CommandSubscribe subscribe) {
@@ -264,6 +282,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
                                 this.getPrincipal(), isEncrypted, metadata, null, epoch,
                                 userProvidedProducerName);
                         topic.addProducer(producer);
+                        this.producers.put(producerId, producer);
                         if (!this.isActive()) {
                             producer.closeNow(true);
                             log.info("[{}] Cleared producer created after connection was closed: {}",
@@ -312,7 +331,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
             this.startSendOperation(producer, headersAndPayload.readableBytes(), send.getNumMessages());
             if (send.hasHighestSequenceId() && send.getSequenceId() <= send.getHighestSequenceId()) {
                 producer.publishMessage(send.getProducerId(), send.getSequenceId(), send.getHighestSequenceId(),
-                        headersAndPayload, (long) send.getNumMessages(), send.getIsChunk());
+                        headersAndPayload, send.getNumMessages(), send.getIsChunk());
             } else {
                 producer.publishMessage(send.getProducerId(), send.getSequenceId(), headersAndPayload,
                         send.getNumMessages(), send.getIsChunk());
@@ -674,7 +693,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
 
     @Override
     public PulsarCommandSender getCommandSender() {
-        return null;
+        return this.commandSender;
     }
 
     @Override
@@ -740,7 +759,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
 
     @Override
     public void execute(Runnable runnable) {
-
+        this.brokerController.getSendMessageExecutor().execute(runnable);
     }
 
     private void disableTcpNoDelayIfNeeded(String topic, String producerName) {
@@ -781,6 +800,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
     public void channelActive(ChannelHandlerContext ctx) throws Exception {
         super.channelActive(ctx);
         this.remoteAddress = ctx.channel().remoteAddress();
+        this.state = State.Connected;
     }
 
     @Override
@@ -855,7 +875,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
     }
 
     @Override
-    public GetMessageResult getMessage(String group, String topic, int queueId, long offset, int maxMsgNums, MessageFilter messageFilter) {
+    public GetMessageResult getMessage(String group, String topic, int queueId, long offset, int maxMsgNums,
+            MessageFilter messageFilter) {
         return null;
     }
 
@@ -1042,6 +1063,49 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
     @Override
     public void handleScheduleMessageService(BrokerRole brokerRole) {
 
+    }
+
+    @Override
+    public PutMessageResult putMessage(MessageExtBrokerInner messageExtBrokerInner, RemotingCommand request,
+            SendMessageRequestHeader requestHeader) {
+        String pGroup = requestHeader.getProducerGroup();
+        String ctxId = this.ctx.channel().id().asLongText();
+        RocketMQTopic rmqTopic = new RocketMQTopic(requestHeader.getTopic());
+        int partitionId = requestHeader.getQueueId();
+        String pTopic = rmqTopic.getPartitionName(partitionId);
+        long producerId = buildPulsarProducerId(pGroup, pTopic, ctxId);
+        long seqId = seqGenerator.incrementAndGet();
+        try {
+            if (!this.producers.containsKey(producerId)) {
+                Builder builder = CommandProducer.newBuilder();
+                CommandProducer commandProducer = builder
+                        .setProducerId(producerId)
+                        .setRequestId(seqId)
+                        .setProducerName(pGroup)
+                        .setTopic(pTopic)
+                        .build();
+                this.handleProducer(commandProducer);
+            }
+            CommandSend commandSend = CommandSend.newBuilder()
+                    .setIsChunk(false)
+                    .setProducerId(producerId)
+                    .setNumMessages(1)
+                    .setSequenceId(seqId)
+                    .build();
+            ByteBuf body = this.entryFormatter.encode(messageExtBrokerInner, 1);
+            CompletableFuture<PutMessageResult> putMessageFuture = new CompletableFuture<>();
+            this.commandSender.put(seqId, putMessageFuture);
+            this.handleSend(commandSend, body);
+            return putMessageFuture.get(SEND_TIMEOUT_IN_SEC, TimeUnit.SECONDS);
+        } catch (Exception ex) {
+            PutMessageStatus status = PutMessageStatus.FLUSH_DISK_TIMEOUT;
+            AppendMessageResult temp = new AppendMessageResult(AppendMessageStatus.UNKNOWN_ERROR);
+            return new PutMessageResult(status, temp);
+        }
+    }
+
+    private long buildPulsarProducerId(String... tags) {
+        return Math.abs(Joiner.on("/").join(tags).hashCode());
     }
 
     static enum State {
