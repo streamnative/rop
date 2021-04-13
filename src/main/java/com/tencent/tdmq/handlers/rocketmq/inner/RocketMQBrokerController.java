@@ -82,9 +82,8 @@ public class RocketMQBrokerController {
     private final List<ConsumeMessageHook> consumeMessageHookList = new ArrayList<>();
     private final RocketMQRemoteServer remotingServer;
     private final Broker2Client broker2Client = new Broker2Client(this);
-    private final MQTopicManager mqTopicManager;
     private MessageStore messageStore;
-    private TopicConfigManager topicConfigManager;
+    private MQTopicManager topicConfigManager;
     private ExecutorService sendMessageExecutor;
     private ExecutorService pullMessageExecutor;
     private ExecutorService replyMessageExecutor;
@@ -104,7 +103,7 @@ public class RocketMQBrokerController {
     public RocketMQBrokerController(final RocketMQServiceConfiguration serverConfig) throws PulsarServerException {
         this.serverConfig = serverConfig;
         this.consumerOffsetManager = new ConsumerOffsetManager(this);
-        this.topicConfigManager = new TopicConfigManager(this);
+        this.topicConfigManager = new MQTopicManager(this);
         this.pullMessageProcessor = new PullMessageProcessor(this);
         this.pullRequestHoldService = new PullRequestHoldService(this);
         this.messageArrivingListener = new NotifyMessageArrivingListener(this.pullRequestHoldService);
@@ -134,7 +133,6 @@ public class RocketMQBrokerController {
 
         this.brokerStatsManager = new BrokerStatsManager(serverConfig.getBrokerName());
         this.remotingServer = new RocketMQRemoteServer(this.serverConfig, this.clientHousekeepingService);
-        this.mqTopicManager = new MQTopicManager(this);
     }
 
     public boolean initialize() throws Exception {
@@ -456,8 +454,8 @@ public class RocketMQBrokerController {
             this.endTransactionExecutor.shutdown();
         }
 
-        if (this.mqTopicManager != null) {
-            this.mqTopicManager.shutdown();
+        if (this.topicConfigManager != null) {
+            this.topicConfigManager.shutdown();
         }
     }
 
@@ -486,8 +484,8 @@ public class RocketMQBrokerController {
             this.brokerStatsManager.start();
         }
 
-        if (this.mqTopicManager != null) {
-            this.mqTopicManager.start();
+        if (this.topicConfigManager != null) {
+            this.topicConfigManager.start();
         }
     }
 

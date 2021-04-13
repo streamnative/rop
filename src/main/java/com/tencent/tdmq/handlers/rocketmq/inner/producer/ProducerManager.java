@@ -1,5 +1,6 @@
 package com.tencent.tdmq.handlers.rocketmq.inner.producer;
 
+import com.tencent.tdmq.handlers.rocketmq.inner.RopClientChannelCnx;
 import io.netty.channel.Channel;
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -7,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.logging.log4j.util.Strings;
 import org.apache.rocketmq.broker.client.ClientChannelInfo;
@@ -162,15 +164,15 @@ public class ProducerManager {
     }
 
     public ClientChannelInfo findChlInfo(String groupName, Channel channel) {
-        if (Strings.isNotBlank(groupName) && groupChannelTable.containsKey(groupName)) {
-            return groupChannelTable.get(groupName).get(channel);
-        } else {
-            for (Map<Channel, ClientChannelInfo> m : groupChannelTable.values()) {
-                if (m.containsKey(channel)) {
-                    return m.get(channel);
+            if (Strings.isNotBlank(groupName) && groupChannelTable.containsKey(groupName)) {
+                return groupChannelTable.get(groupName).get(channel);
+            } else {
+                for (Map<Channel, ClientChannelInfo> m : groupChannelTable.values()) {
+                    if (m.containsKey(channel)) {
+                        return m.get(channel);
+                    }
                 }
             }
-        }
-        return null;
+           return null;
     }
 }

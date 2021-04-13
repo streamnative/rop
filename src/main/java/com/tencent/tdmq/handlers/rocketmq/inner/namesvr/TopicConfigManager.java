@@ -20,7 +20,7 @@ import org.apache.rocketmq.common.protocol.body.KVTable;
 import org.apache.rocketmq.common.protocol.body.TopicConfigSerializeWrapper;
 
 @Slf4j
-public class TopicConfigManager {
+public abstract class TopicConfigManager {
 
     protected static final long LOCK_TIMEOUT_MILLIS = 3000;
     protected transient final Lock lockTopicConfigTable = new ReentrantLock();
@@ -37,29 +37,10 @@ public class TopicConfigManager {
         this.brokerController = brokerController;
         this.config = this.brokerController.getServerConfig();
         int defaultPartitionNum = config.getDefaultNumPartitions();
-        RocketMQTopic.init(config.getRocketmqMetadataTenant(), config.getRocketmqMetadataNamespace());
-        {
-            // MixAll.SELF_TEST_TOPIC
-            String topic = new RocketMQTopic(MixAll.SELF_TEST_TOPIC).getNoDomainTopicName();
-            TopicConfig topicConfig = new TopicConfig(topic);
-            this.systemTopicList.add(topic);
-            topicConfig.setReadQueueNums(1);
-            topicConfig.setWriteQueueNums(1);
-            this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);
-        }
-        {
-            // MixAll.SELF_TEST_TOPIC
-            String topic = new RocketMQTopic("test1|InstanceTest%topicTest").getNoDomainTopicName();
-            TopicConfig topicConfig = new TopicConfig(topic);
-            this.systemTopicList.add(topic);
-            topicConfig.setReadQueueNums(1);
-            topicConfig.setWriteQueueNums(1);
-            this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);
-        }
         {
             // MixAll.AUTO_CREATE_TOPIC_KEY_TOPIC
             if (this.brokerController.getServerConfig().isAutoCreateTopicEnable()) {
-                String topic = new RocketMQTopic(MixAll.AUTO_CREATE_TOPIC_KEY_TOPIC).getNoDomainTopicName();
+                String topic = RocketMQTopic.getPulsarMetaNoDomainTopic(MixAll.AUTO_CREATE_TOPIC_KEY_TOPIC);
                 TopicConfig topicConfig = new TopicConfig(topic);
                 this.systemTopicList.add(topic);
                 topicConfig.setReadQueueNums(this.brokerController.getServerConfig()
@@ -73,7 +54,7 @@ public class TopicConfigManager {
         }
         {
             // MixAll.BENCHMARK_TOPIC
-            String topic = new RocketMQTopic(MixAll.BENCHMARK_TOPIC).getNoDomainTopicName();
+            String topic = RocketMQTopic.getPulsarMetaNoDomainTopic(MixAll.BENCHMARK_TOPIC);
             TopicConfig topicConfig = new TopicConfig(topic);
             this.systemTopicList.add(topic);
             topicConfig.setReadQueueNums(defaultPartitionNum);
@@ -82,8 +63,8 @@ public class TopicConfigManager {
         }
         {
 
-            String topic = new RocketMQTopic(this.brokerController.getServerConfig().getClusterName())
-                    .getNoDomainTopicName();
+            String topic = RocketMQTopic
+                    .getPulsarMetaNoDomainTopic(this.brokerController.getServerConfig().getClusterName());
             TopicConfig topicConfig = new TopicConfig(topic);
             this.systemTopicList.add(topic);
             int perm = PermName.PERM_INHERIT;
@@ -93,10 +74,10 @@ public class TopicConfigManager {
             topicConfig.setPerm(perm);
             this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);
         }
-        {
+/*        {
 
-            String topic = new RocketMQTopic(this.brokerController.getServerConfig().getBrokerName())
-                    .getNoDomainTopicName();
+            String topic = RocketMQTopic
+                    .getPulsarMetaNoDomainTopic(this.brokerController.getServerConfig().getBrokerName());
             TopicConfig topicConfig = new TopicConfig(topic);
             this.systemTopicList.add(topic);
             int perm = PermName.PERM_INHERIT;
@@ -107,20 +88,20 @@ public class TopicConfigManager {
             topicConfig.setWriteQueueNums(1);
             topicConfig.setPerm(perm);
             this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);
-        }
+        }*/
         {
             // MixAll.OFFSET_MOVED_EVENT
-            String topic = new RocketMQTopic(MixAll.OFFSET_MOVED_EVENT).getNoDomainTopicName();
+            String topic = RocketMQTopic.getPulsarMetaNoDomainTopic(MixAll.OFFSET_MOVED_EVENT);
             TopicConfig topicConfig = new TopicConfig(topic);
             this.systemTopicList.add(topic);
             topicConfig.setReadQueueNums(1);
             topicConfig.setWriteQueueNums(1);
             this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);
         }
-        {
+ /*       {
             if (this.brokerController.getServerConfig().isTraceTopicEnable()) {
-                String topic = new RocketMQTopic(this.brokerController.getServerConfig().getMsgTraceTopicName())
-                        .getNoDomainTopicName();
+                String topic = RocketMQTopic
+                        .getPulsarMetaNoDomainTopic(this.brokerController.getServerConfig().getMsgTraceTopicName());
                 TopicConfig topicConfig = new TopicConfig(topic);
                 this.systemTopicList.add(topic);
                 topicConfig.setReadQueueNums(1);
@@ -138,10 +119,10 @@ public class TopicConfigManager {
             topicConfig.setReadQueueNums(1);
             topicConfig.setWriteQueueNums(1);
             this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);
-        }
+        }*/
         {
 
-            String topic = new RocketMQTopic(config.getRmqScheduleTopic()).getNoDomainTopicName();
+            String topic = RocketMQTopic.getPulsarMetaNoDomainTopic(config.getRmqScheduleTopic());
             TopicConfig topicConfig = new TopicConfig(topic);
             this.systemTopicList.add(topic);
             topicConfig.setReadQueueNums(config.getRmqScheduleTopicPartitionNum());
@@ -149,7 +130,7 @@ public class TopicConfigManager {
             this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);
         }
         {
-            String topic = new RocketMQTopic(config.getRmqSysTransHalfTopic()).getNoDomainTopicName();
+            String topic = RocketMQTopic.getPulsarMetaNoDomainTopic(config.getRmqSysTransHalfTopic());
             TopicConfig topicConfig = new TopicConfig(topic);
             this.systemTopicList.add(topic);
             topicConfig.setReadQueueNums(defaultPartitionNum);
@@ -157,7 +138,7 @@ public class TopicConfigManager {
             this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);
         }
         {
-            String topic = new RocketMQTopic(config.getRmqSysTransOpHalfTopic()).getNoDomainTopicName();
+            String topic = RocketMQTopic.getPulsarMetaNoDomainTopic(config.getRmqSysTransOpHalfTopic());
             TopicConfig topicConfig = new TopicConfig(topic);
             this.systemTopicList.add(topic);
             topicConfig.setReadQueueNums(defaultPartitionNum);
@@ -165,18 +146,17 @@ public class TopicConfigManager {
             this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);
         }
         {
-            String topic = new RocketMQTopic(config.getRmqTransCheckMaxTimeTopic()).getNoDomainTopicName();
+            String topic = RocketMQTopic.getPulsarMetaNoDomainTopic(config.getRmqTransCheckMaxTimeTopic());
             TopicConfig topicConfig = new TopicConfig(topic);
             this.systemTopicList.add(topic);
             topicConfig.setReadQueueNums(1);
             topicConfig.setWriteQueueNums(1);
             this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);
         }
-        RocketMQTopic.init(config.getRocketmqTenant(), config.getRocketmqNamespace());
     }
 
     public boolean isSystemTopic(final String topic) {
-        return this.systemTopicList.contains(RocketMQTopic.getPulsarNoDomainTopic(topic));
+        return this.systemTopicList.contains(RocketMQTopic.getPulsarMetaNoDomainTopic(topic));
     }
 
     public Set<String> getSystemTopic() {
@@ -184,32 +164,35 @@ public class TopicConfigManager {
     }
 
     public TopicConfig selectTopicConfig(final String topic) {
-        return this.topicConfigTable.get(RocketMQTopic.getPulsarNoDomainTopic(topic));
+        return this.topicConfigTable.get(RocketMQTopic.getPulsarOrigNoDomainTopic(topic));
     }
 
     public TopicConfig createTopicInSendMessageMethod(final String topic, final String defaultTopic,
             final String remoteAddress, final int clientDefaultTopicQueueNums, final int topicSysFlag) {
         TopicConfig topicConfig = null;
+        String pulsarTopicName = RocketMQTopic.getPulsarOrigNoDomainTopic(topic);
         boolean createNew = false;
 
         try {
             if (this.lockTopicConfigTable.tryLock(LOCK_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)) {
                 try {
-                    topicConfig = this.topicConfigTable.get(topic);
+                    topicConfig = this.topicConfigTable.get(pulsarTopicName);
                     if (topicConfig != null) {
                         return topicConfig;
                     }
 
-                    TopicConfig defaultTopicConfig = this.topicConfigTable.get(defaultTopic);
+                    String pulsarDefaultTopic = RocketMQTopic.getPulsarMetaNoDomainTopic(defaultTopic);
+                    TopicConfig defaultTopicConfig = this.topicConfigTable.get(pulsarDefaultTopic);
                     if (defaultTopicConfig != null) {
-                        if (defaultTopic.equals(MixAll.AUTO_CREATE_TOPIC_KEY_TOPIC)) {
+                        if (pulsarDefaultTopic
+                                .equals(RocketMQTopic.getPulsarMetaNoDomainTopic(MixAll.AUTO_CREATE_TOPIC_KEY_TOPIC))) {
                             if (!this.brokerController.getServerConfig().isAutoCreateTopicEnable()) {
                                 defaultTopicConfig.setPerm(PermName.PERM_READ | PermName.PERM_WRITE);
                             }
                         }
 
                         if (PermName.isInherited(defaultTopicConfig.getPerm())) {
-                            topicConfig = new TopicConfig(topic);
+                            topicConfig = new TopicConfig(pulsarTopicName);
 
                             int queueNums =
                                     clientDefaultTopicQueueNums > defaultTopicConfig.getWriteQueueNums()
@@ -241,13 +224,13 @@ public class TopicConfigManager {
                         log.info("Create new topic by default topic:[{}] config:[{}] producer:[{}]",
                                 defaultTopic, topicConfig, remoteAddress);
 
-                        this.topicConfigTable.put(topic, topicConfig);
+                        this.topicConfigTable.put(pulsarTopicName, topicConfig);
 
                         this.dataVersion.nextVersion();
 
                         createNew = true;
 
-                        //TODO this.persist();
+                        this.createPulsarPartitionedTopic(topicConfig);
                     }
                 } finally {
                     this.lockTopicConfigTable.unlock();
@@ -259,6 +242,8 @@ public class TopicConfigManager {
 
         return topicConfig;
     }
+
+    protected abstract void createPulsarPartitionedTopic(TopicConfig topicConfig);
 
     public TopicConfig createTopicInSendMessageBackMethod(
             final String topic,

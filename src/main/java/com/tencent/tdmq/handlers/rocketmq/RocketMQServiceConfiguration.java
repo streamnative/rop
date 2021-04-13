@@ -223,7 +223,7 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
             doc = "The maximum number of times the message was checked, "
                     + "if exceed this value, this message will be discarded.\n"
     )
-    private boolean autoCreateTopicEnable = false;
+    private boolean autoCreateTopicEnable = true;
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
             doc = "The maximum number of times the message was checked, "

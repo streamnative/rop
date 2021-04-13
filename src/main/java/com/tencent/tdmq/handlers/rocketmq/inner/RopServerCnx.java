@@ -106,6 +106,11 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
 
     private static final AtomicLongFieldUpdater<RopServerCnx> MSG_PUBLISH_BUFFER_SIZE_UPDATER = AtomicLongFieldUpdater
             .newUpdater(RopServerCnx.class, "messagePublishBufferSize");
+    public static String ROP_HANDLER_NAME = "RopServerCnxHandler";
+    private final int SEND_TIMEOUT_IN_SEC = 3;
+    private RocketMQBrokerController brokerController;
+    private ChannelHandlerContext ctx;
+    private SocketAddress remoteAddress;
     private final BrokerService service;
     private final ConcurrentLongHashMap<Producer> producers;
     private final ConcurrentLongHashMap<Consumer> consumers;
@@ -117,10 +122,6 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
     private final RopEntryFormatter entryFormatter = new RopEntryFormatter();
     private final RopPulsarCommandSender commandSender;
     private final AtomicLong seqGenerator = new AtomicLong();
-    private final int SEND_TIMEOUT_IN_SEC = 15;
-    private RocketMQBrokerController brokerController;
-    private ChannelHandlerContext ctx;
-    private SocketAddress remoteAddress;
     private State state;
     private volatile boolean isActive = true;
     private int pendingSendRequest = 0;
@@ -160,7 +161,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
                 .isPreciseTopicPublishRateLimiterEnable();
         this.encryptionRequireOnProducer = this.service.pulsar().getConfiguration().isEncryptionRequireOnProducer();
         this.commandSender = new RopPulsarCommandSender(this);
-        ctx.channel().pipeline().addLast(this);
+        ctx.pipeline().addLast(ROP_HANDLER_NAME, this);
     }
 
     protected void handleSubscribe(CommandSubscribe subscribe) {
@@ -799,8 +800,6 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
     @Override
     public void channelActive(ChannelHandlerContext ctx) throws Exception {
         super.channelActive(ctx);
-        this.remoteAddress = ctx.channel().remoteAddress();
-        this.state = State.Connected;
     }
 
     @Override
@@ -818,6 +817,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
                 log.warn("Consumer {} was already closed: {}", consumer, e);
             }
         });
+        producers.clear();
+        consumers.clear();
     }
 
     @Override
@@ -837,7 +838,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
         } else if (log.isDebugEnabled()) {
             log.debug("[{}] Got exception: {}", this.remoteAddress, cause);
         }
-        ctx.close();
+        this.ctx.close();
     }
 
     protected void close() {

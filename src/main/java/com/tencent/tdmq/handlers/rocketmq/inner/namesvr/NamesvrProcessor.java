@@ -43,7 +43,7 @@ public class NamesvrProcessor implements NettyRequestProcessor {
         this.brokerController = brokerController;
         this.config = brokerController.getServerConfig();
         this.defaultNumPartitions = config.getDefaultNumPartitions();
-        this.mqTopicManager = brokerController.getMqTopicManager();
+        this.mqTopicManager = brokerController.getTopicConfigManager();
     }
 
     @Override

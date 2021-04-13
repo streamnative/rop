@@ -291,13 +291,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
 
         final RemotingCommand response = RemotingCommand.createResponseCommand(SendMessageResponseHeader.class);
         final SendMessageResponseHeader responseHeader = (SendMessageResponseHeader) response.readCustomHeader();
-
         response.setOpaque(request.getOpaque());
-
-/* TODO:
-        response.addExtField(MessageConst.PROPERTY_MSG_REGION, this.brokerController.getBrokerConfig().getRegionId());
-        response.addExtField(MessageConst.PROPERTY_TRACE_SWITCH, String.valueOf(this.brokerController.getBrokerConfig().isTraceOn()));
-*/
 
         log.debug("receive SendMessage request command, {}", request);
         response.setCode(-1);

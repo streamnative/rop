@@ -50,6 +50,10 @@ public abstract class AbstractSendMessageProcessor implements NettyRequestProces
     protected PulsarMessageStore getServerCnxMsgStore(ChannelHandlerContext ctx, String groupName) {
         RopClientChannelCnx channelCnx = (RopClientChannelCnx) this.brokerController.getProducerManager()
                 .findChlInfo(groupName, ctx.channel());
+        if (channelCnx == null) {
+            channelCnx = new RopClientChannelCnx(this.brokerController, ctx);
+            this.brokerController.getProducerManager().registerProducer(groupName, channelCnx);
+        }
         return channelCnx != null ? channelCnx.getServerCnx() : null;
     }
 
@@ -66,14 +70,10 @@ public abstract class AbstractSendMessageProcessor implements NettyRequestProces
         mqtraceContext.setTopic(requestHeader.getTopic());
         mqtraceContext.setMsgProps(requestHeader.getProperties());
         mqtraceContext.setBornHost(RemotingHelper.parseChannelRemoteAddr(ctx.channel()));
-/*        mqtraceContext.setBrokerAddr(this.brokerController.getBrokerAddr());
-        mqtraceContext.setBrokerRegionId(this.brokerController.getBrokerConfig().getRegionId());*/
         mqtraceContext.setBornTimeStamp(requestHeader.getBornTimestamp());
 
         Map<String, String> properties = MessageDecoder.string2messageProperties(requestHeader.getProperties());
         String uniqueKey = properties.get(MessageConst.PROPERTY_UNIQ_CLIENT_MESSAGE_ID_KEYIDX);
-/*        properties.put(MessageConst.PROPERTY_MSG_REGION, this.brokerController.getBrokerConfig().getRegionId());
-        properties.put(MessageConst.PROPERTY_TRACE_SWITCH, String.valueOf(this.brokerController.getBrokerConfig().isTraceOn()));*/
         requestHeader.setProperties(MessageDecoder.messageProperties2String(properties));
 
         if (uniqueKey == null) {
