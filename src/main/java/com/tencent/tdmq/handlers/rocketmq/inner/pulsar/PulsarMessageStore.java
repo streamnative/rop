@@ -1,5 +1,6 @@
 package com.tencent.tdmq.handlers.rocketmq.inner.pulsar;
 
+import org.apache.rocketmq.common.message.MessageExtBatch;
 import org.apache.rocketmq.common.protocol.header.SendMessageRequestHeader;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.store.MessageExtBrokerInner;
@@ -9,5 +10,8 @@ import org.apache.rocketmq.store.PutMessageResult;
 public interface PulsarMessageStore extends MessageStore {
 
     PutMessageResult putMessage(MessageExtBrokerInner messageExtBrokerInner, RemotingCommand request,
+            SendMessageRequestHeader requestHeader);
+
+    PutMessageResult putMessages(MessageExtBatch batchMessage, RemotingCommand request,
             SendMessageRequestHeader requestHeader);
 }

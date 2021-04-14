@@ -35,14 +35,6 @@ public class RopPulsarCommandSender implements PulsarCommandSender {
         producerResultMap = new ConcurrentLongHashMap<>(1024);
     }
 
-    public static String createMessageId(long ledgerId, long entryId) {
-        ByteBuffer byteBuffer = ByteBuffer.allocate(16);
-        byteBuffer.putLong(ledgerId);
-        byteBuffer.putLong(entryId);
-        byteBuffer.flip();
-        return UtilAll.bytes2string(byteBuffer.array());
-    }
-
     public void put(long seqId, CompletableFuture<PutMessageResult> putMessageFuture) {
         CompletableFuture<PutMessageResult> oldResult = producerResultMap.put(seqId, putMessageFuture);
         if (oldResult != null) {
@@ -85,8 +77,8 @@ public class RopPulsarCommandSender implements PulsarCommandSender {
         CompletableFuture<PutMessageResult> resultFuture = this.producerResultMap.remove(sequenceId);
         if (resultFuture != null) {
             PutMessageStatus status = PutMessageStatus.PUT_OK;
-            AppendMessageResult temp = new AppendMessageResult(AppendMessageStatus.PUT_OK, 0L, 0,
-                    createMessageId(ledgerId, entryId), systemClock.now(), 0L, 0L);
+            AppendMessageResult temp = new AppendMessageResult(AppendMessageStatus.PUT_OK, highestId, 0,
+                    null, systemClock.now(), ledgerId, entryId);
             PutMessageResult result = new PutMessageResult(status, temp);
             resultFuture.complete(result);
         }

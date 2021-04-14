@@ -32,6 +32,7 @@ import org.apache.rocketmq.common.utils.ChannelUtil;
 import org.apache.rocketmq.remoting.common.RemotingHelper;
 import org.apache.rocketmq.remoting.exception.RemotingCommandException;
 import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
+import org.apache.rocketmq.remoting.protocol.LanguageCode;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.store.MessageExtBrokerInner;
 
@@ -48,11 +49,15 @@ public abstract class AbstractSendMessageProcessor implements NettyRequestProces
     }
 
     protected PulsarMessageStore getServerCnxMsgStore(ChannelHandlerContext ctx, String groupName) {
+
         RopClientChannelCnx channelCnx = (RopClientChannelCnx) this.brokerController.getProducerManager()
                 .findChlInfo(groupName, ctx.channel());
         if (channelCnx == null) {
-            channelCnx = new RopClientChannelCnx(this.brokerController, ctx);
-            this.brokerController.getProducerManager().registerProducer(groupName, channelCnx);
+            synchronized (ctx) {
+                String clientId = ctx.channel().remoteAddress().toString() + "@" + System.currentTimeMillis();
+                channelCnx = new RopClientChannelCnx(this.brokerController, ctx, clientId, LanguageCode.JAVA, 0);
+                this.brokerController.getProducerManager().registerProducer(groupName, channelCnx);
+            }
         }
         return channelCnx != null ? channelCnx.getServerCnx() : null;
     }

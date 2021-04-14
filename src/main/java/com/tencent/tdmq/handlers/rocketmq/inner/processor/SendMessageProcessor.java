@@ -469,10 +469,6 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         final SendMessageResponseHeader responseHeader = (SendMessageResponseHeader) response.readCustomHeader();
 
         response.setOpaque(request.getOpaque());
-
-/* TODO:       response.addExtField(MessageConst.PROPERTY_MSG_REGION, this.brokerController.getServerConfig().getRegionId());
-        response.addExtField(MessageConst.PROPERTY_TRACE_SWITCH, String.valueOf(this.brokerController.getServerConfig().isTraceOn()));
-*/
         response.setCode(-1);
         super.msgCheck(ctx, requestHeader, response);
         if (response.getCode() != -1) {
@@ -520,7 +516,8 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         String clusterName = this.brokerController.getServerConfig().getClusterName();
         MessageAccessor.putProperty(messageExtBatch, MessageConst.PROPERTY_CLUSTER, clusterName);
 
-        PutMessageResult putMessageResult = this.brokerController.getMessageStore().putMessages(messageExtBatch);
+        PutMessageResult putMessageResult = this.getServerCnxMsgStore(ctx, requestHeader.getProducerGroup())
+                .putMessages(messageExtBatch, request, requestHeader);
 
         return handlePutMessageResult(putMessageResult, response, request, messageExtBatch, responseHeader,
                 sendMessageContext, ctx, queueIdInt);
