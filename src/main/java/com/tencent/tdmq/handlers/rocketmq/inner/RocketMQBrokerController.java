@@ -10,7 +10,6 @@ import com.tencent.tdmq.handlers.rocketmq.inner.listener.DefaultTransactionalMes
 import com.tencent.tdmq.handlers.rocketmq.inner.listener.NotifyMessageArrivingListener;
 import com.tencent.tdmq.handlers.rocketmq.inner.namesvr.MQTopicManager;
 import com.tencent.tdmq.handlers.rocketmq.inner.namesvr.NamesvrProcessor;
-import com.tencent.tdmq.handlers.rocketmq.inner.namesvr.TopicConfigManager;
 import com.tencent.tdmq.handlers.rocketmq.inner.processor.AdminBrokerProcessor;
 import com.tencent.tdmq.handlers.rocketmq.inner.processor.ClientManageProcessor;
 import com.tencent.tdmq.handlers.rocketmq.inner.processor.ConsumerManageProcessor;
