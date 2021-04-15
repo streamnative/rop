@@ -3,11 +3,13 @@ package com.tencent.tdmq.handlers.rocketmq.inner.consumer;
 import io.netty.channel.Channel;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.logging.log4j.util.Strings;
 import org.apache.rocketmq.broker.client.ClientChannelInfo;
 import org.apache.rocketmq.broker.client.ConsumerGroupEvent;
 import org.apache.rocketmq.broker.client.ConsumerGroupInfo;
@@ -31,8 +33,11 @@ public class ConsumerManager {
     }
 
     public ClientChannelInfo findChannel(String group, String clientId) {
-        ConsumerGroupInfo consumerGroupInfo = (ConsumerGroupInfo) this.consumerTable.get(group);
-        return consumerGroupInfo != null ? consumerGroupInfo.findChannel(clientId) : null;
+        ConsumerGroupInfo consumerGroupInfo = this.consumerTable.get(group);
+        if (consumerGroupInfo != null) {
+            return consumerGroupInfo.findChannel(clientId);
+        }
+        return null;
     }
 
     public SubscriptionData findSubscriptionData(String group, String topic) {

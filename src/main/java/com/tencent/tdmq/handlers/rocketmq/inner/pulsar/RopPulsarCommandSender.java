@@ -64,6 +64,7 @@ public class RopPulsarCommandSender implements PulsarCommandSender {
 
     @Override
     public void sendSuccessResponse(long requestId) {
+
     }
 
     @Override

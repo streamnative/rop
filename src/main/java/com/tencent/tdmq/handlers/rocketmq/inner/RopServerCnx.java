@@ -5,6 +5,7 @@ import com.google.common.base.Preconditions;
 import com.tencent.tdmq.handlers.rocketmq.inner.format.RopEntryFormatter;
 import com.tencent.tdmq.handlers.rocketmq.inner.pulsar.PulsarMessageStore;
 import com.tencent.tdmq.handlers.rocketmq.inner.pulsar.RopPulsarCommandSender;
+import com.tencent.tdmq.handlers.rocketmq.utils.PulsarUtil;
 import com.tencent.tdmq.handlers.rocketmq.utils.RocketMQTopic;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
@@ -42,11 +43,14 @@ import org.apache.pulsar.broker.service.BrokerServiceException.TopicNotFoundExce
 import org.apache.pulsar.broker.service.Consumer;
 import org.apache.pulsar.broker.service.Producer;
 import org.apache.pulsar.broker.service.PulsarCommandSender;
+import org.apache.pulsar.broker.service.ServerCnx;
 import org.apache.pulsar.broker.service.Subscription;
 import org.apache.pulsar.broker.service.Topic;
 import org.apache.pulsar.broker.service.TransportCnx;
 import org.apache.pulsar.broker.service.persistent.PersistentSubscription;
 import org.apache.pulsar.broker.service.persistent.PersistentTopic;
+import org.apache.pulsar.client.api.SubscriptionInitialPosition;
+import org.apache.pulsar.client.api.SubscriptionType;
 import org.apache.pulsar.client.impl.BatchMessageIdImpl;
 import org.apache.pulsar.client.impl.ClientCnx;
 import org.apache.pulsar.client.impl.MessageIdImpl;
@@ -57,6 +61,7 @@ import org.apache.pulsar.common.api.proto.PulsarApi.CommandFlow;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandGetLastMessageId;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandGetTopicsOfNamespace;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandGetTopicsOfNamespace.Mode;
+import org.apache.pulsar.common.api.proto.PulsarApi.CommandMessage;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandProducer;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandProducer.Builder;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandRedeliverUnacknowledgedMessages;
@@ -82,8 +87,10 @@ import org.apache.pulsar.common.util.FutureUtil;
 import org.apache.pulsar.common.util.SafeCollectionUtils;
 import org.apache.pulsar.common.util.collections.ConcurrentLongHashMap;
 import org.apache.pulsar.shaded.com.google.protobuf.v241.GeneratedMessageLite;
+import org.apache.rocketmq.common.SystemClock;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageExtBatch;
+import org.apache.rocketmq.common.protocol.header.PullMessageRequestHeader;
 import org.apache.rocketmq.common.protocol.header.SendMessageRequestHeader;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.store.AppendMessageResult;
@@ -91,6 +98,7 @@ import org.apache.rocketmq.store.AppendMessageStatus;
 import org.apache.rocketmq.store.CommitLogDispatcher;
 import org.apache.rocketmq.store.ConsumeQueue;
 import org.apache.rocketmq.store.GetMessageResult;
+import org.apache.rocketmq.store.GetMessageStatus;
 import org.apache.rocketmq.store.MessageExtBrokerInner;
 import org.apache.rocketmq.store.MessageFilter;
 import org.apache.rocketmq.store.PutMessageResult;
@@ -139,6 +147,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
     private String clientVersion = null;
     private String originalPrincipal = null;
 
+    private SystemClock systemClock = new SystemClock();
+
     public RopServerCnx(RocketMQBrokerController brokerController, ChannelHandlerContext ctx) {
         this.brokerController = brokerController;
         this.service = brokerController.getBrokerService();
@@ -168,78 +178,94 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
         long requestId = subscribe.getRequestId();
         long consumerId = subscribe.getConsumerId();
         TopicName topicName = this.validateTopicName(subscribe.getTopic(), requestId, subscribe);
-        if (topicName != null) {
-            String subscriptionName = subscribe.getSubscription();
-            SubType subType = subscribe.getSubType();
-            String consumerName = subscribe.getConsumerName();
-            boolean isDurable = subscribe.getDurable();
-            MessageIdImpl startMessageId = subscribe.hasStartMessageId() ? new BatchMessageIdImpl(
-                    subscribe.getStartMessageId().getLedgerId(), subscribe.getStartMessageId().getEntryId(),
-                    subscribe.getStartMessageId().getPartition(), subscribe.getStartMessageId().getBatchIndex())
-                    : null;
-            int priorityLevel = subscribe.hasPriorityLevel() ? subscribe.getPriorityLevel() : 0;
-            boolean readCompacted = subscribe.getReadCompacted();
-            Map<String, String> metadata = CommandUtils.metadataFromCommand(subscribe);
-            InitialPosition initialPosition = subscribe.getInitialPosition();
-            long startMessageRollbackDurationSec =
-                    subscribe.hasStartMessageRollbackDurationSec() ? subscribe.getStartMessageRollbackDurationSec()
-                            : -1L;
-            SchemaData schema = null;
-            boolean isReplicated =
-                    subscribe.hasReplicateSubscriptionState() && subscribe.getReplicateSubscriptionState();
-            boolean forceTopicCreation = subscribe.getForceTopicCreation();
-            KeySharedMeta keySharedMeta = subscribe.hasKeySharedMeta() ? subscribe.getKeySharedMeta() : null;
-            boolean isAuthorized = this.isTopicOperationAllowed(topicName, subscriptionName, TopicOperation.CONSUME);
-            if (isAuthorized) {
-                log.info("[{}] Subscribing on topic {} / {}",
-                        new Object[]{this.remoteAddress, topicName, subscriptionName});
-                try {
-                    Metadata.validateMetadata(metadata);
-                    Consumer existingConsumer = this.consumers.get(consumerId);
-                    if (existingConsumer != null) {
-                        log.info("[{}] Consumer with the same id is already created: consumerId={}, consumer={}",
-                                new Object[]{this.remoteAddress, consumerId, existingConsumer});
-                        return;
-                    }
 
-                    boolean createTopicIfDoesNotExist =
-                            forceTopicCreation && this.service.isAllowAutoTopicCreation(topicName.toString());
-                    existingConsumer = this.service.getTopic(topicName.toString(), createTopicIfDoesNotExist)
-                            .thenCompose((optTopic) -> {
-                                if (!optTopic.isPresent()) {
-                                    return FutureUtil
-                                            .failedFuture(new TopicNotFoundException("Topic does not exist"));
-                                } else {
-                                    Topic topic = optTopic.get();
-                                    boolean rejectSubscriptionIfDoesNotExist = isDurable && !this.service
-                                            .isAllowAutoSubscriptionCreation(topicName.toString()) && !topic
-                                            .getSubscriptions().containsKey(subscriptionName);
-                                    if (rejectSubscriptionIfDoesNotExist) {
-                                        return FutureUtil.failedFuture(
-                                                new SubscriptionNotFoundException("Subscription does not exist"));
-                                    } else {
-                                        return topic.subscribe(this, subscriptionName, consumerId, subType,
-                                                priorityLevel, consumerName, isDurable, startMessageId, metadata,
-                                                readCompacted, initialPosition, startMessageRollbackDurationSec,
-                                                isReplicated, keySharedMeta);
-                                    }
-                                }
-                            }).get();
-                    this.consumers.putIfAbsent(consumerId, existingConsumer);
-                } catch (Exception e) {
-                    log.warn("handleSubscribe error {}: {}", consumerId, e);
-                    if (this.consumers.containsKey(consumerId)) {
-                        try {
-                            this.consumers.get(consumerId).close();
-                        } catch (BrokerServiceException brokerServiceException) {
-                        }
-                        this.consumers.remove(consumerId);
-                    }
+        if (null == topicName) {
+            return;
+        }
+
+        String subscriptionName = subscribe.getSubscription();
+        SubType subType = subscribe.getSubType();
+        String consumerName = subscribe.getConsumerName();
+        boolean isDurable = subscribe.getDurable();
+        MessageIdImpl startMessageId = subscribe.hasStartMessageId() ? new BatchMessageIdImpl(
+                subscribe.getStartMessageId().getLedgerId(), subscribe.getStartMessageId().getEntryId(),
+                subscribe.getStartMessageId().getPartition(), subscribe.getStartMessageId().getBatchIndex())
+                : null;
+        int priorityLevel = subscribe.hasPriorityLevel() ? subscribe.getPriorityLevel() : 0;
+        boolean readCompacted = subscribe.getReadCompacted();
+        Map<String, String> metadata = CommandUtils.metadataFromCommand(subscribe);
+        InitialPosition initialPosition = subscribe.getInitialPosition();
+        long startMessageRollbackDurationSec =
+                subscribe.hasStartMessageRollbackDurationSec() ? subscribe.getStartMessageRollbackDurationSec()
+                        : -1L;
+        SchemaData schema = null;
+        boolean isReplicated =
+                subscribe.hasReplicateSubscriptionState() && subscribe.getReplicateSubscriptionState();
+        boolean forceTopicCreation = subscribe.getForceTopicCreation();
+        KeySharedMeta keySharedMeta = subscribe.hasKeySharedMeta() ? subscribe.getKeySharedMeta() : null;
+        boolean isAuthorized = this.isTopicOperationAllowed(topicName, subscriptionName, TopicOperation.CONSUME);
+        if (isAuthorized) {
+            log.info("[{}] Subscribing on topic {} / {}",
+                    this.remoteAddress, topicName, subscriptionName);
+            try {
+                Metadata.validateMetadata(metadata);
+                Consumer existingConsumer = this.consumers.get(consumerId);
+                if (existingConsumer != null) {
+                    log.info("[{}] Consumer with the same id is already created: consumerId={}, consumer={}",
+                            this.remoteAddress, consumerId, existingConsumer);
+                    commandSender.sendSuccessResponse(requestId);
+                    return;
                 }
-            } else {
-                String msgx = "Client is not authorized to subscribe";
-                log.warn("[{}] {} with role {}", new Object[]{this.remoteAddress, msgx, this.getPrincipal()});
+
+                boolean createTopicIfDoesNotExist =
+                        forceTopicCreation && this.service.isAllowAutoTopicCreation(topicName.toString());
+                existingConsumer = this.service.getTopic(topicName.toString(), createTopicIfDoesNotExist)
+                        .thenCompose((optTopic) -> {
+                            if (!optTopic.isPresent()) {
+                                return FutureUtil
+                                        .failedFuture(new TopicNotFoundException("Topic does not exist"));
+                            }
+                            Topic topic = optTopic.get();
+                            boolean rejectSubscriptionIfDoesNotExist = isDurable && !this.service
+                                    .isAllowAutoSubscriptionCreation(topicName.toString()) && !topic
+                                    .getSubscriptions().containsKey(subscriptionName);
+                            if (rejectSubscriptionIfDoesNotExist) {
+                                return FutureUtil.failedFuture(
+                                        new SubscriptionNotFoundException("Subscription does not exist"));
+                            }
+                            if (schema != null) {
+                                return topic.addSchemaIfIdleOrCheckCompatible(schema)
+                                        .thenCompose(v -> topic.subscribe(
+                                                this, subscriptionName, consumerId,
+                                                subType, priorityLevel, consumerName, isDurable,
+                                                startMessageId, metadata,
+                                                readCompacted, initialPosition, startMessageRollbackDurationSec,
+                                                isReplicated, keySharedMeta));
+                            } else {
+                                return topic.subscribe(this, subscriptionName, consumerId,
+                                        subType, priorityLevel, consumerName, isDurable,
+                                        startMessageId, metadata, readCompacted, initialPosition,
+                                        startMessageRollbackDurationSec, isReplicated, keySharedMeta);
+                            }
+                        }).get();
+
+                this.consumers.putIfAbsent(consumerId, existingConsumer);
+                commandSender.sendSuccessResponse(requestId);
+            } catch (Exception e) {
+                log.warn("handleSubscribe error {}: {}", consumerId, e);
+                commandSender.sendErrorResponse(requestId, ServerError.MetadataError, "handleSubscribe error");
+                if (this.consumers.containsKey(consumerId)) {
+                    try {
+                        this.consumers.get(consumerId).close();
+                    } catch (BrokerServiceException brokerServiceException) {
+                    }
+                    this.consumers.remove(consumerId);
+                }
             }
+        } else {
+            String msgx = "Client is not authorized to subscribe";
+            log.warn("[{}] {} with role {}", this.remoteAddress, msgx, this.getPrincipal());
+            ctx.writeAndFlush(Commands.newError(requestId, ServerError.AuthorizationError, msgx));
         }
     }
 
@@ -987,7 +1013,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
 
     @Override
     public long now() {
-        return 0;
+        return this.systemClock.now();
     }
 
     @Override
@@ -1102,6 +1128,65 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
             AppendMessageResult temp = new AppendMessageResult(AppendMessageStatus.UNKNOWN_ERROR);
             return new PutMessageResult(status, temp);
         }
+    }
+
+    @Override
+    public GetMessageResult getMessage(RemotingCommand request, PullMessageRequestHeader requestHeader) {
+
+        String consumerGroup = requestHeader.getConsumerGroup();
+        String topic = requestHeader.getTopic();
+        int queueID = requestHeader.getQueueId();
+        long commitOffset = requestHeader.getCommitOffset();
+        long queueOffset = requestHeader.getQueueOffset();
+        int maxMsgNums = requestHeader.getMaxMsgNums();
+        String subscription = requestHeader.getSubscription();
+        int sysFlag = requestHeader.getSysFlag();
+        String expressionType = requestHeader.getExpressionType();
+
+        Map<String, String> properties = request.getExtFields();
+
+        long beginTime = this.getSystemClock().now();
+        GetMessageStatus status = GetMessageStatus.NO_MESSAGE_IN_QUEUE;
+        long nextBeginOffset = commitOffset;
+        long minOffset = 0;
+        long maxOffset = 0;
+        String ctxId = this.ctx.channel().id().asLongText();
+
+        long consumerId = buildPulsarConsumerId(consumerGroup, topic, ctxId);
+        long seqId = seqGenerator.incrementAndGet();
+        GetMessageResult getResult = new GetMessageResult();
+
+        CommandSubscribe.Builder builder = CommandSubscribe.newBuilder();
+        CommandSubscribe commandSubscribe = builder
+                .setTopic(topic)
+                .setSubscription(consumerGroup)
+                .setSubType(PulsarUtil.parseSubType(SubscriptionType.Exclusive))
+                .setConsumerId(consumerId)
+                .setRequestId(seqId)
+                .setConsumerName("") // 如果客户端不传的话，服务端回自己生成一个 consumer name
+//                .setPriorityLevel(null)
+                .setDurable(true) // 代表 cursor 是否需要持久化
+//                .setMetadata() // 代表properties对象，是一个map[string]string
+                .setReadCompacted(false)
+                .setInitialPosition(PulsarUtil.parseSubPosition(SubscriptionInitialPosition.Earliest))
+                .setReplicateSubscriptionState(false)
+                .build();
+
+        this.handleSubscribe(commandSubscribe);
+//
+//        CommandMessage.Builder messageBuilder = CommandMessage.newBuilder();
+//        CommandMessage commandMessage = messageBuilder
+//                .setMessageId()
+//                .setConsumerId(consumerId)
+//                .setRedeliveryCount(1)
+//                .build();
+//
+
+        return null;
+    }
+
+    private long buildPulsarConsumerId(String... tags) {
+        return Math.abs(Joiner.on("/").join(tags).hashCode());
     }
 
     private long buildPulsarProducerId(String... tags) {

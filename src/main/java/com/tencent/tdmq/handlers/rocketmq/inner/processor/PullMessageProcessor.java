@@ -1,6 +1,8 @@
 package com.tencent.tdmq.handlers.rocketmq.inner.processor;
 
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
+import com.tencent.tdmq.handlers.rocketmq.inner.RopClientChannelCnx;
+import com.tencent.tdmq.handlers.rocketmq.inner.pulsar.PulsarMessageStore;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
@@ -23,6 +25,8 @@ import org.apache.rocketmq.common.message.MessageDecoder;
 import org.apache.rocketmq.common.protocol.ResponseCode;
 import org.apache.rocketmq.common.protocol.header.PullMessageRequestHeader;
 import org.apache.rocketmq.common.protocol.header.PullMessageResponseHeader;
+import org.apache.rocketmq.common.protocol.heartbeat.ConsumerData;
+import org.apache.rocketmq.common.protocol.heartbeat.HeartbeatData;
 import org.apache.rocketmq.common.protocol.heartbeat.MessageModel;
 import org.apache.rocketmq.common.protocol.heartbeat.SubscriptionData;
 import org.apache.rocketmq.common.protocol.topic.OffsetMovedEvent;
@@ -33,6 +37,7 @@ import org.apache.rocketmq.remoting.common.RemotingHelper;
 import org.apache.rocketmq.remoting.exception.RemotingCommandException;
 import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
 import org.apache.rocketmq.remoting.netty.RequestTask;
+import org.apache.rocketmq.remoting.protocol.LanguageCode;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.store.GetMessageResult;
 import org.apache.rocketmq.store.stats.BrokerStatsManager;
@@ -42,15 +47,44 @@ public class PullMessageProcessor implements NettyRequestProcessor {
 
     private final RocketMQBrokerController brokerController;
     private List<ConsumeMessageHook> consumeMessageHookList;
+    private PulsarMessageStore serverCnxMsgStore;
 
     public PullMessageProcessor(final RocketMQBrokerController brokerController) {
         this.brokerController = brokerController;
     }
 
+    protected PulsarMessageStore getServerCnxMsgStore(ChannelHandlerContext ctx, RemotingCommand request, String groupName) {
+        String clientId = ctx.channel().remoteAddress().toString() + "@" + System.currentTimeMillis();
+        RopClientChannelCnx channelCnx = (RopClientChannelCnx) this.brokerController.getConsumerManager()
+                .findChannel(groupName, clientId);
+
+        if (channelCnx == null) {
+            synchronized (this.brokerController) {
+                channelCnx = new RopClientChannelCnx(this.brokerController, ctx, clientId, LanguageCode.JAVA, 0);
+                HeartbeatData heartbeatData = HeartbeatData.decode(request.getBody(), HeartbeatData.class);
+                for (ConsumerData data : heartbeatData.getConsumerDataSet()) {
+                    this.brokerController.getConsumerManager().registerConsumer(data.getGroupName(),
+                            channelCnx,
+                            data.getConsumeType(),
+                            data.getMessageModel(),
+                            data.getConsumeFromWhere(),
+                            data.getSubscriptionDataSet(),
+                            false
+                    );
+                }
+            }
+        }
+
+        return channelCnx.getServerCnx();
+    }
+
     @Override
     public RemotingCommand processRequest(final ChannelHandlerContext ctx,
             RemotingCommand request) throws RemotingCommandException {
-        return this.processRequest(ctx.channel(), request, true);
+        final PullMessageRequestHeader requestHeader =
+                (PullMessageRequestHeader) request.decodeCommandCustomHeader(PullMessageRequestHeader.class);
+        serverCnxMsgStore = this.getServerCnxMsgStore(ctx, request, requestHeader.getConsumerGroup());
+        return this.processRequest(ctx.channel(), requestHeader, request, true);
     }
 
     @Override
@@ -58,12 +92,10 @@ public class PullMessageProcessor implements NettyRequestProcessor {
         return false;
     }
 
-    private RemotingCommand processRequest(final Channel channel, RemotingCommand request, boolean brokerAllowSuspend)
+    private RemotingCommand processRequest(final Channel channel, PullMessageRequestHeader requestHeader, RemotingCommand request, boolean brokerAllowSuspend)
             throws RemotingCommandException {
         RemotingCommand response = RemotingCommand.createResponseCommand(PullMessageResponseHeader.class);
         final PullMessageResponseHeader responseHeader = (PullMessageResponseHeader) response.readCustomHeader();
-        final PullMessageRequestHeader requestHeader =
-                (PullMessageRequestHeader) request.decodeCommandCustomHeader(PullMessageRequestHeader.class);
 
         response.setOpaque(request.getOpaque());
 
@@ -178,12 +210,8 @@ public class PullMessageProcessor implements NettyRequestProcessor {
             }
         }
 
-        // TODO: brokerController.getMessageStore() 需要实现 MessageStore 的逻辑
-        final GetMessageResult getMessageResult =
-                this.brokerController.getMessageStore()
-                        .getMessage(requestHeader.getConsumerGroup(), requestHeader.getTopic(),
-                                requestHeader.getQueueId(), requestHeader.getQueueOffset(),
-                                requestHeader.getMaxMsgNums(), null);
+        // 从 message store 中获取接收消息的数据并处理
+        final GetMessageResult getMessageResult = serverCnxMsgStore.getMessage(request, requestHeader);
         if (getMessageResult != null) {
             response.setRemark(getMessageResult.getStatus().name());
             responseHeader.setNextBeginOffset(getMessageResult.getNextBeginOffset());
@@ -305,14 +333,13 @@ public class PullMessageProcessor implements NettyRequestProcessor {
 
                     this.brokerController.getBrokerStatsManager().incBrokerGetNums(getMessageResult.getMessageCount());
                     if (this.brokerController.getServerConfig().isTransferMsgByHeap()) {
-                        // TODO: brokerController.getMessageStore() 需要实现 MessageStore 的逻辑
-                        final long beginTimeMills = this.brokerController.getMessageStore().now();
+                        final long beginTimeMills = this.serverCnxMsgStore.now();
                         final byte[] r = this.readGetMessageResult(getMessageResult, requestHeader.getConsumerGroup(),
                                 requestHeader.getTopic(), requestHeader.getQueueId());
                         this.brokerController.getBrokerStatsManager()
                                 .incGroupGetLatency(requestHeader.getConsumerGroup(),
                                         requestHeader.getTopic(), requestHeader.getQueueId(),
-                                        (int) (this.brokerController.getMessageStore().now() - beginTimeMills));
+                                        (int) (this.serverCnxMsgStore.now() - beginTimeMills));
                         response.setBody(r);
                     } else {
                         try {
@@ -349,9 +376,8 @@ public class PullMessageProcessor implements NettyRequestProcessor {
                         String topic = requestHeader.getTopic();
                         long offset = requestHeader.getQueueOffset();
                         int queueId = requestHeader.getQueueId();
-                        // TODO: brokerController.getMessageStore() 需要实现 MessageStore 的逻辑
                         PullRequest pullRequest = new PullRequest(request, channel, pollingTimeMills,
-                                this.brokerController.getMessageStore().now(), offset, subscriptionData, null);
+                                this.serverCnxMsgStore.now(), offset, subscriptionData, null);
                         this.brokerController.getPullRequestHoldService()
                                 .suspendPullRequest(topic, queueId, pullRequest);
                         response = null;
@@ -477,8 +503,11 @@ public class PullMessageProcessor implements NettyRequestProcessor {
             @Override
             public void run() {
                 try {
+
+                    final PullMessageRequestHeader requestHeader =
+                            (PullMessageRequestHeader) request.decodeCommandCustomHeader(PullMessageRequestHeader.class);
                     final RemotingCommand response = PullMessageProcessor.this
-                            .processRequest(channel, request, false);
+                            .processRequest(channel, requestHeader, request, false);
 
                     if (response != null) {
                         response.setOpaque(request.getOpaque());
