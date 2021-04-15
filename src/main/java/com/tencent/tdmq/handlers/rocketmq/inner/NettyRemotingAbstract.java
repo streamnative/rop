@@ -201,7 +201,7 @@ public abstract class NettyRemotingAbstract {
                                     log.error(response.toString());
                                 }
                             } else {
-                                log.warn("The response is null, please check.");
+                                //log.warn("The response is null, please check.");
                             }
                         }
                     } catch (Throwable e) {

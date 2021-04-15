@@ -18,6 +18,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.logging.log4j.util.Strings;
 import org.apache.pulsar.broker.PulsarServerException;
 import org.apache.pulsar.broker.PulsarService;
 import org.apache.pulsar.broker.namespace.NamespaceBundleOwnershipListener;
@@ -59,6 +60,23 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
         this.rocketmqMetaNs = NamespaceName
                 .get(config.getRocketmqMetadataTenant(), config.getRocketmqMetadataNamespace());
         this.rocketmqTopicNs = NamespaceName.get(config.getRocketmqTenant(), config.getRocketmqNamespace());
+    }
+
+    @Override
+    protected void createPulsarPartitionedTopic(TopicConfig tc) {
+        String cluster = config.getClusterName();
+        TopicName rmqTopic = TopicName.get(tc.getTopicName());
+        String tenant = rmqTopic.getTenant();
+        String ns = rmqTopic.getNamespacePortion();
+        tenant = Strings.isBlank(tenant) ? config.getRocketmqTenant() : tenant;
+        ns = Strings.isBlank(ns) ? config.getRocketmqNamespace() : ns;
+
+        try {
+            createPulsarNamespaceIfNeeded(brokerService, cluster, tenant, ns);
+        } catch (Exception e) {
+            log.warn("createPulsarPartitionedTopic tenant=[{}] and namespace=[{}] error.", tenant, ns);
+        }
+        createPulsarTopic(tc);
     }
 
     public void start() throws Exception {
@@ -205,15 +223,15 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
         String defaultNs = config.getRocketmqNamespace();
 
         //create system namespace & default namespace
-        createSysNamespaceIfNeeded(brokerService, cluster, metaTanant, metaNs);
-        createSysNamespaceIfNeeded(brokerService, cluster, defaultTanant, defaultNs);
+        createPulsarNamespaceIfNeeded(brokerService, cluster, metaTanant, metaNs);
+        createPulsarNamespaceIfNeeded(brokerService, cluster, defaultTanant, defaultNs);
 
         //for test
-        createSysNamespaceIfNeeded(brokerService, cluster, "test1", "InstanceTest");
+        createPulsarNamespaceIfNeeded(brokerService, cluster, "test1", "InstanceTest");
 
         this.topicConfigTable.values().stream().forEach(tc -> {
             loadSysTopics(tc);
-            createSystemTopic(tc);
+            createPulsarTopic(tc);
         });
     }
 
@@ -226,7 +244,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
         }
     }
 
-    private String createSystemTopic(TopicConfig tc) {
+    private String createPulsarTopic(TopicConfig tc) {
         String fullTopicName = tc.getTopicName();
         try {
             PartitionedTopicMetadata topicMetadata =
@@ -242,13 +260,13 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                 }
             }
         } catch (Exception e) {
-            log.info("Topic {} concurrent creating and cause e: ", fullTopicName, e);
+            log.warn("Topic {} concurrent creating and cause e: ", fullTopicName, e);
             return fullTopicName;
         }
         return fullTopicName;
     }
 
-    private void createSysNamespaceIfNeeded(BrokerService service, String cluster, String tenant, String ns)
+    private void createPulsarNamespaceIfNeeded(BrokerService service, String cluster, String tenant, String ns)
             throws Exception {
         String fullNs = Joiner.on('/').join(tenant, ns);
         try {

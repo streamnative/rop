@@ -2,10 +2,12 @@ package com.tencent.tdmq.handlers.rocketmq.inner;
 
 import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
+import com.tencent.tdmq.handlers.rocketmq.inner.exception.RopSendException;
 import com.tencent.tdmq.handlers.rocketmq.inner.format.RopEntryFormatter;
 import com.tencent.tdmq.handlers.rocketmq.inner.pulsar.PulsarMessageStore;
 import com.tencent.tdmq.handlers.rocketmq.inner.pulsar.RopPulsarCommandSender;
 import com.tencent.tdmq.handlers.rocketmq.utils.PulsarUtil;
+import com.tencent.tdmq.handlers.rocketmq.utils.CommonUtils;
 import com.tencent.tdmq.handlers.rocketmq.utils.RocketMQTopic;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
@@ -14,6 +16,7 @@ import io.netty.channel.ChannelOption;
 import io.netty.handler.codec.haproxy.HAProxyMessage;
 import io.netty.util.concurrent.Promise;
 import java.net.SocketAddress;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedList;
@@ -43,7 +46,6 @@ import org.apache.pulsar.broker.service.BrokerServiceException.TopicNotFoundExce
 import org.apache.pulsar.broker.service.Consumer;
 import org.apache.pulsar.broker.service.Producer;
 import org.apache.pulsar.broker.service.PulsarCommandSender;
-import org.apache.pulsar.broker.service.ServerCnx;
 import org.apache.pulsar.broker.service.Subscription;
 import org.apache.pulsar.broker.service.Topic;
 import org.apache.pulsar.broker.service.TransportCnx;
@@ -61,7 +63,6 @@ import org.apache.pulsar.common.api.proto.PulsarApi.CommandFlow;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandGetLastMessageId;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandGetTopicsOfNamespace;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandGetTopicsOfNamespace.Mode;
-import org.apache.pulsar.common.api.proto.PulsarApi.CommandMessage;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandProducer;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandProducer.Builder;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandRedeliverUnacknowledgedMessages;
@@ -114,6 +115,11 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
 
     private static final AtomicLongFieldUpdater<RopServerCnx> MSG_PUBLISH_BUFFER_SIZE_UPDATER = AtomicLongFieldUpdater
             .newUpdater(RopServerCnx.class, "messagePublishBufferSize");
+    public static String ROP_HANDLER_NAME = "RopServerCnxHandler";
+    private final int SEND_TIMEOUT_IN_SEC = 3;
+    private RocketMQBrokerController brokerController;
+    private ChannelHandlerContext ctx;
+    private SocketAddress remoteAddress;
     private final BrokerService service;
     private final ConcurrentLongHashMap<Producer> producers;
     private final ConcurrentLongHashMap<Consumer> consumers;
@@ -125,10 +131,6 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
     private final RopEntryFormatter entryFormatter = new RopEntryFormatter();
     private final RopPulsarCommandSender commandSender;
     private final AtomicLong seqGenerator = new AtomicLong();
-    private final int SEND_TIMEOUT_IN_SEC = 15;
-    private RocketMQBrokerController brokerController;
-    private ChannelHandlerContext ctx;
-    private SocketAddress remoteAddress;
     private State state;
     private volatile boolean isActive = true;
     private int pendingSendRequest = 0;
@@ -170,7 +172,11 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
                 .isPreciseTopicPublishRateLimiterEnable();
         this.encryptionRequireOnProducer = this.service.pulsar().getConfiguration().isEncryptionRequireOnProducer();
         this.commandSender = new RopPulsarCommandSender(this);
-        ctx.channel().pipeline().addLast(this);
+        synchronized (ctx) {
+            if (ctx.pipeline().get(ROP_HANDLER_NAME) == null) {
+                ctx.pipeline().addLast(ROP_HANDLER_NAME, this);
+            }
+        }
     }
 
     protected void handleSubscribe(CommandSubscribe subscribe) {
@@ -825,8 +831,6 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
     @Override
     public void channelActive(ChannelHandlerContext ctx) throws Exception {
         super.channelActive(ctx);
-        this.remoteAddress = ctx.channel().remoteAddress();
-        this.state = State.Connected;
     }
 
     @Override
@@ -844,6 +848,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
                 log.warn("Consumer {} was already closed: {}", consumer, e);
             }
         });
+        producers.clear();
+        consumers.clear();
     }
 
     @Override
@@ -863,7 +869,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
         } else if (log.isDebugEnabled()) {
             log.debug("[{}] Got exception: {}", this.remoteAddress, cause);
         }
-        ctx.close();
+        this.ctx.close();
     }
 
     protected void close() {
@@ -1118,12 +1124,90 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
                     .setNumMessages(1)
                     .setSequenceId(seqId)
                     .build();
-            ByteBuf body = this.entryFormatter.encode(messageExtBrokerInner, 1);
+            List<ByteBuf> body = this.entryFormatter.encode(messageExtBrokerInner, 1);
             CompletableFuture<PutMessageResult> putMessageFuture = new CompletableFuture<>();
             this.commandSender.put(seqId, putMessageFuture);
-            this.handleSend(commandSend, body);
-            return putMessageFuture.get(SEND_TIMEOUT_IN_SEC, TimeUnit.SECONDS);
+            this.handleSend(commandSend, body.get(0));
+            PutMessageResult putMessageResult = putMessageFuture.get(SEND_TIMEOUT_IN_SEC, TimeUnit.SECONDS);
+            if (putMessageResult.getPutMessageStatus() == PutMessageStatus.PUT_OK) {
+                AppendMessageResult appendMessageResult = putMessageResult.getAppendMessageResult();
+                long ledgerId = appendMessageResult.getLogicsOffset();
+                long entryId = appendMessageResult.getPagecacheRT();
+                appendMessageResult.setMsgId(CommonUtils.createMessageId(ledgerId, entryId, partitionId, 0));
+                appendMessageResult.setWroteOffset(0L);
+                appendMessageResult.setLogicsOffset(0L);
+                appendMessageResult.setPagecacheRT(0L);
+            }
+            return putMessageResult;
         } catch (Exception ex) {
+            PutMessageStatus status = PutMessageStatus.FLUSH_DISK_TIMEOUT;
+            AppendMessageResult temp = new AppendMessageResult(AppendMessageStatus.UNKNOWN_ERROR);
+            return new PutMessageResult(status, temp);
+        }
+    }
+
+    @Override
+    public PutMessageResult putMessages(MessageExtBatch batchMessage, RemotingCommand request,
+            SendMessageRequestHeader requestHeader) {
+        String pGroup = requestHeader.getProducerGroup();
+        String ctxId = this.ctx.channel().id().asLongText();
+        RocketMQTopic rmqTopic = new RocketMQTopic(requestHeader.getTopic());
+        int partitionId = requestHeader.getQueueId();
+        String pTopic = rmqTopic.getPartitionName(partitionId);
+        long producerId = buildPulsarProducerId(pGroup, pTopic, ctxId);
+        long seqId = seqGenerator.incrementAndGet();
+        try {
+            if (!this.producers.containsKey(producerId)) {
+                Builder builder = CommandProducer.newBuilder();
+                CommandProducer commandProducer = builder
+                        .setProducerId(producerId)
+                        .setRequestId(seqId)
+                        .setProducerName(pGroup)
+                        .setTopic(pTopic)
+                        .build();
+                this.handleProducer(commandProducer);
+            }
+
+            List<CompletableFuture<PutMessageResult>> batchMessageFutures = new ArrayList<>();
+            List<ByteBuf> body = this.entryFormatter.encode(batchMessage, 1);
+            body.forEach(
+                    (item) -> {
+                        long msgSeqId = seqGenerator.incrementAndGet();
+                        CommandSend commandSend = CommandSend.newBuilder()
+                                .setIsChunk(false)
+                                .setProducerId(producerId)
+                                .setNumMessages(1)
+                                .setSequenceId(msgSeqId)
+                                .build();
+                        CompletableFuture<PutMessageResult> putMessageFuture = new CompletableFuture<>();
+                        batchMessageFutures.add(putMessageFuture);
+                        this.commandSender.put(msgSeqId, putMessageFuture);
+                        this.handleSend(commandSend, item);
+                    }
+            );
+            FutureUtil.waitForAll(batchMessageFutures).get(SEND_TIMEOUT_IN_SEC, TimeUnit.SECONDS);
+
+            StringBuilder sb = new StringBuilder();
+            for (CompletableFuture<PutMessageResult> f : batchMessageFutures) {
+                PutMessageResult putResult = f.get();
+                if (putResult.getPutMessageStatus() == PutMessageStatus.PUT_OK) {
+                    long ledgerId = putResult.getAppendMessageResult().getLogicsOffset();
+                    long entryId = putResult.getAppendMessageResult().getPagecacheRT();
+                    String msgId = CommonUtils.createMessageId(ledgerId, entryId, partitionId, 0);
+                    sb.append(msgId).append(",");
+                } else {
+                    throw new RopSendException("send batch message failed.");
+                }
+            }
+            AppendMessageResult appendMessageResult = new AppendMessageResult(AppendMessageStatus.PUT_OK);
+            PutMessageResult putMessageResult = new PutMessageResult(PutMessageStatus.PUT_OK, appendMessageResult);
+            appendMessageResult.setMsgId(sb.toString());
+            appendMessageResult.setWroteOffset(0L);
+            appendMessageResult.setLogicsOffset(0L);
+            appendMessageResult.setPagecacheRT(0L);
+            return putMessageResult;
+        } catch (Exception ex) {
+            log.warn("putMessages batchMessage fail.", ex);
             PutMessageStatus status = PutMessageStatus.FLUSH_DISK_TIMEOUT;
             AppendMessageResult temp = new AppendMessageResult(AppendMessageStatus.UNKNOWN_ERROR);
             return new PutMessageResult(status, temp);

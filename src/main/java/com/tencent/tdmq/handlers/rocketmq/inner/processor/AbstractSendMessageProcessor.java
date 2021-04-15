@@ -32,6 +32,7 @@ import org.apache.rocketmq.common.utils.ChannelUtil;
 import org.apache.rocketmq.remoting.common.RemotingHelper;
 import org.apache.rocketmq.remoting.exception.RemotingCommandException;
 import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
+import org.apache.rocketmq.remoting.protocol.LanguageCode;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.store.MessageExtBrokerInner;
 
@@ -48,8 +49,16 @@ public abstract class AbstractSendMessageProcessor implements NettyRequestProces
     }
 
     protected PulsarMessageStore getServerCnxMsgStore(ChannelHandlerContext ctx, String groupName) {
+
         RopClientChannelCnx channelCnx = (RopClientChannelCnx) this.brokerController.getProducerManager()
                 .findChlInfo(groupName, ctx.channel());
+        if (channelCnx == null) {
+            synchronized (ctx) {
+                String clientId = ctx.channel().remoteAddress().toString() + "@" + System.currentTimeMillis();
+                channelCnx = new RopClientChannelCnx(this.brokerController, ctx, clientId, LanguageCode.JAVA, 0);
+                this.brokerController.getProducerManager().registerProducer(groupName, channelCnx);
+            }
+        }
         return channelCnx != null ? channelCnx.getServerCnx() : null;
     }
 
@@ -66,14 +75,10 @@ public abstract class AbstractSendMessageProcessor implements NettyRequestProces
         mqtraceContext.setTopic(requestHeader.getTopic());
         mqtraceContext.setMsgProps(requestHeader.getProperties());
         mqtraceContext.setBornHost(RemotingHelper.parseChannelRemoteAddr(ctx.channel()));
-/*        mqtraceContext.setBrokerAddr(this.brokerController.getBrokerAddr());
-        mqtraceContext.setBrokerRegionId(this.brokerController.getBrokerConfig().getRegionId());*/
         mqtraceContext.setBornTimeStamp(requestHeader.getBornTimestamp());
 
         Map<String, String> properties = MessageDecoder.string2messageProperties(requestHeader.getProperties());
         String uniqueKey = properties.get(MessageConst.PROPERTY_UNIQ_CLIENT_MESSAGE_ID_KEYIDX);
-/*        properties.put(MessageConst.PROPERTY_MSG_REGION, this.brokerController.getBrokerConfig().getRegionId());
-        properties.put(MessageConst.PROPERTY_TRACE_SWITCH, String.valueOf(this.brokerController.getBrokerConfig().isTraceOn()));*/
         requestHeader.setProperties(MessageDecoder.messageProperties2String(properties));
 
         if (uniqueKey == null) {
