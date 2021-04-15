@@ -219,7 +219,6 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
                 if (existingConsumer != null) {
                     log.info("[{}] Consumer with the same id is already created: consumerId={}, consumer={}",
                             this.remoteAddress, consumerId, existingConsumer);
-                    commandSender.sendSuccessResponse(requestId);
                     return;
                 }
 
@@ -256,14 +255,13 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
                         }).get();
 
                 this.consumers.putIfAbsent(consumerId, existingConsumer);
-                commandSender.sendSuccessResponse(requestId);
             } catch (Exception e) {
                 log.warn("handleSubscribe error {}: {}", consumerId, e);
-                commandSender.sendErrorResponse(requestId, ServerError.MetadataError, "handleSubscribe error");
                 if (this.consumers.containsKey(consumerId)) {
                     try {
                         this.consumers.get(consumerId).close();
                     } catch (BrokerServiceException brokerServiceException) {
+                        log.error("Get broker service error: {}", brokerServiceException.getMessage());
                     }
                     this.consumers.remove(consumerId);
                 }
@@ -271,7 +269,6 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
         } else {
             String msgx = "Client is not authorized to subscribe";
             log.warn("[{}] {} with role {}", this.remoteAddress, msgx, this.getPrincipal());
-            ctx.writeAndFlush(Commands.newError(requestId, ServerError.AuthorizationError, msgx));
         }
     }
 
@@ -293,12 +290,12 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
             Producer existingProducer = this.producers.get(producerId);
             if (existingProducer != null) {
                 log.info("[{}] Producer with the same id is already created: producerId={}, producer={}",
-                        new Object[]{this.remoteAddress, producerId, existingProducer});
+                        this.remoteAddress, producerId, existingProducer);
                 return;
             }
 
             log.info("[{}][{}] Creating producer. producerId={}",
-                    new Object[]{this.remoteAddress, topicName, producerId});
+                    this.remoteAddress, topicName, producerId);
             this.service.getOrCreateTopic(topicName.toString()).thenAccept((topic) -> {
                 if (topic.isBacklogQuotaExceeded(producerName)) {
                     this.producers.remove(producerId);
@@ -322,7 +319,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
                         }
                     } catch (Exception ex) {
                         log.error("[{}] Failed to add producer to topic {}: {}",
-                                new Object[]{this.remoteAddress, topicName, ex.getMessage()});
+                                this.remoteAddress, topicName, ex.getMessage());
                         this.producers.remove(producerId);
                     }
                 }
@@ -334,7 +331,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
 
                 if (!(cause instanceof ServiceUnitNotReadyException)) {
                     log.error("[{}] Failed to create topic {}, producerId={}",
-                            new Object[]{this.remoteAddress, topicName, producerId, exception});
+                            this.remoteAddress, topicName, producerId, exception);
                 }
                 this.producers.remove(producerId);
                 return null;
@@ -1223,6 +1220,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
         long commitOffset = requestHeader.getCommitOffset();
         long queueOffset = requestHeader.getQueueOffset();
         int maxMsgNums = requestHeader.getMaxMsgNums();
+        // 集群和广播这两种消费模型
         String subscription = requestHeader.getSubscription();
         int sysFlag = requestHeader.getSysFlag();
         String expressionType = requestHeader.getExpressionType();
@@ -1240,31 +1238,30 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
         long seqId = seqGenerator.incrementAndGet();
         GetMessageResult getResult = new GetMessageResult();
 
-        CommandSubscribe.Builder builder = CommandSubscribe.newBuilder();
-        CommandSubscribe commandSubscribe = builder
-                .setTopic(topic)
-                .setSubscription(consumerGroup)
-                .setSubType(PulsarUtil.parseSubType(SubscriptionType.Exclusive))
-                .setConsumerId(consumerId)
-                .setRequestId(seqId)
-                .setConsumerName("") // 如果客户端不传的话，服务端回自己生成一个 consumer name
-//                .setPriorityLevel(null)
-                .setDurable(true) // 代表 cursor 是否需要持久化
+        if (!this.consumers.containsKey(consumerId)) {
+            CommandSubscribe.Builder builder = CommandSubscribe.newBuilder();
+            CommandSubscribe commandSubscribe = builder
+                    .setTopic(topic)
+                    .setSubscription(consumerGroup)
+                    .setSubType(PulsarUtil.parseSubType(SubscriptionType.Exclusive))
+                    .setConsumerId(consumerId)
+                    .setRequestId(seqId)
+                    .setConsumerName(consumerGroup+consumerId)
+                    .setDurable(true) // 代表 cursor 是否需要持久化
 //                .setMetadata() // 代表properties对象，是一个map[string]string
-                .setReadCompacted(false)
-                .setInitialPosition(PulsarUtil.parseSubPosition(SubscriptionInitialPosition.Earliest))
-                .setReplicateSubscriptionState(false)
-                .build();
+                    // TODO: 这里的逻辑与 rocketMQ 本身有出入，rocketMQ 在启动的时候，会先查询要消费的offset的位置，然后将这个offset的位置
+                    //       设置进来。queryConsumerOffset
+                    .setInitialPosition(PulsarUtil.parseSubPosition(SubscriptionInitialPosition.Latest))
+                    .setReadCompacted(false)
+                    .setReplicateSubscriptionState(false)
+                    .build();
 
-        this.handleSubscribe(commandSubscribe);
-//
-//        CommandMessage.Builder messageBuilder = CommandMessage.newBuilder();
-//        CommandMessage commandMessage = messageBuilder
-//                .setMessageId()
-//                .setConsumerId(consumerId)
-//                .setRedeliveryCount(1)
-//                .build();
-//
+            this.handleSubscribe(commandSubscribe);
+        }
+
+
+        //TODO: send messages to consumer
+//        this.commandSender.sendMessagesToConsumer(consumerId, topic, null, queueID, );
 
         return null;
     }
