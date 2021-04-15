@@ -7,6 +7,7 @@ import com.tencent.tdmq.handlers.rocketmq.inner.format.RopEntryFormatter;
 import com.tencent.tdmq.handlers.rocketmq.inner.pulsar.PulsarMessageStore;
 import com.tencent.tdmq.handlers.rocketmq.inner.pulsar.RopPulsarCommandSender;
 import com.tencent.tdmq.handlers.rocketmq.utils.CommonUtils;
+import com.tencent.tdmq.handlers.rocketmq.utils.MessageIdUtils;
 import com.tencent.tdmq.handlers.rocketmq.utils.PulsarUtil;
 import com.tencent.tdmq.handlers.rocketmq.utils.RocketMQTopic;
 import io.netty.buffer.ByteBuf;
@@ -395,14 +396,11 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
         if (consumer != null) {
             consumer.messageAcked(ack).thenRun(() -> {
                 if (hasRequestId) {
-                    this.ctx.writeAndFlush(
-                            Commands.newAckResponse(requestId, (ServerError) null, (String) null, consumerId));
+
                 }
             }).exceptionally((e) -> {
                 if (hasRequestId) {
-                    this.ctx.writeAndFlush(
-                            Commands.newAckResponse(requestId, BrokerServiceException.getClientErrorCode(e),
-                                    e.getMessage(), consumerId));
+
                 }
                 return null;
             });
@@ -753,7 +751,6 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
         MSG_PUBLISH_BUFFER_SIZE_UPDATER.getAndAdd(this, (long) (-msgSize));
         if (--this.pendingSendRequest == this.resumeReadsThreshold) {
             this.ctx.channel().config().setAutoRead(true);
-            this.ctx.read();
         }
 
         if (isNonPersistentTopic) {
@@ -1130,7 +1127,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
                 AppendMessageResult appendMessageResult = putMessageResult.getAppendMessageResult();
                 long ledgerId = appendMessageResult.getLogicsOffset();
                 long entryId = appendMessageResult.getPagecacheRT();
-                appendMessageResult.setMsgId(CommonUtils.createMessageId(ledgerId, entryId, partitionId, 0));
+                appendMessageResult.setMsgId(CommonUtils.createMessageId(this.ctx.channel().localAddress(),
+                        MessageIdUtils.getOffset(ledgerId, entryId, partitionId)));
                 appendMessageResult.setWroteOffset(0L);
                 appendMessageResult.setLogicsOffset(0L);
                 appendMessageResult.setPagecacheRT(0L);
@@ -1190,7 +1188,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
                 if (putResult.getPutMessageStatus() == PutMessageStatus.PUT_OK) {
                     long ledgerId = putResult.getAppendMessageResult().getLogicsOffset();
                     long entryId = putResult.getAppendMessageResult().getPagecacheRT();
-                    String msgId = CommonUtils.createMessageId(ledgerId, entryId, partitionId, 0);
+                    String msgId = CommonUtils.createMessageId(this.ctx.channel().localAddress(),
+                            MessageIdUtils.getOffset(ledgerId, entryId, partitionId));
                     sb.append(msgId).append(",");
                 } else {
                     throw new RopSendException("send batch message failed.");

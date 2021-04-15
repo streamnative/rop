@@ -1,7 +1,7 @@
 package com.tencent.tdmq.handlers.rocketmq.inner.consumer;
 
 import static com.google.common.base.Preconditions.checkArgument;
-import static com.tencent.tdmq.handlers.rocketmq.utils.MessageIdUtils.offsetAfterBatchIndex;
+import static com.tencent.tdmq.handlers.rocketmq.utils.MessageIdUtils.offsetAfterPartitionId;
 
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
 import com.tencent.tdmq.handlers.rocketmq.utils.MessageIdUtils;
@@ -140,7 +140,7 @@ public class TopicConsumerManager {
 
     private Pair<ManagedCursor, Long> createCursorIfNotExists(final ChannelHandlerContext ctx, long offset) {
         // This is for read a new entry, first check if offset is from a batched message request.
-        offset = offsetAfterBatchIndex(offset);
+        offset = offsetAfterPartitionId(offset);
 
         Pair<ManagedCursor, Long> cursor;
 
