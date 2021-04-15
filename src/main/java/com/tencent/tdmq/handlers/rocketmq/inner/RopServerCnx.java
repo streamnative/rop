@@ -56,6 +56,8 @@ import org.apache.pulsar.client.api.SubscriptionType;
 import org.apache.pulsar.client.impl.BatchMessageIdImpl;
 import org.apache.pulsar.client.impl.ClientCnx;
 import org.apache.pulsar.client.impl.MessageIdImpl;
+import org.apache.pulsar.common.api.proto.PulsarApi;
+import org.apache.pulsar.common.api.proto.PulsarApi.BaseCommand;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandAck;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandCloseConsumer;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandCloseProducer;
@@ -63,6 +65,7 @@ import org.apache.pulsar.common.api.proto.PulsarApi.CommandFlow;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandGetLastMessageId;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandGetTopicsOfNamespace;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandGetTopicsOfNamespace.Mode;
+import org.apache.pulsar.common.api.proto.PulsarApi.CommandMessage;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandProducer;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandProducer.Builder;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandRedeliverUnacknowledgedMessages;
@@ -81,6 +84,7 @@ import org.apache.pulsar.common.naming.Metadata;
 import org.apache.pulsar.common.naming.NamespaceName;
 import org.apache.pulsar.common.naming.TopicName;
 import org.apache.pulsar.common.policies.data.TopicOperation;
+import org.apache.pulsar.common.protocol.ByteBufPair;
 import org.apache.pulsar.common.protocol.CommandUtils;
 import org.apache.pulsar.common.protocol.Commands;
 import org.apache.pulsar.common.protocol.schema.SchemaData;
@@ -407,6 +411,10 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
                 return null;
             });
         }
+    }
+
+    protected void handleMessage(CommandMessage cmdMessage, ByteBuf headersAndPayload) {
+        MessageIdData messageId = cmdMessage.getMessageId();
     }
 
     protected void handleFlow(CommandFlow flow) {
@@ -1216,7 +1224,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
 
         String consumerGroup = requestHeader.getConsumerGroup();
         String topic = requestHeader.getTopic();
-        int queueID = requestHeader.getQueueId();
+        int partitionID = requestHeader.getQueueId();
         long commitOffset = requestHeader.getCommitOffset();
         long queueOffset = requestHeader.getQueueOffset();
         int maxMsgNums = requestHeader.getMaxMsgNums();
@@ -1224,14 +1232,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
         String subscription = requestHeader.getSubscription();
         int sysFlag = requestHeader.getSysFlag();
         String expressionType = requestHeader.getExpressionType();
-
         Map<String, String> properties = request.getExtFields();
-
-        long beginTime = this.getSystemClock().now();
-        GetMessageStatus status = GetMessageStatus.NO_MESSAGE_IN_QUEUE;
-        long nextBeginOffset = commitOffset;
-        long minOffset = 0;
-        long maxOffset = 0;
         String ctxId = this.ctx.channel().id().asLongText();
 
         long consumerId = buildPulsarConsumerId(consumerGroup, topic, ctxId);
@@ -1259,6 +1260,20 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
             this.handleSubscribe(commandSubscribe);
         }
 
+        CommandMessage.Builder messageBuilder = CommandMessage.newBuilder();
+
+        MessageIdData messageIdData = MessageIdData.newBuilder()
+                .setLedgerId(0L)
+                .setEntryId(0L)
+                .setPartition(partitionID)
+                .build();
+        CommandMessage commandMessage = messageBuilder
+                .setMessageId(messageIdData)
+                .setConsumerId(consumerId)
+                .setRedeliveryCount(0)
+                .build();
+
+        this.handleMessage(commandMessage, null);
 
         //TODO: send messages to consumer
 //        this.commandSender.sendMessagesToConsumer(consumerId, topic, null, queueID, );
