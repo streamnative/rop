@@ -14,6 +14,7 @@ import org.apache.pulsar.common.api.proto.PulsarApi.KeyValue;
  * @date 2021/4/14 3:06 下午
  */
 public class PulsarUtil {
+
     public static InitialPosition parseSubPosition(SubscriptionInitialPosition subPosition) {
         switch (subPosition) {
             case Latest:
@@ -42,7 +43,7 @@ public class PulsarUtil {
 
     public static List<KeyValue> ConvertFromStringMap(Map<String, String> stringMap) {
         List<KeyValue> keyValueList = new ArrayList<>();
-        for (Map.Entry<String, String> entry: stringMap.entrySet()) {
+        for (Map.Entry<String, String> entry : stringMap.entrySet()) {
             KeyValue build = KeyValue.newBuilder()
                     .setKey(entry.getKey())
                     .setValue(entry.getValue())

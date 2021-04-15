@@ -1,6 +1,6 @@
 package com.tencent.tdmq.handlers.rocketmq.inner.exception;
 
-public class RopSendException extends Exception{
+public class RopSendException extends Exception {
 
     public RopSendException() {
         super();

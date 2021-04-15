@@ -53,7 +53,8 @@ public class PullMessageProcessor implements NettyRequestProcessor {
         this.brokerController = brokerController;
     }
 
-    protected PulsarMessageStore getServerCnxMsgStore(ChannelHandlerContext ctx, RemotingCommand request, String groupName) {
+    protected PulsarMessageStore getServerCnxMsgStore(ChannelHandlerContext ctx, RemotingCommand request,
+            String groupName) {
         String clientId = ctx.channel().remoteAddress().toString() + "@" + System.currentTimeMillis();
         RopClientChannelCnx channelCnx = (RopClientChannelCnx) this.brokerController.getConsumerManager()
                 .findChannel(groupName, clientId);
@@ -92,7 +93,8 @@ public class PullMessageProcessor implements NettyRequestProcessor {
         return false;
     }
 
-    private RemotingCommand processRequest(final Channel channel, PullMessageRequestHeader requestHeader, RemotingCommand request, boolean brokerAllowSuspend)
+    private RemotingCommand processRequest(final Channel channel, PullMessageRequestHeader requestHeader,
+            RemotingCommand request, boolean brokerAllowSuspend)
             throws RemotingCommandException {
         RemotingCommand response = RemotingCommand.createResponseCommand(PullMessageResponseHeader.class);
         final PullMessageResponseHeader responseHeader = (PullMessageResponseHeader) response.readCustomHeader();
@@ -505,7 +507,8 @@ public class PullMessageProcessor implements NettyRequestProcessor {
                 try {
 
                     final PullMessageRequestHeader requestHeader =
-                            (PullMessageRequestHeader) request.decodeCommandCustomHeader(PullMessageRequestHeader.class);
+                            (PullMessageRequestHeader) request
+                                    .decodeCommandCustomHeader(PullMessageRequestHeader.class);
                     final RemotingCommand response = PullMessageProcessor.this
                             .processRequest(channel, requestHeader, request, false);
 
