@@ -346,7 +346,7 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
             doc = "The maximum number of times the message was checked, "
                     + "if exceed this value, this message will be discarded.\n"
     )
-    private int rmqScheduleTopicPartitionNum = 20;
+    private int rmqScheduleTopicPartitionNum = 5;
 
     @FieldContext(
             category = CATEGORY_ROCKETMQ,

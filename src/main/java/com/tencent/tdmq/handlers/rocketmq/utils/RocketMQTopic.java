@@ -16,7 +16,6 @@ import org.apache.rocketmq.common.protocol.NamespaceUtil;
  * 2. getFullName() when access Pulsar resources.
  */
 public class RocketMQTopic {
-
     private static final char TENANT_NAMESPACE_SEP = '|';
     private static final char ROCKETMQ_NAMESPACE_TOPIC_SEP = NamespaceUtil.NAMESPACE_SEPARATOR;
     private static final TopicDomain domain = TopicDomain.persistent;

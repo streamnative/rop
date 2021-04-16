@@ -238,7 +238,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
     private void loadSysTopics(TopicConfig tc) {
         String fullTopicName = tc.getTopicName();
         try {
-            adminClient.lookups().lookupTopic(fullTopicName);
+            adminClient.lookups().lookupTopicAsync(fullTopicName);
         } catch (Exception e) {
             log.warn("load system topic [{}] error.", fullTopicName, e);
         }

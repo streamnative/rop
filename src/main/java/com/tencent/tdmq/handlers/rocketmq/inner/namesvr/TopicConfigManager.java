@@ -1,5 +1,6 @@
 package com.tencent.tdmq.handlers.rocketmq.inner.namesvr;
 
+import com.google.common.base.Splitter;
 import com.tencent.tdmq.handlers.rocketmq.RocketMQServiceConfiguration;
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
 import com.tencent.tdmq.handlers.rocketmq.utils.RocketMQTopic;
@@ -12,6 +13,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.logging.log4j.util.Strings;
 import org.apache.rocketmq.common.DataVersion;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.TopicConfig;
@@ -74,21 +76,6 @@ public abstract class TopicConfigManager {
             topicConfig.setPerm(perm);
             this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);
         }
-/*        {
-
-            String topic = RocketMQTopic
-                    .getPulsarMetaNoDomainTopic(this.brokerController.getServerConfig().getBrokerName());
-            TopicConfig topicConfig = new TopicConfig(topic);
-            this.systemTopicList.add(topic);
-            int perm = PermName.PERM_INHERIT;
-            if (this.brokerController.getServerConfig().isBrokerTopicEnable()) {
-                perm |= PermName.PERM_READ | PermName.PERM_WRITE;
-            }
-            topicConfig.setReadQueueNums(1);
-            topicConfig.setWriteQueueNums(1);
-            topicConfig.setPerm(perm);
-            this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);
-        }*/
         {
             // MixAll.OFFSET_MOVED_EVENT
             String topic = RocketMQTopic.getPulsarMetaNoDomainTopic(MixAll.OFFSET_MOVED_EVENT);
@@ -121,14 +108,18 @@ public abstract class TopicConfigManager {
             this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);
         }*/
         {
-
-            String topic = RocketMQTopic.getPulsarMetaNoDomainTopic(config.getRmqScheduleTopic());
-            TopicConfig topicConfig = new TopicConfig(topic);
-            this.systemTopicList.add(topic);
-            topicConfig.setReadQueueNums(config.getRmqScheduleTopicPartitionNum());
-            topicConfig.setWriteQueueNums(config.getRmqScheduleTopicPartitionNum());
-            this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);
+            String delayedLevelStr = config.getMessageDelayLevel();
+            Splitter.on(" ").omitEmptyStrings().split(delayedLevelStr).forEach(lvl -> {
+                        String topic = RocketMQTopic.getPulsarMetaNoDomainTopic(config.getRmqScheduleTopic() + "_" + lvl);
+                        TopicConfig topicConfig = new TopicConfig(topic);
+                        this.systemTopicList.add(topic);
+                        topicConfig.setReadQueueNums(config.getRmqScheduleTopicPartitionNum());
+                        topicConfig.setWriteQueueNums(config.getRmqScheduleTopicPartitionNum());
+                        this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);
+                    }
+            );
         }
+
         {
             String topic = RocketMQTopic.getPulsarMetaNoDomainTopic(config.getRmqSysTransHalfTopic());
             TopicConfig topicConfig = new TopicConfig(topic);
@@ -137,6 +128,7 @@ public abstract class TopicConfigManager {
             topicConfig.setWriteQueueNums(defaultPartitionNum);
             this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);
         }
+
         {
             String topic = RocketMQTopic.getPulsarMetaNoDomainTopic(config.getRmqSysTransOpHalfTopic());
             TopicConfig topicConfig = new TopicConfig(topic);
@@ -145,6 +137,7 @@ public abstract class TopicConfigManager {
             topicConfig.setWriteQueueNums(defaultPartitionNum);
             this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);
         }
+
         {
             String topic = RocketMQTopic.getPulsarMetaNoDomainTopic(config.getRmqTransCheckMaxTimeTopic());
             TopicConfig topicConfig = new TopicConfig(topic);
@@ -153,6 +146,7 @@ public abstract class TopicConfigManager {
             topicConfig.setWriteQueueNums(1);
             this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);
         }
+
     }
 
     public boolean isSystemTopic(final String topic) {
