@@ -211,7 +211,8 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         String originMsgId = MessageAccessor.getOriginMessageId(msgExt);
         MessageAccessor.setOriginMessageId(msgInner, UtilAll.isBlank(originMsgId) ? msgExt.getMsgId() : originMsgId);
 
-        PutMessageResult putMessageResult = this.getServerCnxMsgStore(ctx, requestHeader.getGroup()).putMessage(msgInner,requestHeader.getGroup());
+        PutMessageResult putMessageResult = this.getServerCnxMsgStore(ctx, requestHeader.getGroup())
+                .putMessage(msgInner, requestHeader.getGroup());
         if (putMessageResult != null) {
             switch (putMessageResult.getPutMessageStatus()) {
                 case PUT_OK:

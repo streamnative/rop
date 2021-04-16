@@ -2,6 +2,9 @@ package com.tencent.tdmq.handlers.rocketmq.inner;
 
 import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.RemovalListener;
 import com.tencent.tdmq.handlers.rocketmq.inner.exception.RopSendException;
 import com.tencent.tdmq.handlers.rocketmq.inner.format.RopEntryFormatter;
 import com.tencent.tdmq.handlers.rocketmq.inner.pulsar.PulsarMessageStore;
@@ -11,7 +14,6 @@ import com.tencent.tdmq.handlers.rocketmq.utils.MessageIdUtils;
 import com.tencent.tdmq.handlers.rocketmq.utils.PulsarUtil;
 import com.tencent.tdmq.handlers.rocketmq.utils.RocketMQTopic;
 import io.netty.buffer.ByteBuf;
-import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
@@ -23,8 +25,6 @@ import java.net.SocketAddress;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
@@ -42,6 +42,7 @@ import org.apache.bookkeeper.mledger.Position;
 import org.apache.bookkeeper.mledger.impl.ManagedLedgerImpl;
 import org.apache.bookkeeper.mledger.impl.PositionImpl;
 import org.apache.commons.lang.exception.ExceptionUtils;
+import org.apache.pulsar.broker.PulsarServerException;
 import org.apache.pulsar.broker.authentication.AuthenticationDataSource;
 import org.apache.pulsar.broker.service.BrokerService;
 import org.apache.pulsar.broker.service.BrokerServiceException;
@@ -56,14 +57,14 @@ import org.apache.pulsar.broker.service.Topic;
 import org.apache.pulsar.broker.service.TransportCnx;
 import org.apache.pulsar.broker.service.persistent.PersistentSubscription;
 import org.apache.pulsar.broker.service.persistent.PersistentTopic;
-import org.apache.pulsar.client.api.MessageId;
+import org.apache.pulsar.client.api.Message;
+import org.apache.pulsar.client.api.Reader;
 import org.apache.pulsar.client.api.SubscriptionInitialPosition;
 import org.apache.pulsar.client.api.SubscriptionType;
 import org.apache.pulsar.client.impl.BatchMessageIdImpl;
 import org.apache.pulsar.client.impl.ClientCnx;
 import org.apache.pulsar.client.impl.MessageIdImpl;
 import org.apache.pulsar.common.allocator.PulsarByteBufAllocator;
-import org.apache.pulsar.common.api.proto.PulsarApi;
 import org.apache.pulsar.common.api.proto.PulsarApi.BaseCommand;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandAck;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandCloseConsumer;
@@ -72,7 +73,6 @@ import org.apache.pulsar.common.api.proto.PulsarApi.CommandFlow;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandGetLastMessageId;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandGetTopicsOfNamespace;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandGetTopicsOfNamespace.Mode;
-import org.apache.pulsar.common.api.proto.PulsarApi.CommandMessage;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandProducer;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandProducer.Builder;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandRedeliverUnacknowledgedMessages;
@@ -86,7 +86,6 @@ import org.apache.pulsar.common.api.proto.PulsarApi.FeatureFlags;
 import org.apache.pulsar.common.api.proto.PulsarApi.KeySharedMeta;
 import org.apache.pulsar.common.api.proto.PulsarApi.MessageIdData;
 import org.apache.pulsar.common.api.proto.PulsarApi.MessageMetadata;
-import org.apache.pulsar.common.api.proto.PulsarApi.ServerError;
 import org.apache.pulsar.common.naming.Metadata;
 import org.apache.pulsar.common.naming.NamespaceName;
 import org.apache.pulsar.common.naming.TopicName;
@@ -104,22 +103,13 @@ import org.apache.rocketmq.common.SystemClock;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageExtBatch;
 import org.apache.rocketmq.common.protocol.header.PullMessageRequestHeader;
-import org.apache.rocketmq.common.protocol.header.SendMessageRequestHeader;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.store.AppendMessageResult;
 import org.apache.rocketmq.store.AppendMessageStatus;
-import org.apache.rocketmq.store.CommitLogDispatcher;
-import org.apache.rocketmq.store.ConsumeQueue;
 import org.apache.rocketmq.store.GetMessageResult;
-import org.apache.rocketmq.store.GetMessageStatus;
 import org.apache.rocketmq.store.MessageExtBrokerInner;
-import org.apache.rocketmq.store.MessageFilter;
 import org.apache.rocketmq.store.PutMessageResult;
 import org.apache.rocketmq.store.PutMessageStatus;
-import org.apache.rocketmq.store.QueryMessageResult;
-import org.apache.rocketmq.store.SelectMappedBufferResult;
-import org.apache.rocketmq.store.config.BrokerRole;
-import org.apache.rocketmq.store.stats.BrokerStatsManager;
 
 @Slf4j
 @Getter
@@ -160,6 +150,13 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
     private String authRole = null;
     private String clientVersion = null;
     private String originalPrincipal = null;
+    private Cache<String, Reader<byte[]>> pulsarReaderCache = CacheBuilder.newBuilder()
+            .expireAfterAccess(600, TimeUnit.SECONDS)
+            .initialCapacity(2)
+            .maximumSize(10)
+            .removalListener((RemovalListener<String, Reader<byte[]>>) l ->
+                    l.getValue().closeAsync())
+            .build();
 
     private SystemClock systemClock = new SystemClock();
 
@@ -882,235 +879,12 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
     }
 
     @Override
-    public boolean load() {
-        return true;
-    }
-
-    @Override
-    public void start() throws Exception {
-
-    }
-
-    @Override
-    public void shutdown() {
-
-    }
-
-    @Override
-    public void destroy() {
-
-    }
-
-    @Override
-    public PutMessageResult putMessage(MessageExtBrokerInner messageExtBrokerInner) {
-        return null;
-    }
-
-    @Override
-    public PutMessageResult putMessages(MessageExtBatch messageExtBatch) {
-        return null;
-    }
-
-    @Override
-    public GetMessageResult getMessage(String group, String topic, int queueId, long offset, int maxMsgNums,
-            MessageFilter messageFilter) {
-        return null;
-    }
-
-    @Override
-    public long getMaxOffsetInQueue(String topic, int queueId) {
-        return 0;
-    }
-
-    @Override
-    public long getMinOffsetInQueue(String topic, int queueId) {
-        return 0;
-    }
-
-    @Override
-    public long getCommitLogOffsetInQueue(String topic, int queueId, long consumeQueueOffset) {
-        return 0;
-    }
-
-    @Override
-    public long getOffsetInQueueByTime(String topic, int queueId, long timestamp) {
-        return 0;
-    }
-
-    @Override
-    public MessageExt lookMessageByOffset(long commitLogOffset) {
-        return null;
-    }
-
-    @Override
-    public SelectMappedBufferResult selectOneMessageByOffset(long commitLogOffset) {
-        return null;
-    }
-
-    @Override
-    public SelectMappedBufferResult selectOneMessageByOffset(long commitLogOffset, int msgSize) {
-        return null;
-    }
-
-    @Override
-    public String getRunningDataInfo() {
-        return null;
-    }
-
-    @Override
-    public HashMap<String, String> getRuntimeInfo() {
-        return null;
-    }
-
-    @Override
-    public long getMaxPhyOffset() {
-        return 0;
-    }
-
-    @Override
-    public long getMinPhyOffset() {
-        return 0;
-    }
-
-    @Override
-    public long getEarliestMessageTime(String topic, int queueId) {
-        return 0;
-    }
-
-    @Override
-    public long getEarliestMessageTime() {
-        return 0;
-    }
-
-    @Override
-    public long getMessageStoreTimeStamp(String topic, int queueId, long consumeQueueOffset) {
-        return 0;
-    }
-
-    @Override
-    public long getMessageTotalInQueue(String topic, int queueId) {
-        return 0;
-    }
-
-    @Override
-    public SelectMappedBufferResult getCommitLogData(long offset) {
-        return null;
-    }
-
-    @Override
-    public boolean appendToCommitLog(long startOffset, byte[] data) {
-        return false;
-    }
-
-    @Override
-    public void executeDeleteFilesManually() {
-
-    }
-
-    @Override
-    public QueryMessageResult queryMessage(String topic, String key, int maxNum, long begin, long end) {
-        return null;
-    }
-
-    @Override
-    public void updateHaMasterAddress(String newAddr) {
-
-    }
-
-    @Override
-    public long slaveFallBehindMuch() {
-        return 0;
-    }
-
-    @Override
-    public long now() {
-        return this.systemClock.now();
-    }
-
-    @Override
-    public int cleanUnusedTopic(Set<String> topics) {
-        return 0;
-    }
-
-    @Override
-    public void cleanExpiredConsumerQueue() {
-
-    }
-
-    @Override
-    public boolean checkInDiskByConsumeOffset(String topic, int queueId, long consumeOffset) {
-        return false;
-    }
-
-    @Override
-    public long dispatchBehindBytes() {
-        return 0;
-    }
-
-    @Override
-    public long flush() {
-        return 0;
-    }
-
-    @Override
-    public boolean resetWriteOffset(long phyOffset) {
-        return false;
-    }
-
-    @Override
-    public long getConfirmOffset() {
-        return 0;
-    }
-
-    @Override
-    public void setConfirmOffset(long phyOffset) {
-
-    }
-
-    @Override
-    public boolean isOSPageCacheBusy() {
-        return false;
-    }
-
-    @Override
-    public long lockTimeMills() {
-        return 0;
-    }
-
-    @Override
-    public boolean isTransientStorePoolDeficient() {
-        return false;
-    }
-
-    @Override
-    public LinkedList<CommitLogDispatcher> getDispatcherList() {
-        return null;
-    }
-
-    @Override
-    public ConsumeQueue getConsumeQueue(String topic, int queueId) {
-        return null;
-    }
-
-    @Override
-    public BrokerStatsManager getBrokerStatsManager() {
-        return null;
-    }
-
-    @Override
-    public void handleScheduleMessageService(BrokerRole brokerRole) {
-
-    }
-
-    @Override
-    public PutMessageResult putMessage(MessageExtBrokerInner messageExtBrokerInner, RemotingCommand request,
-            SendMessageRequestHeader requestHeader) {
-        String pGroup = requestHeader.getProducerGroup();
+    public PutMessageResult putMessage(MessageExtBrokerInner messageInner, String producerGroup) {
         String ctxId = this.ctx.channel().id().asLongText();
-        RocketMQTopic rmqTopic = new RocketMQTopic(requestHeader.getTopic());
-        int partitionId = requestHeader.getQueueId();
+        RocketMQTopic rmqTopic = new RocketMQTopic(messageInner.getTopic());
+        int partitionId = messageInner.getQueueId();
         String pTopic = rmqTopic.getPartitionName(partitionId);
-        long producerId = buildPulsarProducerId(pGroup, pTopic, ctxId);
+        long producerId = buildPulsarProducerId(producerGroup, pTopic, ctxId);
         long seqId = seqGenerator.incrementAndGet();
         try {
             if (!this.producers.containsKey(producerId)) {
@@ -1118,7 +892,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
                 CommandProducer commandProducer = builder
                         .setProducerId(producerId)
                         .setRequestId(seqId)
-                        .setProducerName(pGroup)
+                        .setProducerName(producerGroup)
                         .setTopic(pTopic)
                         .build();
                 this.handleProducer(commandProducer);
@@ -1129,7 +903,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
                     .setNumMessages(1)
                     .setSequenceId(seqId)
                     .build();
-            List<ByteBuf> body = this.entryFormatter.encode(messageExtBrokerInner, 1);
+            List<ByteBuf> body = this.entryFormatter.encode(messageInner, 1);
             CompletableFuture<PutMessageResult> putMessageFuture = new CompletableFuture<>();
             this.commandSender.put(seqId, putMessageFuture);
             this.handleSend(commandSend, body.get(0));
@@ -1153,14 +927,12 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
     }
 
     @Override
-    public PutMessageResult putMessages(MessageExtBatch batchMessage, RemotingCommand request,
-            SendMessageRequestHeader requestHeader) {
-        String pGroup = requestHeader.getProducerGroup();
+    public PutMessageResult putMessages(MessageExtBatch batchMessage, String producerGroup) {
         String ctxId = this.ctx.channel().id().asLongText();
-        RocketMQTopic rmqTopic = new RocketMQTopic(requestHeader.getTopic());
-        int partitionId = requestHeader.getQueueId();
+        RocketMQTopic rmqTopic = new RocketMQTopic(batchMessage.getTopic());
+        int partitionId = batchMessage.getQueueId();
         String pTopic = rmqTopic.getPartitionName(partitionId);
-        long producerId = buildPulsarProducerId(pGroup, pTopic, ctxId);
+        long producerId = buildPulsarProducerId(producerGroup, pTopic, ctxId);
         long seqId = seqGenerator.incrementAndGet();
         try {
             if (!this.producers.containsKey(producerId)) {
@@ -1168,7 +940,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
                 CommandProducer commandProducer = builder
                         .setProducerId(producerId)
                         .setRequestId(seqId)
-                        .setProducerName(pGroup)
+                        .setProducerName(producerGroup)
                         .setTopic(pTopic)
                         .build();
                 this.handleProducer(commandProducer);
@@ -1222,6 +994,34 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
     }
 
     @Override
+    public MessageExt lookMessageByMessageId(String topic, String msgId) {
+        try {
+            MessageIdImpl messageId = MessageIdUtils.getMessageId(CommonUtils.decodeMessageId(msgId).getOffset());
+            Reader<byte[]> topicReader = this.pulsarReaderCache.getIfPresent(topic);
+            if (topicReader == null) {
+                topicReader = service.pulsar().getClient().newReader().topic(topic)
+                        .startMessageId(messageId).create();
+                this.pulsarReaderCache.put(topic, topicReader);
+            }
+            Preconditions.checkNotNull(topicReader);
+            Message<byte[]> message = null;
+            synchronized (topicReader) {
+                topicReader.seek(messageId);
+                message = topicReader.readNext();
+            }
+            return this.entryFormatter.decodePulsarMessage(Collections.singletonList(message)).get(0);
+        } catch (Exception ex) {
+            log.warn("lookMessageByMessageId message[topic={}, msgId={}] error.", topic, msgId);
+        }
+        return null;
+    }
+
+    @Override
+    public long now() {
+        return systemClock.now();
+    }
+
+    @Override
     public GetMessageResult getMessage(RemotingCommand request, PullMessageRequestHeader requestHeader) {
 
         byte[] body = request.getBody();
@@ -1253,7 +1053,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
                     .setSubType(PulsarUtil.parseSubType(SubscriptionType.Exclusive))
                     .setConsumerId(consumerId)
                     .setRequestId(seqId)
-                    .setConsumerName(consumerGroup+consumerId)
+                    .setConsumerName(consumerGroup + consumerId)
                     .setDurable(true) // 代表 cursor 是否需要持久化
 //                .setMetadata() // 代表properties对象，是一个map[string]string
                     // TODO: 这里的逻辑与 rocketMQ 本身有出入，rocketMQ 在启动的时候，会先查询要消费的offset的位置，然后将这个offset的位置

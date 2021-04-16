@@ -1,15 +1,15 @@
 package com.tencent.tdmq.handlers.rocketmq.inner.pulsar;
 
+import org.apache.pulsar.broker.PulsarServerException;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageExtBatch;
 import org.apache.rocketmq.common.protocol.header.PullMessageRequestHeader;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.store.GetMessageResult;
 import org.apache.rocketmq.store.MessageExtBrokerInner;
-import org.apache.rocketmq.store.MessageStore;
 import org.apache.rocketmq.store.PutMessageResult;
 
-public interface PulsarMessageStore extends MessageStore {
+public interface PulsarMessageStore {
 
     PutMessageResult putMessage(MessageExtBrokerInner messageExtBrokerInner, String producerGroup);
 
@@ -18,4 +18,6 @@ public interface PulsarMessageStore extends MessageStore {
     PutMessageResult putMessages(MessageExtBatch batchMessage, String producerGroup);
 
     MessageExt lookMessageByMessageId(String topic, String msgId);
+
+    long now();
 }
