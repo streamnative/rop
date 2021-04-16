@@ -7,7 +7,6 @@ import com.scurrilous.circe.checksum.Crc32cIntChecksum;
 import com.tencent.tdmq.handlers.rocketmq.inner.exception.RopEncodeException;
 import com.tencent.tdmq.handlers.rocketmq.utils.CommonUtils;
 import io.netty.buffer.ByteBuf;
-import io.netty.buffer.Unpooled;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -18,7 +17,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.pulsar.client.api.Message;
 import org.apache.pulsar.client.impl.MessageIdImpl;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandMessage;
-import org.apache.pulsar.common.api.proto.PulsarApi.KeyValue;
 import org.apache.pulsar.common.api.proto.PulsarApi.MessageIdData;
 import org.apache.pulsar.common.api.proto.PulsarApi.MessageMetadata;
 import org.apache.pulsar.common.protocol.Commands;
@@ -38,9 +36,9 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
     // The maximum size of message,default is 4M
     private final static int MAX_MESSAGE_SIZE = 1024 * 1024 * 4;
     private final static ThreadLocal<ByteBuffer> msgStoreItemMemoryThreadLocal = ThreadLocal
-            .withInitial(() -> ByteBuffer.allocateDirect(MAX_MESSAGE_SIZE));
+            .withInitial(() -> ByteBuffer.allocate(MAX_MESSAGE_SIZE));
 
-    private static MessageMetadata getMessageMetadataWithNumberMessages(int numMessages) {
+/*    private static MessageMetadata getMessageMetadataWithNumberMessages(int numMessages) {
         final MessageMetadata.Builder builder = MessageMetadata.newBuilder();
         builder.addProperties(KeyValue.newBuilder()
                 .setKey("entry.format")
@@ -51,10 +49,10 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
         builder.setPublishTime(0L);
         builder.setNumMessagesInBatch(numMessages);
         return builder.build();
-    }
+    }*/
 
     @Override
-    public List<ByteBuf> encode(MessageExt record, int numMessages) throws RopEncodeException {
+    public List<ByteBuffer> encode(MessageExt record, int numMessages) throws RopEncodeException {
         Preconditions.checkNotNull(record);
 
         if (record instanceof MessageExtBrokerInner) {
@@ -65,20 +63,10 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
                 tagsCode = MessageExtBrokerInner
                         .tagsString2tagsCode(MessageExt.parseTopicFilterType(mesg.getSysFlag()), tags);
             }
-            final ByteBuf recordsWrapper = Unpooled.wrappedBuffer(convertRocketmq2Pulsar(tagsCode, mesg));
-            final ByteBuf buf = Commands.serializeMetadataAndPayload(
-                    Commands.ChecksumType.None,
-                    getMessageMetadataWithNumberMessages(1),
-                    recordsWrapper);
-            return Collections.singletonList(buf);
+            return Collections.singletonList(convertRocketmq2Pulsar(tagsCode, mesg));
         } else if (record instanceof MessageExtBatch) {
-            MessageExtBatch mesg = (MessageExtBatch) record;
-            return convertRocketmq2Pulsar(mesg).stream().collect(ArrayList::new, (arr, item) -> {
-                arr.add(Commands.serializeMetadataAndPayload(
-                        Commands.ChecksumType.None,
-                        getMessageMetadataWithNumberMessages(1),
-                        Unpooled.wrappedBuffer(item)));
-            }, ArrayList::addAll);
+            MessageExtBatch msg = (MessageExtBatch) record;
+            return convertRocketmq2Pulsar(msg);
         }
         throw new RopEncodeException("UNKNOWN Message Type");
     }

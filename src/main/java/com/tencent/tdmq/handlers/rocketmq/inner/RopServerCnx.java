@@ -147,8 +147,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                         .create();
                 this.producers.putIfAbsent(producerId, producer);
             }
-            List<ByteBuf> body = this.entryFormatter.encode(messageInner, 1);
-            MessageIdImpl messageId = (MessageIdImpl) producers.get(producerId).send(body.get(0));
+            List<ByteBuffer> body = this.entryFormatter.encode(messageInner, 1);
+            MessageIdImpl messageId = (MessageIdImpl) producers.get(producerId).send(body.get(0).array());
 
             AppendMessageResult appendMessageResult = new AppendMessageResult(AppendMessageStatus.PUT_OK);
             appendMessageResult.setMsgId(CommonUtils.createMessageId(this.ctx.channel().localAddress(),
@@ -173,6 +173,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 Producer<byte[]> producer = this.service.pulsar().getClient().newProducer()
                         .topic(pTopic)
                         .producerName(producerGroup + producerId)
+                        .batchingMaxPublishDelay(200, TimeUnit.MILLISECONDS)
                         .sendTimeout(SEND_TIMEOUT_IN_SEC, TimeUnit.SECONDS)
                         .batchingMaxMessages(MAX_BATCH_MESSAGE_NUM)
                         .enableBatching(true)
@@ -181,23 +182,16 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             }
 
             List<CompletableFuture<MessageId>> batchMessageFutures = new ArrayList<>();
-            List<ByteBuf> body = this.entryFormatter.encode(batchMessage, 1);
-            body.forEach(
-                    (item) -> {
-                        CompletableFuture<PutMessageResult> putMessageFuture = new CompletableFuture<>();
-                        CompletableFuture<MessageId> sendFuture = this.producers.get(producerId).sendAsync(item);
-                        batchMessageFutures.add(sendFuture);
-                    }
-            );
+            List<ByteBuffer> body = this.entryFormatter.encode(batchMessage, 1);
+            body.forEach(item -> batchMessageFutures.add(this.producers.get(producerId).sendAsync(item.array())));
             FutureUtil.waitForAll(batchMessageFutures).get(SEND_TIMEOUT_IN_SEC, TimeUnit.SECONDS);
             StringBuilder sb = new StringBuilder();
             for (CompletableFuture<MessageId> f : batchMessageFutures) {
                 MessageIdImpl messageId = (MessageIdImpl) f.get();
                 long ledgerId = messageId.getLedgerId();
                 long entryId = messageId.getEntryId();
-                int partitionIndex = messageId.getPartitionIndex();
                 String msgId = CommonUtils.createMessageId(this.ctx.channel().localAddress(),
-                        MessageIdUtils.getOffset(ledgerId, entryId, partitionIndex));
+                        MessageIdUtils.getOffset(ledgerId, entryId, partitionId));
                 sb.append(msgId).append(",");
             }
             AppendMessageResult appendMessageResult = new AppendMessageResult(AppendMessageStatus.PUT_OK);
