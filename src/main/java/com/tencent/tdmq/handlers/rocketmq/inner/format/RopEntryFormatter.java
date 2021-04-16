@@ -13,12 +13,10 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.bookkeeper.mledger.Entry;
-import org.apache.pulsar.client.api.SubscriptionType;
-import org.apache.pulsar.client.impl.ClientCnx;
+import org.apache.pulsar.client.api.Message;
 import org.apache.pulsar.client.impl.MessageIdImpl;
-import org.apache.pulsar.common.api.proto.PulsarApi.CommandAck.ValidationError;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandMessage;
 import org.apache.pulsar.common.api.proto.PulsarApi.KeyValue;
 import org.apache.pulsar.common.api.proto.PulsarApi.MessageIdData;
@@ -106,7 +104,8 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
 
         final int numMessages = msgMetadata.getNumMessagesInBatch();
         final int numChunks = msgMetadata.hasNumChunksFromMsg() ? msgMetadata.getNumChunksFromMsg() : 0;
-        MessageIdImpl msgId = new MessageIdImpl(messageId.getLedgerId(), messageId.getEntryId(), messageId.getPartition());
+        MessageIdImpl msgId = new MessageIdImpl(messageId.getLedgerId(), messageId.getEntryId(),
+                messageId.getPartition());
 
         MessageExt messageExt = new MessageExt();
         messageExt.setQueueId(messageId.getPartition());
@@ -133,11 +132,21 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
         return true;
     }
 
+    @Override
+    public List<MessageExt> decodePulsarEntry(List<Message> entries) {
+        return null;
+    }
+
+    @Override
+    public List<MessageExt> decodePulsarMessage(List<Message> entries) {//Message in pulsar
+        return entries.stream().map(message -> CommonUtils.decode(ByteBuffer.wrap(message.getData()), true, false))
+                .collect(Collectors.toList());
+    }
+
     private void resetByteBuffer(final ByteBuffer byteBuffer, final int limit) {
         byteBuffer.flip();
         byteBuffer.limit(limit);
     }
-
 
     private List<ByteBuffer> convertRocketmq2Pulsar(final MessageExtBatch messageExtBatch) throws RopEncodeException {
         ByteBuffer msgStoreItemMemory = msgStoreItemMemoryThreadLocal.get();

@@ -5,6 +5,7 @@ import lombok.Getter;
 import org.apache.logging.log4j.util.Strings;
 import org.apache.pulsar.common.naming.TopicDomain;
 import org.apache.pulsar.common.naming.TopicName;
+import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.protocol.NamespaceUtil;
 
 /**
@@ -16,7 +17,8 @@ import org.apache.rocketmq.common.protocol.NamespaceUtil;
  */
 public class RocketMQTopic {
 
-    private static final String TENANT_NAMESPACE_SEP = "|";
+    private static final char TENANT_NAMESPACE_SEP = '|';
+    private static final char ROCKETMQ_NAMESPACE_TOPIC_SEP = NamespaceUtil.NAMESPACE_SEPARATOR;
     private static final TopicDomain domain = TopicDomain.persistent;
     private static String defaultTenant = "rocketmq";
     private static String defaultNamespace = "public";
@@ -24,16 +26,22 @@ public class RocketMQTopic {
     private static String metaNamespace = "__rocketmq";
     @Getter
     private TopicName pulsarTopicName;
+    private String rocketmqTenant = Strings.EMPTY;
+    private String rocketmqNs = Strings.EMPTY;
 
     //rocketmq topicname => namespace%originaltopic   namespace%DLQ%originaltopic  originaltopic %DLQ%originaltopic
     public RocketMQTopic(String defaultTenant, String defaultNamespace, String rmqTopicName) {
         String prefix = NamespaceUtil.getNamespaceFromResource(rmqTopicName);
-        String realNs = Strings.isNotBlank(prefix) ? prefix : defaultNamespace;
-        String realTenant =
-                realNs.indexOf(TENANT_NAMESPACE_SEP) > 0 ? prefix.substring(0, realNs.indexOf(TENANT_NAMESPACE_SEP))
-                        : defaultTenant;
-        realNs = realNs.indexOf(TENANT_NAMESPACE_SEP) > 0 ? realNs.substring(realNs.indexOf(TENANT_NAMESPACE_SEP) + 1)
-                : realNs;
+        if (Strings.isNotBlank(prefix)) {
+            if (prefix.indexOf(TENANT_NAMESPACE_SEP) > 0) {
+                this.rocketmqTenant = prefix.substring(0, prefix.indexOf(TENANT_NAMESPACE_SEP));
+                this.rocketmqNs = prefix.substring(prefix.indexOf(TENANT_NAMESPACE_SEP) + 1);
+            } else {
+                this.rocketmqNs = prefix;
+            }
+        }
+        String realTenant = Strings.isNotBlank(this.rocketmqTenant) ? this.rocketmqTenant : defaultTenant;
+        String realNs = Strings.isNotBlank(this.rocketmqNs) ? this.rocketmqNs : defaultNamespace;
         this.pulsarTopicName = TopicName
                 .get(domain.name(), realTenant, realNs, NamespaceUtil.withoutNamespace(rmqTopicName));
     }
@@ -60,6 +68,17 @@ public class RocketMQTopic {
 
     public final static String getPulsarDefaultNoDomainTopic(String rmqTopic) {
         return new RocketMQTopic(rmqTopic).getDefaultNoDomainTopic();
+    }
+
+    public String getRocketDLQTopic() {
+        if (Strings.isBlank(rocketmqTenant) && Strings.isBlank(rocketmqNs)) {
+            return MixAll.DLQ_GROUP_TOPIC_PREFIX + pulsarTopicName.getLocalName();
+        } else if (Strings.isBlank(rocketmqTenant) && Strings.isNotBlank(rocketmqNs)) {
+            return MixAll.DLQ_GROUP_TOPIC_PREFIX + rocketmqNs + ROCKETMQ_NAMESPACE_TOPIC_SEP + pulsarTopicName
+                    .getLocalName();
+        } else {
+            return MixAll.DLQ_GROUP_TOPIC_PREFIX + ROCKETMQ_NAMESPACE_TOPIC_SEP + pulsarTopicName.getLocalName();
+        }
     }
 
     public String getMetaNoDomainTopic() {

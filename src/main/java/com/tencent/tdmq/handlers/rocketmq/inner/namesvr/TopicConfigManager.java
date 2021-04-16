@@ -25,7 +25,7 @@ public abstract class TopicConfigManager {
     protected static final long LOCK_TIMEOUT_MILLIS = 3000;
     protected transient final Lock lockTopicConfigTable = new ReentrantLock();
 
-    //key = persistent://{tenant}/{ns}/{topic}
+    //key = {tenant}/{ns}/{topic}
     protected final ConcurrentMap<String, TopicConfig> topicConfigTable = new ConcurrentHashMap<String, TopicConfig>(
             1024);
     protected final DataVersion dataVersion = new DataVersion();
@@ -250,7 +250,8 @@ public abstract class TopicConfigManager {
             final int clientDefaultTopicQueueNums,
             final int perm,
             final int topicSysFlag) {
-        TopicConfig topicConfig = this.topicConfigTable.get(topic);
+        String pulsarTopicName = RocketMQTopic.getPulsarOrigNoDomainTopic(topic);
+        TopicConfig topicConfig = this.topicConfigTable.get(pulsarTopicName);
         if (topicConfig != null) {
             return topicConfig;
         }
@@ -260,19 +261,19 @@ public abstract class TopicConfigManager {
         try {
             if (this.lockTopicConfigTable.tryLock(LOCK_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)) {
                 try {
-                    topicConfig = this.topicConfigTable.get(topic);
+                    topicConfig = this.topicConfigTable.get(pulsarTopicName);
                     if (topicConfig != null) {
                         return topicConfig;
                     }
 
-                    topicConfig = new TopicConfig(topic);
+                    topicConfig = new TopicConfig(pulsarTopicName);
                     topicConfig.setReadQueueNums(clientDefaultTopicQueueNums);
                     topicConfig.setWriteQueueNums(clientDefaultTopicQueueNums);
                     topicConfig.setPerm(perm);
                     topicConfig.setTopicSysFlag(topicSysFlag);
 
                     log.info("create new topic {}", topicConfig);
-                    this.topicConfigTable.put(topic, topicConfig);
+                    this.topicConfigTable.put(pulsarTopicName, topicConfig);
                     createNew = true;
                     this.dataVersion.nextVersion();
                     //TODO: this.persist();

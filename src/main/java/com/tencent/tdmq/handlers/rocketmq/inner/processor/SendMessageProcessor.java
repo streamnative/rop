@@ -1,11 +1,11 @@
 package com.tencent.tdmq.handlers.rocketmq.inner.processor;
 
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
+import com.tencent.tdmq.handlers.rocketmq.utils.RocketMQTopic;
 import io.netty.channel.ChannelHandlerContext;
 import java.util.List;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.logging.log4j.util.Strings;
 import org.apache.rocketmq.broker.mqtrace.ConsumeMessageContext;
 import org.apache.rocketmq.broker.mqtrace.ConsumeMessageHook;
 import org.apache.rocketmq.broker.mqtrace.SendMessageContext;
@@ -35,6 +35,7 @@ import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.store.MessageExtBrokerInner;
 import org.apache.rocketmq.store.PutMessageResult;
+import org.apache.rocketmq.store.PutMessageStatus;
 import org.apache.rocketmq.store.stats.BrokerStatsManager;
 
 @Slf4j
@@ -77,8 +78,6 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
     @Override
     public boolean rejectRequest() {
         return false;
-       /* return this.brokerController.getMessageStore().isOSPageCacheBusy() ||
-                this.brokerController.getMessageStore().isTransientStorePoolDeficient();*/
     }
 
     private RemotingCommand consumerSendMsgBack(final ChannelHandlerContext ctx, final RemotingCommand request)
@@ -102,9 +101,10 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             this.executeConsumeMessageHookAfter(context);
         }
 
+        RocketMQTopic pulsarGroupName = new RocketMQTopic(requestHeader.getGroup());
         SubscriptionGroupConfig subscriptionGroupConfig =
                 this.brokerController.getSubscriptionGroupManager()
-                        .findSubscriptionGroupConfig(requestHeader.getGroup());
+                        .findSubscriptionGroupConfig(pulsarGroupName.getOrigNoDomainTopicName());
         if (null == subscriptionGroupConfig) {
             response.setCode(ResponseCode.SUBSCRIPTION_GROUP_NOT_EXIST);
             response.setRemark("subscription group not exist, " + requestHeader.getGroup() + " "
@@ -148,8 +148,9 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             response.setRemark(String.format("the topic[%s] sending message is forbidden", newTopic));
             return response;
         }
-
-        MessageExt msgExt = this.brokerController.getMessageStore().lookMessageByOffset(requestHeader.getOffset());
+//TODO: requestHeader
+        MessageExt msgExt = this.getServerCnxMsgStore(ctx, requestHeader.getGroup())
+                .lookMessageByMessageId(requestHeader.getOriginTopic(), requestHeader.getOriginMsgId());
         if (null == msgExt) {
             response.setCode(ResponseCode.SYSTEM_ERROR);
             response.setRemark("look message by offset failed, " + requestHeader.getOffset());
@@ -166,7 +167,8 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
 
         int maxReconsumeTimes = subscriptionGroupConfig.getRetryMaxTimes();
         if (request.getVersion() >= MQVersion.Version.V3_4_9.ordinal()) {
-            maxReconsumeTimes = requestHeader.getMaxReconsumeTimes();
+            maxReconsumeTimes = requestHeader.getMaxReconsumeTimes() == null ? maxReconsumeTimes
+                    : requestHeader.getMaxReconsumeTimes();
         }
 
         if (msgExt.getReconsumeTimes() >= maxReconsumeTimes
@@ -209,7 +211,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         String originMsgId = MessageAccessor.getOriginMessageId(msgExt);
         MessageAccessor.setOriginMessageId(msgInner, UtilAll.isBlank(originMsgId) ? msgExt.getMsgId() : originMsgId);
 
-        PutMessageResult putMessageResult = this.brokerController.getMessageStore().putMessage(msgInner);
+        PutMessageResult putMessageResult = this.getServerCnxMsgStore(ctx, requestHeader.getGroup()).putMessage(msgInner,requestHeader.getGroup());
         if (putMessageResult != null) {
             switch (putMessageResult.getPutMessageStatus()) {
                 case PUT_OK:
@@ -243,21 +245,24 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             RemotingCommand request,
             MessageExt msg, TopicConfig topicConfig) {
         String newTopic = requestHeader.getTopic();
-        if (null != newTopic && newTopic.startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)) {
+        if (NamespaceUtil.isRetryTopic(newTopic)) {
             String groupName = newTopic.substring(MixAll.RETRY_GROUP_TOPIC_PREFIX.length());
+            RocketMQTopic pulsarGroupName = new RocketMQTopic(groupName);
             SubscriptionGroupConfig subscriptionGroupConfig =
-                    this.brokerController.getSubscriptionGroupManager().findSubscriptionGroupConfig(groupName);
+                    this.brokerController.getSubscriptionGroupManager()
+                            .findSubscriptionGroupConfig(pulsarGroupName.getOrigNoDomainTopicName());
             if (null == subscriptionGroupConfig) {
                 response.setCode(ResponseCode.SUBSCRIPTION_GROUP_NOT_EXIST);
                 response.setRemark(
-                        "subscription group not exist, " + groupName + " " + FAQUrl
+                        "subscription group not exist, " + pulsarGroupName.getOrigNoDomainTopicName() + " " + FAQUrl
                                 .suggestTodo(FAQUrl.SUBSCRIPTION_GROUP_NOT_EXIST));
                 return false;
             }
 
             int maxReconsumeTimes = subscriptionGroupConfig.getRetryMaxTimes();
             if (request.getVersion() >= MQVersion.Version.V3_4_9.ordinal()) {
-                maxReconsumeTimes = requestHeader.getMaxReconsumeTimes();
+                maxReconsumeTimes = requestHeader.getMaxReconsumeTimes() != null ? requestHeader.getMaxReconsumeTimes()
+                        : maxReconsumeTimes;
             }
             int reconsumeTimes = requestHeader.getReconsumeTimes() == null ? 0 : requestHeader.getReconsumeTimes();
             if (reconsumeTimes >= maxReconsumeTimes) {
@@ -333,6 +338,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         if (traFlag != null && Boolean.parseBoolean(traFlag)
                 && !(msgInner.getReconsumeTimes() > 0
                 && msgInner.getDelayTimeLevel() > 0)) { //For client under version 4.6.1
+            putMessageResult = new PutMessageResult(PutMessageStatus.MESSAGE_ILLEGAL, null);
 /* TODO:           if (this.brokerController.getServerConfig().isRejectTransactionMessage()) {
                 response.setCode(ResponseCode.NO_PERMISSION);
                 response.setRemark(
@@ -344,7 +350,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
  */
         } else {
             putMessageResult = this.getServerCnxMsgStore(ctx, requestHeader.getProducerGroup())
-                    .putMessage(msgInner, request, requestHeader);
+                    .putMessage(msgInner, requestHeader.getProducerGroup());
         }
 
         return handlePutMessageResult(putMessageResult, response, request, msgInner, responseHeader, sendMessageContext,
@@ -396,8 +402,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             case SERVICE_NOT_AVAILABLE:
                 response.setCode(ResponseCode.SERVICE_NOT_AVAILABLE);
                 response.setRemark(
-                        "service not available now, maybe disk full, " + diskUtil()
-                                + ", maybe your broker machine memory too small.");
+                        "service not available now, maybe disk full, maybe your broker machine memory too small.");
                 break;
             case OS_PAGECACHE_BUSY:
                 response.setCode(ResponseCode.SYSTEM_ERROR);
@@ -517,7 +522,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         MessageAccessor.putProperty(messageExtBatch, MessageConst.PROPERTY_CLUSTER, clusterName);
 
         PutMessageResult putMessageResult = this.getServerCnxMsgStore(ctx, requestHeader.getProducerGroup())
-                .putMessages(messageExtBatch, request, requestHeader);
+                .putMessages(messageExtBatch, requestHeader.getProducerGroup());
 
         return handlePutMessageResult(putMessageResult, response, request, messageExtBatch, responseHeader,
                 sendMessageContext, ctx, queueIdInt);
@@ -537,22 +542,6 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
                 }
             }
         }
-    }
-
-    private String diskUtil() {
-/* TODO:       String storePathPhysic = this.brokerController.getServerConfig().getStorePathCommitLog();
-        double physicRatio = UtilAll.getDiskPartitionSpaceUsedPercent(storePathPhysic);
-
-        String storePathLogis =
-                StorePathConfigHelper.getStorePathConsumeQueue(this.brokerController.getServerConfig().getStorePathRootDir());
-        double logisRatio = UtilAll.getDiskPartitionSpaceUsedPercent(storePathLogis);
-
-        String storePathIndex =
-                StorePathConfigHelper.getStorePathIndex(this.brokerController.getServerConfig().getStorePathRootDir());
-        double indexRatio = UtilAll.getDiskPartitionSpaceUsedPercent(storePathIndex);
-
-        return String.format("CL: %5.2f CQ: %5.2f INDEX: %5.2f", physicRatio, logisRatio, indexRatio);*/
-        return Strings.EMPTY;
     }
 
     public void registerConsumeMessageHook(List<ConsumeMessageHook> consumeMessageHookList) {

@@ -5,6 +5,7 @@ import io.netty.buffer.ByteBuf;
 import java.util.List;
 import org.apache.bookkeeper.mledger.Entry;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandMessage;
+import org.apache.pulsar.client.api.Message;
 
 public interface EntryFormatter<T> {
 
@@ -18,6 +19,8 @@ public interface EntryFormatter<T> {
     List<ByteBuf> encode(final T record, final int numMessages) throws RopEncodeException;
 
     List<T> decode(CommandMessage commandMessage, ByteBuf headersAndPayload);
+    List<T> decodePulsarEntry(final List<Message> entries);
+    List<T> decodePulsarMessage(final List<Message> entries);
 
     default int parseNumMessages(final T record) {
         return 1;

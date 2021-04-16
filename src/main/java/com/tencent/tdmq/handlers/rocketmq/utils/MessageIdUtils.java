@@ -35,7 +35,7 @@ public class MessageIdUtils {
         return offset;
     }
 
-    public static final MessageId getMessageId(long offset) {
+    public static final MessageIdImpl getMessageId(long offset) {
         // De-multiplex ledgerId and entryId from offset
         checkArgument(offset > 0, "Expected Offset > 0, but get " + offset);
 
