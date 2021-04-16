@@ -4,6 +4,7 @@ import com.tencent.tdmq.handlers.rocketmq.inner.exception.RopEncodeException;
 import io.netty.buffer.ByteBuf;
 import java.util.List;
 import org.apache.bookkeeper.mledger.Entry;
+import org.apache.pulsar.common.api.proto.PulsarApi.CommandMessage;
 
 public interface EntryFormatter<T> {
 
@@ -16,7 +17,7 @@ public interface EntryFormatter<T> {
      */
     List<ByteBuf> encode(final T record, final int numMessages) throws RopEncodeException;
 
-    List<T> decode(final List<Entry> entries, final byte magic);
+    List<T> decode(CommandMessage commandMessage, ByteBuf headersAndPayload);
 
     default int parseNumMessages(final T record) {
         return 1;

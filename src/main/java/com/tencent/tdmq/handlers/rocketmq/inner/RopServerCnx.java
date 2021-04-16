@@ -11,12 +11,16 @@ import com.tencent.tdmq.handlers.rocketmq.utils.MessageIdUtils;
 import com.tencent.tdmq.handlers.rocketmq.utils.PulsarUtil;
 import com.tencent.tdmq.handlers.rocketmq.utils.RocketMQTopic;
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufAllocator;
+import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.ChannelOption;
 import io.netty.handler.codec.haproxy.HAProxyMessage;
 import io.netty.util.concurrent.Promise;
+import java.io.IOException;
 import java.net.SocketAddress;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -52,11 +56,13 @@ import org.apache.pulsar.broker.service.Topic;
 import org.apache.pulsar.broker.service.TransportCnx;
 import org.apache.pulsar.broker.service.persistent.PersistentSubscription;
 import org.apache.pulsar.broker.service.persistent.PersistentTopic;
+import org.apache.pulsar.client.api.MessageId;
 import org.apache.pulsar.client.api.SubscriptionInitialPosition;
 import org.apache.pulsar.client.api.SubscriptionType;
 import org.apache.pulsar.client.impl.BatchMessageIdImpl;
 import org.apache.pulsar.client.impl.ClientCnx;
 import org.apache.pulsar.client.impl.MessageIdImpl;
+import org.apache.pulsar.common.allocator.PulsarByteBufAllocator;
 import org.apache.pulsar.common.api.proto.PulsarApi;
 import org.apache.pulsar.common.api.proto.PulsarApi.BaseCommand;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandAck;
@@ -92,6 +98,7 @@ import org.apache.pulsar.common.protocol.schema.SchemaData;
 import org.apache.pulsar.common.util.FutureUtil;
 import org.apache.pulsar.common.util.SafeCollectionUtils;
 import org.apache.pulsar.common.util.collections.ConcurrentLongHashMap;
+import org.apache.pulsar.common.util.protobuf.ByteBufCodedOutputStream;
 import org.apache.pulsar.shaded.com.google.protobuf.v241.GeneratedMessageLite;
 import org.apache.rocketmq.common.SystemClock;
 import org.apache.rocketmq.common.message.MessageExt;
@@ -409,10 +416,6 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
                 return null;
             });
         }
-    }
-
-    protected void handleMessage(CommandMessage cmdMessage, ByteBuf headersAndPayload) {
-        MessageIdData messageId = cmdMessage.getMessageId();
     }
 
     protected void handleFlow(CommandFlow flow) {
@@ -1221,6 +1224,10 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
     @Override
     public GetMessageResult getMessage(RemotingCommand request, PullMessageRequestHeader requestHeader) {
 
+        byte[] body = request.getBody();
+        ByteBuffer buffer = ByteBuffer.wrap(body);
+        ByteBuf headersAndPayload = Unpooled.wrappedBuffer(buffer);
+
         String consumerGroup = requestHeader.getConsumerGroup();
         String topic = requestHeader.getTopic();
         int partitionID = requestHeader.getQueueId();
@@ -1259,25 +1266,48 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Transp
             this.handleSubscribe(commandSubscribe);
         }
 
-        CommandMessage.Builder messageBuilder = CommandMessage.newBuilder();
-
+        MessageIdImpl messageId = (MessageIdImpl) MessageIdUtils.getMessageId(commitOffset);
         MessageIdData messageIdData = MessageIdData.newBuilder()
-                .setLedgerId(0L)
-                .setEntryId(0L)
-                .setPartition(partitionID)
+                .setLedgerId(messageId.getLedgerId())
+                .setEntryId(messageId.getEntryId())
+                .setPartition(messageId.getPartitionIndex())
                 .build();
-        CommandMessage commandMessage = messageBuilder
-                .setMessageId(messageIdData)
-                .setConsumerId(consumerId)
-                .setRedeliveryCount(0)
-                .build();
+        BaseCommand baseCommand = Commands.newMessageCommand(consumerId, messageIdData, 0, null);
+        ByteBufPair res = serializeCommandMessageWithSize(baseCommand, headersAndPayload);
+        this.ctx.write(res, ctx.voidPromise());
 
-        this.handleMessage(commandMessage, null);
+//        getResult.setBufferTotalSize();
+//        getResult.setMaxOffset();
+//        getResult.setMinOffset();
+//        getResult.setStatus();
+//        getResult.setNextBeginOffset();
+//        getResult.setSuggestPullingFromSlave();
+//        getResult.setMsgCount4Commercial();
 
-        //TODO: send messages to consumer
-//        this.commandSender.sendMessagesToConsumer(consumerId, topic, null, queueID, );
+        return getResult;
+    }
 
-        return null;
+    public static ByteBufPair serializeCommandMessageWithSize(BaseCommand cmd, ByteBuf metadataAndPayload) {
+        // / Wire format
+        // [TOTAL_SIZE] [CMD_SIZE][CMD] [MAGIC_NUMBER][CHECKSUM] [METADATA_SIZE][METADATA] [PAYLOAD]
+        //
+        // metadataAndPayload contains from magic-number to the payload included
+
+        int cmdSize = cmd.getSerializedSize();
+        int totalSize = 4 + cmdSize + metadataAndPayload.readableBytes();
+        int headersSize = 4 + 4 + cmdSize;
+
+        ByteBuf headers = PulsarByteBufAllocator.DEFAULT.buffer(headersSize);
+        headers.writeInt(totalSize); // External frame
+
+        // Write cmd
+        headers.writeInt(cmdSize);
+        try {
+            cmd.writeTo(ByteBufCodedOutputStream.get(headers));
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return ByteBufPair.get(headers, metadataAndPayload);
     }
 
     private long buildPulsarConsumerId(String... tags) {

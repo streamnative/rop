@@ -1,6 +1,9 @@
 package com.tencent.tdmq.handlers.rocketmq.inner.format;
 
+import static org.apache.pulsar.common.protocol.Commands.hasChecksum;
+
 import com.google.common.base.Preconditions;
+import com.scurrilous.circe.checksum.Crc32cIntChecksum;
 import com.tencent.tdmq.handlers.rocketmq.inner.exception.RopEncodeException;
 import com.tencent.tdmq.handlers.rocketmq.utils.CommonUtils;
 import io.netty.buffer.ByteBuf;
@@ -12,7 +15,13 @@ import java.util.List;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bookkeeper.mledger.Entry;
+import org.apache.pulsar.client.api.SubscriptionType;
+import org.apache.pulsar.client.impl.ClientCnx;
+import org.apache.pulsar.client.impl.MessageIdImpl;
+import org.apache.pulsar.common.api.proto.PulsarApi.CommandAck.ValidationError;
+import org.apache.pulsar.common.api.proto.PulsarApi.CommandMessage;
 import org.apache.pulsar.common.api.proto.PulsarApi.KeyValue;
+import org.apache.pulsar.common.api.proto.PulsarApi.MessageIdData;
 import org.apache.pulsar.common.api.proto.PulsarApi.MessageMetadata;
 import org.apache.pulsar.common.protocol.Commands;
 import org.apache.rocketmq.common.UtilAll;
@@ -77,8 +86,51 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
     }
 
     @Override
-    public List<MessageExt> decode(List<Entry> entries, byte magic) {
-        return null;
+    public List<MessageExt> decode(CommandMessage commandMessage, ByteBuf headersAndPayload) {
+
+        List<MessageExt> messageExtList = new ArrayList<>();
+
+        MessageIdData messageId = commandMessage.getMessageId();
+        if (!verifyChecksum(headersAndPayload, messageId)) {
+            log.error("discard message with checksum error");
+            return null;
+        }
+
+        MessageMetadata msgMetadata;
+        try {
+            msgMetadata = Commands.parseMessageMetadata(headersAndPayload);
+        } catch (Throwable t) {
+            log.error("parse message metadata error: {}", t.getMessage());
+            return null;
+        }
+
+        final int numMessages = msgMetadata.getNumMessagesInBatch();
+        final int numChunks = msgMetadata.hasNumChunksFromMsg() ? msgMetadata.getNumChunksFromMsg() : 0;
+        MessageIdImpl msgId = new MessageIdImpl(messageId.getLedgerId(), messageId.getEntryId(), messageId.getPartition());
+
+        MessageExt messageExt = new MessageExt();
+        messageExt.setQueueId(messageId.getPartition());
+
+        messageExtList.add(messageExt);
+
+        return messageExtList;
+    }
+
+    private boolean verifyChecksum(ByteBuf headersAndPayload, MessageIdData messageId) {
+
+        if (hasChecksum(headersAndPayload)) {
+            int checksum = Commands.readChecksum(headersAndPayload);
+            int computedChecksum = Crc32cIntChecksum.computeChecksum(headersAndPayload);
+            if (checksum != computedChecksum) {
+                log.error(
+                        "Checksum mismatch for message at {}:{}. Received checksum: 0x{}, Computed checksum: 0x{}",
+                        messageId.getLedgerId(), messageId.getEntryId(),
+                        Long.toHexString(checksum), Integer.toHexString(computedChecksum));
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private void resetByteBuffer(final ByteBuffer byteBuffer, final int limit) {
