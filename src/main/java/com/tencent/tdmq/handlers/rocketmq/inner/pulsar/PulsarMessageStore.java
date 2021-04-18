@@ -1,6 +1,5 @@
 package com.tencent.tdmq.handlers.rocketmq.inner.pulsar;
 
-import org.apache.pulsar.broker.PulsarServerException;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageExtBatch;
 import org.apache.rocketmq.common.protocol.header.PullMessageRequestHeader;

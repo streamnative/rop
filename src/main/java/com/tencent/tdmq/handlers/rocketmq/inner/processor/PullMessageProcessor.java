@@ -21,14 +21,12 @@ import org.apache.rocketmq.broker.pagecache.ManyMessageTransfer;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.TopicConfig;
 import org.apache.rocketmq.common.constant.PermName;
-import org.apache.rocketmq.common.consumer.ConsumeFromWhere;
 import org.apache.rocketmq.common.filter.FilterAPI;
 import org.apache.rocketmq.common.help.FAQUrl;
 import org.apache.rocketmq.common.message.MessageDecoder;
 import org.apache.rocketmq.common.protocol.ResponseCode;
 import org.apache.rocketmq.common.protocol.header.PullMessageRequestHeader;
 import org.apache.rocketmq.common.protocol.header.PullMessageResponseHeader;
-import org.apache.rocketmq.common.protocol.heartbeat.ConsumeType;
 import org.apache.rocketmq.common.protocol.heartbeat.MessageModel;
 import org.apache.rocketmq.common.protocol.heartbeat.SubscriptionData;
 import org.apache.rocketmq.common.protocol.topic.OffsetMovedEvent;
@@ -39,7 +37,6 @@ import org.apache.rocketmq.remoting.common.RemotingHelper;
 import org.apache.rocketmq.remoting.exception.RemotingCommandException;
 import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
 import org.apache.rocketmq.remoting.netty.RequestTask;
-import org.apache.rocketmq.remoting.protocol.LanguageCode;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.store.GetMessageResult;
 import org.apache.rocketmq.store.stats.BrokerStatsManager;
@@ -60,8 +57,8 @@ public class PullMessageProcessor implements NettyRequestProcessor {
         ConsumerGroupInfo consumerGroupInfo = this.brokerController.getConsumerManager()
                 .getConsumerGroupInfo(groupName);
 
-        ConcurrentMap<Channel, ClientChannelInfo>  channelInfoConcurrentMap = consumerGroupInfo.getChannelInfoTable();
-        RopClientChannelCnx channelCnx = (RopClientChannelCnx)channelInfoConcurrentMap.get(ctx.channel());
+        ConcurrentMap<Channel, ClientChannelInfo> channelInfoConcurrentMap = consumerGroupInfo.getChannelInfoTable();
+        RopClientChannelCnx channelCnx = (RopClientChannelCnx) channelInfoConcurrentMap.get(ctx.channel());
         return channelCnx.getServerCnx();
     }
 

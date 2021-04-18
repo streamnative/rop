@@ -18,9 +18,7 @@ import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.pulsar.client.api.Message;
 import org.apache.pulsar.client.impl.MessageIdImpl;
-import org.apache.pulsar.common.api.proto.PulsarApi.CommandMessage;
 import org.apache.pulsar.common.api.proto.PulsarApi.MessageIdData;
-import org.apache.pulsar.common.api.proto.PulsarApi.MessageMetadata;
 import org.apache.pulsar.common.protocol.Commands;
 import org.apache.rocketmq.common.UtilAll;
 import org.apache.rocketmq.common.message.MessageConst;
@@ -39,6 +37,11 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
     private final static int MAX_MESSAGE_SIZE = 1024 * 1024 * 4;
     private final static ThreadLocal<ByteBuffer> msgStoreItemMemoryThreadLocal = ThreadLocal
             .withInitial(() -> ByteBuffer.allocate(MAX_MESSAGE_SIZE));
+
+    public static MessageExt decodePulsarMessage(Message message) {
+        return CommonUtils.decode(ByteBuffer.wrap(message.getData()),
+                (MessageIdImpl) message.getMessageId(), true, false);
+    }
 
     @Override
     public List<ByteBuffer> encode(MessageExt record, int numMessages) throws RopEncodeException {
@@ -74,11 +77,6 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
         }
 
         return true;
-    }
-
-    public static MessageExt decodePulsarMessage(Message message) {
-        return CommonUtils.decode(ByteBuffer.wrap(message.getData()),
-                (MessageIdImpl) message.getMessageId(), true, false);
     }
 
     @Override

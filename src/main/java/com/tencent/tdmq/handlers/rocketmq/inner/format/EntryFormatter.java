@@ -1,12 +1,9 @@
 package com.tencent.tdmq.handlers.rocketmq.inner.format;
 
 import com.tencent.tdmq.handlers.rocketmq.inner.exception.RopEncodeException;
-import io.netty.buffer.ByteBuf;
 import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.function.Predicate;
-import org.apache.bookkeeper.mledger.Entry;
-import org.apache.pulsar.common.api.proto.PulsarApi.CommandMessage;
 import org.apache.pulsar.client.api.Message;
 
 public interface EntryFormatter<T> {

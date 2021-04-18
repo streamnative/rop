@@ -3,7 +3,6 @@ package com.tencent.tdmq.handlers.rocketmq.utils;
 import static com.google.common.base.Preconditions.checkArgument;
 
 import org.apache.bookkeeper.mledger.impl.PositionImpl;
-import org.apache.pulsar.client.api.MessageId;
 import org.apache.pulsar.client.impl.MessageIdImpl;
 
 public class MessageIdUtils {

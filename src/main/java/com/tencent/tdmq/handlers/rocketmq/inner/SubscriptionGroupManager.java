@@ -1,10 +1,8 @@
 package com.tencent.tdmq.handlers.rocketmq.inner;
 
-import com.google.common.base.Preconditions;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.pulsar.broker.PulsarService;
 import org.apache.rocketmq.common.DataVersion;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.subscription.SubscriptionGroupConfig;

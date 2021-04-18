@@ -3,7 +3,7 @@
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -11,6 +11,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package com.tencent.tdmq.handlers.rocketmq.inner.timer;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
@@ -28,8 +29,8 @@ import lombok.extern.slf4j.Slf4j;
  * The timer task list is a java implementation of Kafka implementation.
  */
 @SuppressFBWarnings({
-    "EQ_COMPARETO_USE_OBJECT_EQUALS",
-    "HE_EQUALS_USE_HASHCODE"
+        "EQ_COMPARETO_USE_OBJECT_EQUALS",
+        "HE_EQUALS_USE_HASHCODE"
 })
 @Slf4j
 @ThreadSafe
@@ -159,7 +160,7 @@ public class TimerTaskList implements Delayed {
         private TimerTaskEntry prev = null;
 
         public TimerTaskEntry(TimerTask timerTask,
-                              long expirationMs) {
+                long expirationMs) {
             this.timerTask = timerTask;
             this.expirationMs = expirationMs;
             // if this timerTask is already held by an existing timer task entry,
@@ -197,10 +198,10 @@ public class TimerTaskList implements Delayed {
             }
             TimerTaskEntry other = (TimerTaskEntry) obj;
             return compareTo(other) == 0
-                && list == other.list
-                && next == other.next
-                && prev == other.prev
-                && timerTask == other.timerTask;
+                    && list == other.list
+                    && next == other.next
+                    && prev == other.prev
+                    && timerTask == other.timerTask;
         }
     }
 

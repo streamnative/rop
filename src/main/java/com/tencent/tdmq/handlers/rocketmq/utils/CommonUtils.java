@@ -21,9 +21,10 @@ import org.apache.rocketmq.store.MessageExtBrokerInner;
 
 @Slf4j
 public class CommonUtils {
+
     public static final String UNDERSCORE_CHAR = "_";
     public static final String PERCENTAGE_CHAR = "%";
-    public static final String VERTICAL_LINE_CHAR= "｜";
+    public static final String VERTICAL_LINE_CHAR = "｜";
     private static int MESSAGE_BYTEBUF_SIZE = 28;
     private static ThreadLocal<ByteBuffer> byteBufLocal = ThreadLocal
             .withInitial(() -> ByteBuffer.allocate(MESSAGE_BYTEBUF_SIZE));

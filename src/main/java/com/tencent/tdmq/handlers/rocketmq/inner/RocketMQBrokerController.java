@@ -489,7 +489,7 @@ public class RocketMQBrokerController {
             this.topicConfigManager.start();
         }
 
-        if(this.delayedMessageService != null) {
+        if (this.delayedMessageService != null) {
             this.delayedMessageService.start();
         }
     }

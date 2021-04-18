@@ -36,72 +36,15 @@ import lombok.extern.slf4j.Slf4j;
 @ThreadSafe
 public class SystemTimer implements Timer {
 
-    /**
-     * Create a system timer builder.
-     *
-     * @return a system timer builder.
-     */
-    public static Builder builder() {
-        return new Builder();
-    }
-
-    /**
-     * Builder to build a system timer.
-     */
-    public static class Builder {
-
-        private String executorName;
-        private long tickMs = 1;
-        private int wheelSize = 20;
-        private long startMs = Time.SYSTEM.hiResClockMs();
-
-        private Builder() {
-        }
-
-        public Builder executorName(String executorName) {
-            this.executorName = executorName;
-            return this;
-        }
-
-        public Builder tickMs(long tickMs) {
-            this.tickMs = tickMs;
-            return this;
-        }
-
-        public Builder wheelSize(int wheelSize) {
-            this.wheelSize = wheelSize;
-            return this;
-        }
-
-        public Builder startMs(long startMs) {
-            this.startMs = startMs;
-            return this;
-        }
-
-        public SystemTimer build() {
-            Objects.requireNonNull(executorName, "No executor name is provided");
-
-            return new SystemTimer(
-                    executorName,
-                    tickMs,
-                    wheelSize,
-                    startMs
-            );
-        }
-
-    }
-
     private final ExecutorService taskExecutor;
     private final DelayQueue<TimerTaskList> delayQueue;
     private final AtomicInteger taskCounter;
     private final TimingWheel timingWheel;
-
     // Locks used to protect data structures while ticking
     private final ReentrantReadWriteLock readWriteLock;
     private final Lock readLock;
     private final Lock writeLock;
     private final Consumer<TimerTaskEntry> reinsert;
-
     private SystemTimer(String executorName,
             long tickMs,
             int wheelSize,
@@ -125,6 +68,15 @@ public class SystemTimer implements Timer {
         this.readLock = readWriteLock.readLock();
         this.writeLock = readWriteLock.writeLock();
         this.reinsert = timerTaskEntry -> addTimerTaskEntry(timerTaskEntry);
+    }
+
+    /**
+     * Create a system timer builder.
+     *
+     * @return a system timer builder.
+     */
+    public static Builder builder() {
+        return new Builder();
     }
 
     @Override
@@ -177,6 +129,52 @@ public class SystemTimer implements Timer {
     @Override
     public void shutdown() {
         taskExecutor.shutdown();
+    }
+
+    /**
+     * Builder to build a system timer.
+     */
+    public static class Builder {
+
+        private String executorName;
+        private long tickMs = 1;
+        private int wheelSize = 20;
+        private long startMs = Time.SYSTEM.hiResClockMs();
+
+        private Builder() {
+        }
+
+        public Builder executorName(String executorName) {
+            this.executorName = executorName;
+            return this;
+        }
+
+        public Builder tickMs(long tickMs) {
+            this.tickMs = tickMs;
+            return this;
+        }
+
+        public Builder wheelSize(int wheelSize) {
+            this.wheelSize = wheelSize;
+            return this;
+        }
+
+        public Builder startMs(long startMs) {
+            this.startMs = startMs;
+            return this;
+        }
+
+        public SystemTimer build() {
+            Objects.requireNonNull(executorName, "No executor name is provided");
+
+            return new SystemTimer(
+                    executorName,
+                    tickMs,
+                    wheelSize,
+                    startMs
+            );
+        }
+
     }
 
 }

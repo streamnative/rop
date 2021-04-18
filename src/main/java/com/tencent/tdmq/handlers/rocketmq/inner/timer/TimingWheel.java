@@ -3,7 +3,7 @@
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -11,6 +11,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package com.tencent.tdmq.handlers.rocketmq.inner.timer;
 
 import com.tencent.tdmq.handlers.rocketmq.inner.timer.TimerTaskList.TimerTaskEntry;
@@ -124,11 +125,11 @@ class TimingWheel {
     private volatile TimingWheel overflowWheel = null;
 
     public TimingWheel(
-        long tickMs,
-        int wheelSize,
-        long startMs,
-        AtomicInteger taskCounter,
-        DelayQueue<TimerTaskList> queue
+            long tickMs,
+            int wheelSize,
+            long startMs,
+            AtomicInteger taskCounter,
+            DelayQueue<TimerTaskList> queue
     ) {
         this.tickMs = tickMs;
         this.wheelSize = wheelSize;
@@ -138,19 +139,19 @@ class TimingWheel {
 
         this.interval = tickMs * wheelSize;
         this.buckets = IntStream.range(0, wheelSize)
-            .mapToObj(i -> new TimerTaskList(taskCounter))
-            .collect(Collectors.toList());
+                .mapToObj(i -> new TimerTaskList(taskCounter))
+                .collect(Collectors.toList());
         this.currentTime = startMs - (startMs % tickMs); // rounding down to multiple of tickMs
     }
 
     private synchronized void addOverflowWheel() {
         if (null == overflowWheel) {
             overflowWheel = new TimingWheel(
-                interval,
-                wheelSize,
-                currentTime,
-                taskCounter,
-                queue
+                    interval,
+                    wheelSize,
+                    currentTime,
+                    taskCounter,
+                    queue
             );
         }
     }
@@ -168,7 +169,7 @@ class TimingWheel {
             // Put in its own bucket
             final long virtualId = expiration / tickMs;
             TimerTaskList bucket = buckets.get(
-                (int) (virtualId % (long) wheelSize)
+                    (int) (virtualId % (long) wheelSize)
             );
             bucket.add(timerTaskEntry);
 

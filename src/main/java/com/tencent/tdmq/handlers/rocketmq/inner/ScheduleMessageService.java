@@ -48,15 +48,15 @@ public class ScheduleMessageService {
     /*  key is delayed level  value is delay timeMillis */
     private final ConcurrentLongHashMap<Long> delayLevelTable;
     private final AtomicBoolean started = new AtomicBoolean(false);
-    private String scheduleTopicPrefix;
-    private int maxDelayLevel;
-    private String[] delayLevelArray;
     private final RocketMQServiceConfiguration config;
     private final RocketMQBrokerController rocketBroker;
-    private BrokerService pulsarBroker;
     private final ServiceThread expirationReaper;
     private final Timer timer = new Timer();
     private final Cache<String, Producer<byte[]>> sendBackProdcuer;
+    private String scheduleTopicPrefix;
+    private int maxDelayLevel;
+    private String[] delayLevelArray;
+    private BrokerService pulsarBroker;
     private List<DeliverDelayedMessageTimerTask> deliverDelayedMessageManager;
 
     public ScheduleMessageService(final RocketMQBrokerController rocketBroker, RocketMQServiceConfiguration config) {
@@ -166,13 +166,6 @@ public class ScheduleMessageService {
         private RopEntryFormatter formatter = new RopEntryFormatter();
         private SystemTimer timeoutTimer;
 
-        public void close() {
-            if (delayedConsumer != null) {
-                delayedConsumer.closeAsync();
-                timeoutTimer.shutdown();
-            }
-        }
-
         public DeliverDelayedMessageTimerTask(long delayLevel) {
             this.delayLevel = delayLevel;
             this.delayTopic = ScheduleMessageService.this.scheduleTopicPrefix + CommonUtils.UNDERSCORE_CHAR
@@ -192,6 +185,13 @@ public class ScheduleMessageService {
             } catch (Exception e) {
                 log.error("create delayed topic[delayLevel={}] consumer error.", delayLevel, e);
                 throw new RuntimeException("Create delayed topic error");
+            }
+        }
+
+        public void close() {
+            if (delayedConsumer != null) {
+                delayedConsumer.closeAsync();
+                timeoutTimer.shutdown();
             }
         }
 
