@@ -59,38 +59,6 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
         throw new RopEncodeException("UNKNOWN Message Type");
     }
 
-    @Override
-    public List<MessageExt> decode(CommandMessage commandMessage, ByteBuf headersAndPayload) {
-
-        List<MessageExt> messageExtList = new ArrayList<>();
-
-        MessageIdData messageId = commandMessage.getMessageId();
-        if (!verifyChecksum(headersAndPayload, messageId)) {
-            log.error("discard message with checksum error");
-            return null;
-        }
-
-        MessageMetadata msgMetadata;
-        try {
-            msgMetadata = Commands.parseMessageMetadata(headersAndPayload);
-        } catch (Throwable t) {
-            log.error("parse message metadata error: {}", t.getMessage());
-            return null;
-        }
-
-        final int numMessages = msgMetadata.getNumMessagesInBatch();
-        final int numChunks = msgMetadata.hasNumChunksFromMsg() ? msgMetadata.getNumChunksFromMsg() : 0;
-        MessageIdImpl msgId = new MessageIdImpl(messageId.getLedgerId(), messageId.getEntryId(),
-                messageId.getPartition());
-
-        MessageExt messageExt = new MessageExt();
-        messageExt.setQueueId(messageId.getPartition());
-
-        messageExtList.add(messageExt);
-
-        return messageExtList;
-    }
-
     private boolean verifyChecksum(ByteBuf headersAndPayload, MessageIdData messageId) {
 
         if (hasChecksum(headersAndPayload)) {
