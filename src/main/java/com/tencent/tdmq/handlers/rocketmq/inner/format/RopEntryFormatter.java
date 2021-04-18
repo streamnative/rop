@@ -8,6 +8,7 @@ import com.tencent.tdmq.handlers.rocketmq.inner.exception.RopEncodeException;
 import com.tencent.tdmq.handlers.rocketmq.utils.CommonUtils;
 import io.netty.buffer.ByteBuf;
 import java.nio.ByteBuffer;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -38,23 +39,9 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
     private final static ThreadLocal<ByteBuffer> msgStoreItemMemoryThreadLocal = ThreadLocal
             .withInitial(() -> ByteBuffer.allocate(MAX_MESSAGE_SIZE));
 
-/*    private static MessageMetadata getMessageMetadataWithNumberMessages(int numMessages) {
-        final MessageMetadata.Builder builder = MessageMetadata.newBuilder();
-        builder.addProperties(KeyValue.newBuilder()
-                .setKey("entry.format")
-                .setValue("rocketmq")
-                .build());
-        builder.setProducerName("");
-        builder.setSequenceId(0L);
-        builder.setPublishTime(0L);
-        builder.setNumMessagesInBatch(numMessages);
-        return builder.build();
-    }*/
-
     @Override
     public List<ByteBuffer> encode(MessageExt record, int numMessages) throws RopEncodeException {
         Preconditions.checkNotNull(record);
-
         if (record instanceof MessageExtBrokerInner) {
             MessageExtBrokerInner mesg = (MessageExtBrokerInner) record;
             String tags = mesg.getProperty(MessageConst.PROPERTY_TAGS);
@@ -120,14 +107,14 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
         return true;
     }
 
-    @Override
-    public List<MessageExt> decodePulsarEntry(List<Message> entries) {
-        return null;
+    public static MessageExt decodePulsarMessage(Message message) {
+        return CommonUtils.decode(ByteBuffer.wrap(message.getData()),
+                (MessageIdImpl) message.getMessageId(), true, false);
     }
 
     @Override
-    public List<MessageExt> decodePulsarMessage(List<Message> entries) {//Message in pulsar
-        return entries.stream().map(message -> CommonUtils.decode(ByteBuffer.wrap(message.getData()), true, false))
+    public List<MessageExt> decodePulsarMessages(List<Message> messages) {//Message in pulsar
+        return messages.stream().map(RopEntryFormatter::decodePulsarMessage)
                 .collect(Collectors.toList());
     }
 
@@ -225,7 +212,7 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
             resetByteBuffer(bornHostHolder, bornHostLength);
             msgStoreItemMemory.put(messageExtBatch.getBornHostBytes(bornHostHolder));
             // 11 STORETIMESTAMP
-            msgStoreItemMemory.putLong(messageExtBatch.getStoreTimestamp());
+            msgStoreItemMemory.putLong(Instant.now().toEpochMilli());
             // 12 STOREHOSTADDRESS
             resetByteBuffer(storeHostHolder, storeHostLength);
             msgStoreItemMemory.put(messageExtBatch.getStoreHostBytes(storeHostHolder));
@@ -311,7 +298,7 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
         resetByteBuffer(bornHostHolder, bornHostLength);
         msgStoreItemMemory.put(msgInner.getBornHostBytes(bornHostHolder));
         // 11 STORETIMESTAMP
-        msgStoreItemMemory.putLong(msgInner.getStoreTimestamp());
+        msgStoreItemMemory.putLong(Instant.now().toEpochMilli());
         // 12 STOREHOSTADDRESS
         resetByteBuffer(storeHostHolder, storeHostLength);
         msgStoreItemMemory.put(msgInner.getStoreHostBytes(storeHostHolder));

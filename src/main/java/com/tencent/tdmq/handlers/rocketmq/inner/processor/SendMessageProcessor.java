@@ -86,10 +86,8 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         final ConsumerSendMsgBackRequestHeader requestHeader =
                 (ConsumerSendMsgBackRequestHeader) request
                         .decodeCommandCustomHeader(ConsumerSendMsgBackRequestHeader.class);
-
         String namespace = NamespaceUtil.getNamespaceFromResource(requestHeader.getGroup());
         if (this.hasConsumeMessageHook() && !UtilAll.isBlank(requestHeader.getOriginMsgId())) {
-
             ConsumeMessageContext context = new ConsumeMessageContext();
             context.setNamespace(namespace);
             context.setConsumerGroup(requestHeader.getGroup());

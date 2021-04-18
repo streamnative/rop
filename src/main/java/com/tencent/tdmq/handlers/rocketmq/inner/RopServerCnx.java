@@ -139,6 +139,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         long producerId = buildPulsarProducerId(producerGroup, pTopic);
         try {
             if (!this.producers.containsKey(producerId)) {
+                log.info("putMessage create producer[id={}] successfully.", producerId);
                 Producer<byte[]> producer = this.service.pulsar().getClient().newProducer()
                         .topic(pTopic)
                         .producerName(producerGroup + producerId)
@@ -151,9 +152,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             MessageIdImpl messageId = (MessageIdImpl) producers.get(producerId).send(body.get(0).array());
 
             AppendMessageResult appendMessageResult = new AppendMessageResult(AppendMessageStatus.PUT_OK);
-            appendMessageResult.setMsgId(CommonUtils.createMessageId(this.ctx.channel().localAddress(),
-                    MessageIdUtils.getOffset(messageId.getLedgerId(), messageId.getLedgerId(),
-                            messageId.getPartitionIndex())));
+            appendMessageResult.setMsgId(CommonUtils.createMessageId(messageId.getLedgerId(), messageId.getLedgerId(),
+                    partitionId, -1));
             return new PutMessageResult(PutMessageStatus.PUT_OK, appendMessageResult);
         } catch (Exception ex) {
             PutMessageStatus status = PutMessageStatus.FLUSH_DISK_TIMEOUT;
@@ -169,16 +169,23 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         String pTopic = rmqTopic.getPartitionName(partitionId);
         long producerId = buildPulsarProducerId(producerGroup, pTopic);
         try {
-            if (!this.producers.containsKey(producerId)) {
-                Producer<byte[]> producer = this.service.pulsar().getClient().newProducer()
-                        .topic(pTopic)
-                        .producerName(producerGroup + producerId)
-                        .batchingMaxPublishDelay(200, TimeUnit.MILLISECONDS)
-                        .sendTimeout(SEND_TIMEOUT_IN_SEC, TimeUnit.SECONDS)
-                        .batchingMaxMessages(MAX_BATCH_MESSAGE_NUM)
-                        .enableBatching(true)
-                        .create();
-                this.producers.putIfAbsent(producerId, producer);
+            Producer putMsgProducer = this.producers.get(producerId);
+
+            if (putMsgProducer == null) {
+                synchronized (this.producers) {
+                    if (putMsgProducer == null) {
+                        log.info("putMessages create producer[id={}] successfully.", producerId);
+                        putMsgProducer = this.service.pulsar().getClient().newProducer()
+                                .topic(pTopic)
+                                .producerName(producerGroup + producerId)
+                                .batchingMaxPublishDelay(200, TimeUnit.MILLISECONDS)
+                                .sendTimeout(SEND_TIMEOUT_IN_SEC, TimeUnit.SECONDS)
+                                .batchingMaxMessages(MAX_BATCH_MESSAGE_NUM)
+                                .enableBatching(true)
+                                .create();
+                        this.producers.putIfAbsent(producerId, putMsgProducer);
+                    }
+                }
             }
 
             List<CompletableFuture<MessageId>> batchMessageFutures = new ArrayList<>();
@@ -190,8 +197,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 MessageIdImpl messageId = (MessageIdImpl) f.get();
                 long ledgerId = messageId.getLedgerId();
                 long entryId = messageId.getEntryId();
-                String msgId = CommonUtils.createMessageId(this.ctx.channel().localAddress(),
-                        MessageIdUtils.getOffset(ledgerId, entryId, partitionId));
+                String msgId = CommonUtils.createMessageId(ledgerId, entryId, partitionId, -1);
                 sb.append(msgId).append(",");
             }
             AppendMessageResult appendMessageResult = new AppendMessageResult(AppendMessageStatus.PUT_OK);
@@ -207,16 +213,18 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
     }
 
     @Override
-    public MessageExt lookMessageByMessageId(String topic, String msgId) {
+    public MessageExt lookMessageByMessageId(String partitionedTopic, String msgId) {
         try {
-            MessageIdImpl messageId = MessageIdUtils.getMessageId(CommonUtils.decodeMessageId(msgId).getOffset());
-            Reader<byte[]> topicReader = this.readers.get(topic.hashCode());
+            MessageIdImpl messageId = CommonUtils.decodeMessageId(msgId);
+            Reader<byte[]> topicReader = this.readers.get(partitionedTopic.hashCode());
             if (topicReader == null) {
                 synchronized (this.readers) {
                     if (topicReader == null) {
-                        topicReader = service.pulsar().getClient().newReader().topic(topic)
-                                .startMessageId(messageId).create();
-                        this.readers.put(topic.hashCode(), topicReader);
+                        topicReader = service.pulsar().getClient().newReader()
+                                .topic(partitionedTopic)
+                                .startMessageId(messageId)
+                                .create();
+                        this.readers.put(partitionedTopic.hashCode(), topicReader);
                     }
                 }
             }
@@ -226,9 +234,9 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 topicReader.seek(messageId);
                 message = topicReader.readNext();
             }
-            return this.entryFormatter.decodePulsarMessage(Collections.singletonList(message)).get(0);
+            return this.entryFormatter.decodePulsarMessages(Collections.singletonList(message)).get(0);
         } catch (Exception ex) {
-            log.warn("lookMessageByMessageId message[topic={}, msgId={}] error.", topic, msgId);
+            log.warn("lookMessageByMessageId message[topic={}, msgId={}] error.", partitionedTopic, msgId);
         }
         return null;
     }

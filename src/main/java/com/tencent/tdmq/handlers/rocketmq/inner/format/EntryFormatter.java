@@ -20,8 +20,7 @@ public interface EntryFormatter<T> {
     List<ByteBuffer> encode(final T record, final int numMessages) throws RopEncodeException;
 
     List<T> decode(CommandMessage commandMessage, ByteBuf headersAndPayload);
-    List<T> decodePulsarEntry(final List<Message> entries);
-    List<T> decodePulsarMessage(final List<Message> entries);
+    List<T> decodePulsarMessages(final List<Message> entries);
 
     default int parseNumMessages(final T record) {
         return 1;
