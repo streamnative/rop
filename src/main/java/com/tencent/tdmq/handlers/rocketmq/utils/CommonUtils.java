@@ -26,7 +26,7 @@ public class CommonUtils {
     public static final String VERTICAL_LINE_CHAR= "｜";
     private static int MESSAGE_BYTEBUF_SIZE = 28;
     private static ThreadLocal<ByteBuffer> byteBufLocal = ThreadLocal
-            .withInitial(() -> ByteBuffer.allocateDirect(MESSAGE_BYTEBUF_SIZE));
+            .withInitial(() -> ByteBuffer.allocate(MESSAGE_BYTEBUF_SIZE));
 
     public static int newBrokerId(final InetSocketAddress address) {
         return Murmur3_32Hash.getInstance().makeHash((address.getHostString() + address.getPort()).getBytes(UTF_8));

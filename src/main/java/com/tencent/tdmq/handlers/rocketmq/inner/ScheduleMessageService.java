@@ -40,7 +40,7 @@ import org.apache.rocketmq.store.MessageExtBrokerInner;
 public class ScheduleMessageService {
 
     private static final long FIRST_DELAY_TIME = 1000L;
-    private static final long DELAY_FOR_A_WHILE = 100L;
+    private static final long DELAY_FOR_A_WHILE = 1000L;
     private static final long DELAY_FOR_A_PERIOD = 10000L;
     private static final int MAX_FETCH_MESSAGE_NUM = 20;
     private final static int PRODUCER_EXPIRED_TIME_MS = 5 * 60;
@@ -81,12 +81,17 @@ public class ScheduleMessageService {
 
             @Override
             public void run() {
-                log.info(getServiceName() + " is running.");
+                log.info(getServiceName() + " service started.");
                 Preconditions.checkNotNull(deliverDelayedMessageManager);
-                deliverDelayedMessageManager.stream().forEach((i) -> i.advanceClock(200));
+                while (!this.isStopped()) {
+                    deliverDelayedMessageManager.stream().forEach((i) -> {
+                        i.advanceClock(200);
+                    });
+                }
             }
         };
         this.expirationReaper.setDaemon(true);
+
     }
 
     public long computeDeliverTimestamp(final long delayLevel, final long storeTimestamp) {
@@ -104,17 +109,19 @@ public class ScheduleMessageService {
                     .collect(ArrayList::new, (arr, level) -> {
                         arr.add(new DeliverDelayedMessageTimerTask(level));
                     }, ArrayList::addAll);
-            this.delayLevelTable.forEach((level, timeDelay) -> {
-                this.timer.schedule(new DeliverDelayedMessageTimerTask((int) level), FIRST_DELAY_TIME);
-            });
+            this.deliverDelayedMessageManager.stream()
+                    .forEach((i) -> this.timer.schedule(i, FIRST_DELAY_TIME, DELAY_FOR_A_WHILE));
             this.expirationReaper.start();
-
         }
     }
 
     public void shutdown() {
         if (this.started.compareAndSet(true, false)) {
             expirationReaper.shutdown();
+            deliverDelayedMessageManager.stream().forEach((i) -> {
+                i.close();
+            });
+            sendBackProdcuer.invalidateAll();
         }
     }
 
@@ -159,11 +166,19 @@ public class ScheduleMessageService {
         private RopEntryFormatter formatter = new RopEntryFormatter();
         private SystemTimer timeoutTimer;
 
+        public void close() {
+            if (delayedConsumer != null) {
+                delayedConsumer.closeAsync();
+                timeoutTimer.shutdown();
+            }
+        }
+
         public DeliverDelayedMessageTimerTask(long delayLevel) {
             this.delayLevel = delayLevel;
             this.delayTopic = ScheduleMessageService.this.scheduleTopicPrefix + CommonUtils.UNDERSCORE_CHAR
                     + delayLevelArray[(int) (delayLevel - 1)];
             this.pulsarService = ScheduleMessageService.this.pulsarBroker.pulsar();
+            this.timeoutTimer = SystemTimer.builder().executorName("DeliverDelayedMessageTimeWheelExecutor").build();
             try {
                 this.delayedConsumer = this.pulsarService.getClient()
                         .newConsumer()
@@ -192,10 +207,10 @@ public class ScheduleMessageService {
                 while (i++ < PULL_MESSAGE_TIMEOUT_MS && timeoutTimer.size() < PULL_MESSAGE_TIMEOUT_MS) {
                     Message<byte[]> message = this.delayedConsumer
                             .receive(PULL_MESSAGE_TIMEOUT_MS, TimeUnit.MILLISECONDS);
-                    MessageExt messageExt = this.formatter.decodePulsarMessage(message);
-                    if (messageExt == null) {
+                    if (message == null) {
                         break;
                     }
+                    MessageExt messageExt = this.formatter.decodePulsarMessage(message);
                     long deliveryTime = computeDeliverTimestamp(this.delayLevel, messageExt.getStoreTimestamp());
                     long diff = deliveryTime - Instant.now().toEpochMilli();
                     diff = diff < 0 ? 0 : diff;
@@ -244,7 +259,6 @@ public class ScheduleMessageService {
                 log.warn("DeliverDelayedMessageTimerTask[delayLevel={}] pull message exception.", this.delayLevel,
                         e);
             }
-            ScheduleMessageService.this.timer.schedule(this, DELAY_FOR_A_WHILE);
         }
 
         private MessageExtBrokerInner messageTimeup(MessageExt msgExt) {
