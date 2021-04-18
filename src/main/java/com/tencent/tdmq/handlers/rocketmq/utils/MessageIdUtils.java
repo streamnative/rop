@@ -11,9 +11,9 @@ public class MessageIdUtils {
     // use 32 bits for ledgerId,
     // 22 bits for entryId,
     // 10 bits for partitionId.
-    public static final int LEDGER_BITS = 32;
-    public static final int ENTRY_BITS = 22;
-    public static final int PARTITION_BITS = 10;
+    public static final int LEDGER_BITS = 48;
+    public static final int ENTRY_BITS = 16;
+    public static final int PARTITION_BITS = 0;
 
     public static final long getOffset(long ledgerId, long entryId) {
         // Combine ledger id and entry id to form offset
@@ -41,9 +41,9 @@ public class MessageIdUtils {
 
         long ledgerId = offset >>> (ENTRY_BITS + PARTITION_BITS);
         long entryId = (offset & 0x0F_FF_FF_FF_FF_FFL) >>> PARTITION_BITS;
-        int partitionId = (int) (offset & 0x2FF);
+        //int partitionId = (int) (offset & 0x2FF);
 
-        return new MessageIdImpl(ledgerId, entryId, partitionId);
+        return new MessageIdImpl(ledgerId, entryId, -1);
     }
 
     public static final PositionImpl getPosition(long offset) {

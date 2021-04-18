@@ -21,7 +21,6 @@ public interface EntryFormatter<T> {
     List<ByteBuffer> encode(final T record, final int numMessages) throws RopEncodeException;
 
     List<T> decode(CommandMessage commandMessage, ByteBuf headersAndPayload);
-    List<T> decodePulsarEntry(final List<Message> entries);
     List<T> decodePulsarMessage(final List<Message> entries, Predicate predicate);
 
     default int parseNumMessages(final T record) {

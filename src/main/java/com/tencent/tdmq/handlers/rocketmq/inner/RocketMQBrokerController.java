@@ -98,6 +98,7 @@ public class RocketMQBrokerController {
     private TransactionalMessageService transactionalMessageService;
     private AbstractTransactionalMessageCheckListener transactionalMessageCheckListener;
     private volatile BrokerService brokerService;
+    private ScheduleMessageService delayedMessageService;
 
     public RocketMQBrokerController(final RocketMQServiceConfiguration serverConfig) throws PulsarServerException {
         this.serverConfig = serverConfig;
@@ -132,6 +133,7 @@ public class RocketMQBrokerController {
 
         this.brokerStatsManager = new BrokerStatsManager(serverConfig.getBrokerName());
         this.remotingServer = new RocketMQRemoteServer(this.serverConfig, this.clientHousekeepingService);
+        this.delayedMessageService = new ScheduleMessageService(this, serverConfig);
     }
 
     public boolean initialize() throws Exception {
@@ -485,6 +487,10 @@ public class RocketMQBrokerController {
 
         if (this.topicConfigManager != null) {
             this.topicConfigManager.start();
+        }
+
+        if(this.delayedMessageService != null) {
+            this.delayedMessageService.start();
         }
     }
 
