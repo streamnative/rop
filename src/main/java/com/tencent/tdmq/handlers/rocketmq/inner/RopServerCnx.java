@@ -6,13 +6,9 @@ import com.tencent.tdmq.handlers.rocketmq.inner.format.RopEntryFormatter;
 import com.tencent.tdmq.handlers.rocketmq.inner.pulsar.PulsarMessageStore;
 import com.tencent.tdmq.handlers.rocketmq.utils.CommonUtils;
 import com.tencent.tdmq.handlers.rocketmq.utils.MessageIdUtils;
-import com.tencent.tdmq.handlers.rocketmq.utils.PulsarUtil;
 import com.tencent.tdmq.handlers.rocketmq.utils.RocketMQTopic;
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
-import java.io.IOException;
 import java.net.SocketAddress;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -25,25 +21,18 @@ import java.util.concurrent.atomic.AtomicLong;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang.exception.ExceptionUtils;
+import org.apache.pulsar.broker.PulsarServerException;
 import org.apache.pulsar.broker.service.BrokerService;
 import org.apache.pulsar.client.api.Consumer;
 import org.apache.pulsar.client.api.Message;
 import org.apache.pulsar.client.api.MessageId;
 import org.apache.pulsar.client.api.Producer;
+import org.apache.pulsar.client.api.PulsarClientException;
 import org.apache.pulsar.client.api.Reader;
-import org.apache.pulsar.client.api.SubscriptionInitialPosition;
-import org.apache.pulsar.client.api.SubscriptionType;
 import org.apache.pulsar.client.impl.ClientCnx;
 import org.apache.pulsar.client.impl.MessageIdImpl;
-import org.apache.pulsar.common.allocator.PulsarByteBufAllocator;
-import org.apache.pulsar.common.api.proto.PulsarApi.BaseCommand;
-import org.apache.pulsar.common.api.proto.PulsarApi.CommandSubscribe;
-import org.apache.pulsar.common.api.proto.PulsarApi.MessageIdData;
-import org.apache.pulsar.common.protocol.ByteBufPair;
-import org.apache.pulsar.common.protocol.Commands;
 import org.apache.pulsar.common.util.FutureUtil;
 import org.apache.pulsar.common.util.collections.ConcurrentLongHashMap;
-import org.apache.pulsar.common.util.protobuf.ByteBufCodedOutputStream;
 import org.apache.rocketmq.common.SystemClock;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageExtBatch;
@@ -52,6 +41,7 @@ import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.store.AppendMessageResult;
 import org.apache.rocketmq.store.AppendMessageStatus;
 import org.apache.rocketmq.store.GetMessageResult;
+import org.apache.rocketmq.store.GetMessageStatus;
 import org.apache.rocketmq.store.MessageExtBrokerInner;
 import org.apache.rocketmq.store.PutMessageResult;
 import org.apache.rocketmq.store.PutMessageStatus;
@@ -226,7 +216,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 topicReader.seek(messageId);
                 message = topicReader.readNext();
             }
-            return this.entryFormatter.decodePulsarMessage(Collections.singletonList(message)).get(0);
+            return this.entryFormatter.decodePulsarMessage(Collections.singletonList(message), null).get(0);
         } catch (Exception ex) {
             log.warn("lookMessageByMessageId message[topic={}, msgId={}] error.", topic, msgId);
         }
@@ -240,63 +230,69 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
 
     @Override
     public GetMessageResult getMessage(RemotingCommand request, PullMessageRequestHeader requestHeader) {
-
-        byte[] body = request.getBody();
-        ByteBuffer buffer = ByteBuffer.wrap(body);
-        ByteBuf headersAndPayload = Unpooled.wrappedBuffer(buffer);
+        GetMessageResult getResult = new GetMessageResult();
 
         String consumerGroup = requestHeader.getConsumerGroup();
         String topic = requestHeader.getTopic();
         int partitionID = requestHeader.getQueueId();
+        // 当前已经消费掉的消息的offset的位置
         long commitOffset = requestHeader.getCommitOffset();
+        // queueOffset 是要拉取消息的起始位置
         long queueOffset = requestHeader.getQueueOffset();
         int maxMsgNums = requestHeader.getMaxMsgNums();
-        // 集群和广播这两种消费模型
+        if (maxMsgNums < 1) {
+            getResult.setStatus(GetMessageStatus.NO_MATCHED_MESSAGE);
+            return getResult;
+        }
+
+        // subscription 字段主要是用来做tag过滤的
         String subscription = requestHeader.getSubscription();
         int sysFlag = requestHeader.getSysFlag();
+        // expressionType 表达式类型，可取值TAG、SQL92
         String expressionType = requestHeader.getExpressionType();
         Map<String, String> properties = request.getExtFields();
         String ctxId = this.ctx.channel().id().asLongText();
 
-        long consumerId = buildPulsarConsumerId(consumerGroup, topic, ctxId);
+        long readerId = buildPulsarReaderId(consumerGroup, topic, ctxId);
         long seqId = seqGenerator.incrementAndGet();
-        GetMessageResult getResult = new GetMessageResult();
-
-        if (!this.consumers.containsKey(consumerId)) {
-            CommandSubscribe.Builder builder = CommandSubscribe.newBuilder();
-            CommandSubscribe commandSubscribe = builder
-                    .setTopic(topic)
-                    .setSubscription(consumerGroup)
-                    .setSubType(PulsarUtil.parseSubType(SubscriptionType.Exclusive))
-                    .setConsumerId(consumerId)
-                    .setRequestId(seqId)
-                    .setConsumerName(consumerGroup + consumerId)
-                    .setDurable(true) // 代表 cursor 是否需要持久化
-//                .setMetadata() // 代表properties对象，是一个map[string]string
-                    // TODO: 这里的逻辑与 rocketMQ 本身有出入，rocketMQ 在启动的时候，会先查询要消费的offset的位置，然后将这个offset的位置
-                    //       设置进来。queryConsumerOffset
-                    .setInitialPosition(PulsarUtil.parseSubPosition(SubscriptionInitialPosition.Latest))
-                    .setReadCompacted(false)
-                    .setReplicateSubscriptionState(false)
-                    .build();
-
-            //this.handleSubscribe(commandSubscribe);
+        // 通过offset来取出要开始消费的messageId的位置
+        MessageId messageId = MessageIdUtils.getMessageId(queueOffset);
+        try {
+            if (!this.readers.containsKey(readerId)) {
+                Reader<byte[]> reader = this.service.pulsar().getClient().newReader()
+                        .topic(topic)
+                        .receiverQueueSize(20)
+                        .startMessageId(messageId)
+                        .readerName(consumerGroup + readerId)
+                        .create();
+                this.readers.putIfAbsent(readerId, reader);
+            }
+        } catch (PulsarServerException | PulsarClientException e) {
+            log.error("create new reader error: {}", e.getMessage());
+            getResult.setStatus(GetMessageStatus.NO_MATCHED_MESSAGE);
+            e.printStackTrace();
         }
 
-        MessageIdImpl messageId = (MessageIdImpl) MessageIdUtils.getMessageId(commitOffset);
-        MessageIdData messageIdData = MessageIdData.newBuilder()
-                .setLedgerId(messageId.getLedgerId())
-                .setEntryId(messageId.getEntryId())
-                .setPartition(messageId.getPartitionIndex())
-                .build();
-        BaseCommand baseCommand = Commands.newMessageCommand(consumerId, messageIdData, 0, null);
-        ByteBufPair res = serializeCommandMessageWithSize(baseCommand, headersAndPayload);
-        this.ctx.write(res, ctx.voidPromise());
+        List<Message> messageList = null;
+
+        try {
+            for (int i = 0; i < maxMsgNums; i++) {
+                Message message = this.readers.get(readerId).readNext();
+                messageList.add(message);
+            }
+        } catch (PulsarClientException e) {
+            e.printStackTrace();
+        }
+        assert messageList != null;
+        List<MessageExt> messageExtList = this.entryFormatter.decodePulsarMessage(messageList, null);
+        MessageIdImpl maxMessageID = (MessageIdImpl) messageList.get(maxMsgNums - 1).getMessageId();
+        long maxOffset = MessageIdUtils
+                .getOffset(maxMessageID.getLedgerId(), maxMessageID.getEntryId(), maxMessageID.getPartitionIndex());
 
 //        getResult.setBufferTotalSize();
-//        getResult.setMaxOffset();
-//        getResult.setMinOffset();
-//        getResult.setStatus();
+        getResult.setMaxOffset(maxOffset);
+        getResult.setMinOffset(commitOffset);
+        getResult.setStatus(GetMessageStatus.FOUND);
 //        getResult.setNextBeginOffset();
 //        getResult.setSuggestPullingFromSlave();
 //        getResult.setMsgCount4Commercial();
@@ -304,30 +300,11 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         return getResult;
     }
 
-    public static ByteBufPair serializeCommandMessageWithSize(BaseCommand cmd, ByteBuf metadataAndPayload) {
-        // / Wire format
-        // [TOTAL_SIZE] [CMD_SIZE][CMD] [MAGIC_NUMBER][CHECKSUM] [METADATA_SIZE][METADATA] [PAYLOAD]
-        //
-        // metadataAndPayload contains from magic-number to the payload included
-
-        int cmdSize = cmd.getSerializedSize();
-        int totalSize = 4 + cmdSize + metadataAndPayload.readableBytes();
-        int headersSize = 4 + 4 + cmdSize;
-
-        ByteBuf headers = PulsarByteBufAllocator.DEFAULT.buffer(headersSize);
-        headers.writeInt(totalSize); // External frame
-
-        // Write cmd
-        headers.writeInt(cmdSize);
-        try {
-            cmd.writeTo(ByteBufCodedOutputStream.get(headers));
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-        return ByteBufPair.get(headers, metadataAndPayload);
+    private long buildPulsarConsumerId(String... tags) {
+        return Math.abs(Joiner.on("/").join(tags).hashCode());
     }
 
-    private long buildPulsarConsumerId(String... tags) {
+    private long buildPulsarReaderId(String... tags) {
         return Math.abs(Joiner.on("/").join(tags).hashCode());
     }
 

@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.pulsar.client.api.Message;
@@ -126,7 +127,7 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
     }
 
     @Override
-    public List<MessageExt> decodePulsarMessage(List<Message> entries) {//Message in pulsar
+    public List<MessageExt> decodePulsarMessage(List<Message> entries, Predicate predicate) {//Message in pulsar
         return entries.stream().map(message -> CommonUtils.decode(ByteBuffer.wrap(message.getData()), true, false))
                 .collect(Collectors.toList());
     }

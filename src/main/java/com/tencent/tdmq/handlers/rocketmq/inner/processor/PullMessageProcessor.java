@@ -10,7 +10,9 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.FileRegion;
 import java.nio.ByteBuffer;
 import java.util.List;
+import java.util.concurrent.ConcurrentMap;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.broker.client.ClientChannelInfo;
 import org.apache.rocketmq.broker.client.ConsumerGroupInfo;
 import org.apache.rocketmq.broker.longpolling.PullRequest;
 import org.apache.rocketmq.broker.mqtrace.ConsumeMessageContext;
@@ -19,14 +21,14 @@ import org.apache.rocketmq.broker.pagecache.ManyMessageTransfer;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.TopicConfig;
 import org.apache.rocketmq.common.constant.PermName;
+import org.apache.rocketmq.common.consumer.ConsumeFromWhere;
 import org.apache.rocketmq.common.filter.FilterAPI;
 import org.apache.rocketmq.common.help.FAQUrl;
 import org.apache.rocketmq.common.message.MessageDecoder;
 import org.apache.rocketmq.common.protocol.ResponseCode;
 import org.apache.rocketmq.common.protocol.header.PullMessageRequestHeader;
 import org.apache.rocketmq.common.protocol.header.PullMessageResponseHeader;
-import org.apache.rocketmq.common.protocol.heartbeat.ConsumerData;
-import org.apache.rocketmq.common.protocol.heartbeat.HeartbeatData;
+import org.apache.rocketmq.common.protocol.heartbeat.ConsumeType;
 import org.apache.rocketmq.common.protocol.heartbeat.MessageModel;
 import org.apache.rocketmq.common.protocol.heartbeat.SubscriptionData;
 import org.apache.rocketmq.common.protocol.topic.OffsetMovedEvent;
@@ -55,27 +57,11 @@ public class PullMessageProcessor implements NettyRequestProcessor {
 
     protected PulsarMessageStore getServerCnxMsgStore(ChannelHandlerContext ctx, RemotingCommand request,
             String groupName) {
-        String clientId = ctx.channel().remoteAddress().toString() + "@" + System.currentTimeMillis();
-        RopClientChannelCnx channelCnx = (RopClientChannelCnx) this.brokerController.getConsumerManager()
-                .findChannel(groupName, clientId);
+        ConsumerGroupInfo consumerGroupInfo = this.brokerController.getConsumerManager()
+                .getConsumerGroupInfo(groupName);
 
-        if (channelCnx == null) {
-            synchronized (this.brokerController) {
-                channelCnx = new RopClientChannelCnx(this.brokerController, ctx, clientId, LanguageCode.JAVA, 0);
-                HeartbeatData heartbeatData = HeartbeatData.decode(request.getBody(), HeartbeatData.class);
-                for (ConsumerData data : heartbeatData.getConsumerDataSet()) {
-                    this.brokerController.getConsumerManager().registerConsumer(data.getGroupName(),
-                            channelCnx,
-                            data.getConsumeType(),
-                            data.getMessageModel(),
-                            data.getConsumeFromWhere(),
-                            data.getSubscriptionDataSet(),
-                            false
-                    );
-                }
-            }
-        }
-
+        ConcurrentMap<Channel, ClientChannelInfo>  channelInfoConcurrentMap = consumerGroupInfo.getChannelInfoTable();
+        RopClientChannelCnx channelCnx = (RopClientChannelCnx)channelInfoConcurrentMap.get(ctx.channel());
         return channelCnx.getServerCnx();
     }
 
