@@ -2,6 +2,7 @@ package com.tencent.tdmq.handlers.rocketmq.inner.consumer;
 
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQLoader;
+import com.tencent.tdmq.handlers.rocketmq.utils.RocketMQTopic;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -40,7 +41,7 @@ public class ConsumerOffsetManager implements RocketMQLoader {
         while (it.hasNext()) {
             Entry<String, ConcurrentMap<Integer, Long>> next = (Entry) it.next();
             String topicAtGroup = (String) next.getKey();
-            String[] arrays = topicAtGroup.split("@");
+            String[] arrays = topicAtGroup.split(TOPIC_GROUP_SEPARATOR);
             if (arrays.length == 2) {
                 String topic = arrays[0];
                 String group = arrays[1];
@@ -72,12 +73,11 @@ public class ConsumerOffsetManager implements RocketMQLoader {
 
     public Set<String> whichTopicByConsumer(String group) {
         Set<String> topics = new HashSet();
-        Iterator it = this.offsetTable.entrySet().iterator();
 
-        while (it.hasNext()) {
-            Entry<String, ConcurrentMap<Integer, Long>> next = (Entry) it.next();
+        for (Entry<String, ConcurrentMap<Integer, Long>> stringConcurrentMapEntry : this.offsetTable.entrySet()) {
+            Entry<String, ConcurrentMap<Integer, Long>> next = (Entry) stringConcurrentMapEntry;
             String topicAtGroup = (String) next.getKey();
-            String[] arrays = topicAtGroup.split("@");
+            String[] arrays = topicAtGroup.split(TOPIC_GROUP_SEPARATOR);
             if (arrays.length == 2 && group.equals(arrays[1])) {
                 topics.add(arrays[0]);
             }
@@ -88,12 +88,11 @@ public class ConsumerOffsetManager implements RocketMQLoader {
 
     public Set<String> whichGroupByTopic(String topic) {
         Set<String> groups = new HashSet();
-        Iterator it = this.offsetTable.entrySet().iterator();
 
-        while (it.hasNext()) {
-            Entry<String, ConcurrentMap<Integer, Long>> next = (Entry) it.next();
+        for (Entry<String, ConcurrentMap<Integer, Long>> stringConcurrentMapEntry : this.offsetTable.entrySet()) {
+            Entry<String, ConcurrentMap<Integer, Long>> next = (Entry) stringConcurrentMapEntry;
             String topicAtGroup = (String) next.getKey();
-            String[] arrays = topicAtGroup.split("@");
+            String[] arrays = topicAtGroup.split(TOPIC_GROUP_SEPARATOR);
             if (arrays.length == 2 && topic.equals(arrays[0])) {
                 groups.add(arrays[1]);
             }
@@ -103,7 +102,10 @@ public class ConsumerOffsetManager implements RocketMQLoader {
     }
 
     public void commitOffset(String clientHost, String group, String topic, int queueId, long offset) {
-        String key = topic + "@" + group;
+        String tmpGroup = RocketMQTopic.getPulsarOrigNoDomainTopic(group);
+        String tmpTopic = RocketMQTopic.getPulsarOrigNoDomainTopic(topic);
+
+        String key = tmpTopic + TOPIC_GROUP_SEPARATOR + tmpGroup;
         this.commitOffset(clientHost, key, queueId, offset);
     }
 
@@ -118,14 +120,17 @@ public class ConsumerOffsetManager implements RocketMQLoader {
             if (storeOffset != null && offset < storeOffset) {
                 log.warn(
                         "[NOTIFYME]update consumer offset less than store. clientHost={}, key={}, queueId={}, requestOffset={}, storeOffset={}",
-                        new Object[]{clientHost, key, queueId, offset, storeOffset});
+                        clientHost, key, queueId, offset, storeOffset);
             }
         }
 
     }
 
     public long queryOffset(String group, String topic, int queueId) {
-        String key = topic + "@" + group;
+        String tmpGroup = RocketMQTopic.getPulsarOrigNoDomainTopic(group);
+        String tmpTopic = RocketMQTopic.getPulsarOrigNoDomainTopic(topic);
+
+        String key = tmpTopic + TOPIC_GROUP_SEPARATOR + tmpGroup;
         ConcurrentMap<Integer, Long> map = (ConcurrentMap) this.offsetTable.get(key);
         if (null != map) {
             Long offset = (Long) map.get(queueId);
@@ -177,7 +182,7 @@ public class ConsumerOffsetManager implements RocketMQLoader {
                 it = topicGroups.iterator();
 
                 while (it.hasNext()) {
-                    if (group.equals(((String) it.next()).split("@")[1])) {
+                    if (group.equals(((String) it.next()).split(TOPIC_GROUP_SEPARATOR)[1])) {
                         it.remove();
                     }
                 }
@@ -196,7 +201,7 @@ public class ConsumerOffsetManager implements RocketMQLoader {
 
                 offSetEntry = (Entry) var14.next();
                 String topicGroup = (String) offSetEntry.getKey();
-                topicGroupArr = topicGroup.split("@");
+                topicGroupArr = topicGroup.split(TOPIC_GROUP_SEPARATOR);
             } while (!topic.equals(topicGroupArr[0]));
 
             it = ((ConcurrentMap) offSetEntry.getValue()).entrySet().iterator();
@@ -218,14 +223,25 @@ public class ConsumerOffsetManager implements RocketMQLoader {
     }
 
     public Map<Integer, Long> queryOffset(String group, String topic) {
-        String key = topic + "@" + group;
+        String tmpGroup = RocketMQTopic.getPulsarOrigNoDomainTopic(group);
+        String tmpTopic = RocketMQTopic.getPulsarOrigNoDomainTopic(topic);
+
+        String key = tmpTopic + TOPIC_GROUP_SEPARATOR + tmpGroup;
         return (Map) this.offsetTable.get(key);
     }
 
     public void cloneOffset(String srcGroup, String destGroup, String topic) {
-        ConcurrentMap<Integer, Long> offsets = (ConcurrentMap) this.offsetTable.get(topic + "@" + srcGroup);
+
+        String tmpSrcGroup = RocketMQTopic.getPulsarOrigNoDomainTopic(srcGroup);
+        String tmpDestGroup = RocketMQTopic.getPulsarOrigNoDomainTopic(destGroup);
+        String tmpTopic = RocketMQTopic.getPulsarOrigNoDomainTopic(topic);
+
+        String srcKey = tmpTopic + TOPIC_GROUP_SEPARATOR + tmpSrcGroup;
+        String destKey = tmpTopic + TOPIC_GROUP_SEPARATOR + tmpDestGroup;
+
+        ConcurrentMap<Integer, Long> offsets = (ConcurrentMap) this.offsetTable.get(srcKey);
         if (offsets != null) {
-            this.offsetTable.put(topic + "@" + destGroup, new ConcurrentHashMap(offsets));
+            this.offsetTable.put(destKey, new ConcurrentHashMap(offsets));
         }
 
     }
