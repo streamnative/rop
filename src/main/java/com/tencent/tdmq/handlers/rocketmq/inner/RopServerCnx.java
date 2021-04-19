@@ -274,6 +274,11 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
 
         long readerId = buildPulsarReaderId(consumerGroup, topic, ctxId);
         long seqId = seqGenerator.incrementAndGet();
+
+        if (log.isDebugEnabled()) {
+            log.debug("The commit offset is: {} and the queue offset is:{}", commitOffset, queueOffset);
+        }
+
         // 通过offset来取出要开始消费的messageId的位置
         MessageId messageId = MessageIdUtils.getMessageId(queueOffset);
         try {

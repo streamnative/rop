@@ -157,6 +157,10 @@ public abstract class TopicConfigManager {
     }
 
     public TopicConfig selectTopicConfig(final String topic) {
+        if (log.isDebugEnabled()) {
+            log.debug("[TopicConfigManager] The topic{} is in {}.", RocketMQTopic.getPulsarOrigNoDomainTopic(topic),
+                    this.topicConfigTable);
+        }
         return this.topicConfigTable.get(RocketMQTopic.getPulsarOrigNoDomainTopic(topic));
     }
 

@@ -18,6 +18,12 @@ import org.apache.rocketmq.remoting.protocol.RemotingSerializable;
 public class ConsumerOffsetManager implements RocketMQLoader {
 
     private static final String TOPIC_GROUP_SEPARATOR = "@";
+    /**
+     * key   => topic@group
+     * topic => tenant/namespace/topicName
+     * group => tenant/namespace/groupName
+     * map   => [key => queueId] & [value => offset]
+     **/
     private ConcurrentMap<String, ConcurrentMap<Integer, Long>> offsetTable = new ConcurrentHashMap(512);
     private transient RocketMQBrokerController brokerController;
 
