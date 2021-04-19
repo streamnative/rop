@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
@@ -139,9 +140,12 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 this.producers.putIfAbsent(producerId, producer);
             }
             List<ByteBuffer> body = this.entryFormatter.encode(messageInner, 1);
-            MessageIdImpl messageId = (MessageIdImpl) producers.get(producerId).send(body.get(0).array());
+            byte[] msgBytes = body.get(0).array();
+            MessageIdImpl messageId = (MessageIdImpl) producers.get(producerId).send(msgBytes);
 
             AppendMessageResult appendMessageResult = new AppendMessageResult(AppendMessageStatus.PUT_OK);
+            appendMessageResult.setMsgNum(1);
+            appendMessageResult.setWroteBytes(msgBytes.length);
             appendMessageResult.setMsgId(CommonUtils.createMessageId(messageId.getLedgerId(), messageId.getLedgerId(),
                     partitionId, -1));
             return new PutMessageResult(PutMessageStatus.PUT_OK, appendMessageResult);
@@ -180,7 +184,12 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
 
             List<CompletableFuture<MessageId>> batchMessageFutures = new ArrayList<>();
             List<ByteBuffer> body = this.entryFormatter.encode(batchMessage, 1);
-            body.forEach(item -> batchMessageFutures.add(this.producers.get(producerId).sendAsync(item.array())));
+            AtomicInteger totoalBytesSize = new AtomicInteger(0);
+            body.forEach(item -> {
+                byte[] msgBytes = item.array();
+                batchMessageFutures.add(this.producers.get(producerId).sendAsync(msgBytes));
+                totoalBytesSize.getAndAdd(msgBytes.length);
+            });
             FutureUtil.waitForAll(batchMessageFutures).get(SEND_TIMEOUT_IN_SEC, TimeUnit.SECONDS);
             StringBuilder sb = new StringBuilder();
             for (CompletableFuture<MessageId> f : batchMessageFutures) {
@@ -191,6 +200,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 sb.append(msgId).append(",");
             }
             AppendMessageResult appendMessageResult = new AppendMessageResult(AppendMessageStatus.PUT_OK);
+            appendMessageResult.setMsgNum(batchMessageFutures.size());
+            appendMessageResult.setWroteBytes(totoalBytesSize.get());
             PutMessageResult putMessageResult = new PutMessageResult(PutMessageStatus.PUT_OK, appendMessageResult);
             appendMessageResult.setMsgId(sb.toString());
             return putMessageResult;

@@ -414,9 +414,7 @@ public class RocketMQBrokerController {
             this.scheduledExecutorService.awaitTermination(5000, TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
         }
-
-        this.unregisterBrokerAll();
-
+        
         if (this.sendMessageExecutor != null) {
             this.sendMessageExecutor.shutdown();
         }
@@ -458,10 +456,6 @@ public class RocketMQBrokerController {
         if (this.topicConfigManager != null) {
             this.topicConfigManager.shutdown();
         }
-    }
-
-    private void unregisterBrokerAll() {
-
     }
 
     public void start() throws Exception {
