@@ -18,5 +18,14 @@ public interface PulsarMessageStore {
 
     MessageExt lookMessageByMessageId(String topic, String msgId);
 
+    /**
+     * Reset the subscription associated with this reader to a specific message publish time.
+     *
+     * @param topic the sub-partitioned topic(is one topic)
+     * @param timestamp the message publish time where to reposition the reader
+     * @return Return rocketmq MessageExt object
+     */
+    MessageExt lookMessageByTimestamp(String topic, long timestamp);
+
     long now();
 }
