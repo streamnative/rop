@@ -223,7 +223,6 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                     if (topicReader == null) {
                         topicReader = service.pulsar().getClient().newReader()
                                 .topic(partitionedTopic)
-                                .startMessageId(messageId)
                                 .create();
                         this.readers.put(partitionedTopic.hashCode(), topicReader);
                     }
