@@ -312,7 +312,7 @@
                 <artifactId>maven-antrun-plugin</artifactId>
                 <executions>
                     <execution>
-                        <phase>test</phase>
+                        <phase>deploy</phase>
                         <goals>
                             <goal>run</goal>
                         </goals>
