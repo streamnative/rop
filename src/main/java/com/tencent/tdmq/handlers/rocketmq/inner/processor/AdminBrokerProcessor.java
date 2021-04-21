@@ -100,7 +100,7 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
     public RemotingCommand processRequest(ChannelHandlerContext ctx,
             RemotingCommand request) throws RemotingCommandException {
         switch (request.getCode()) {
-            case RequestCode.UPDATE_AND_CREATE_TOPIC:
+            case RequestCode.UPDATE_AND_CREATE_TOPIC: // 需要| 管控端
                 return this.updateAndCreateTopic(ctx, request);
             case RequestCode.DELETE_TOPIC_IN_BROKER:
                 return this.deleteTopic(ctx, request);
@@ -110,31 +110,31 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
                 return this.updateBrokerConfig(ctx, request);
             case RequestCode.GET_BROKER_CONFIG:
                 return this.getBrokerConfig(ctx, request);
-            case RequestCode.SEARCH_OFFSET_BY_TIMESTAMP:
+            case RequestCode.SEARCH_OFFSET_BY_TIMESTAMP: // 需要
                 return this.searchOffsetByTimestamp(ctx, request);
-            case RequestCode.GET_MAX_OFFSET:
+            case RequestCode.GET_MAX_OFFSET: // 需要
                 return this.getMaxOffset(ctx, request);
-            case RequestCode.GET_MIN_OFFSET:
+            case RequestCode.GET_MIN_OFFSET: // 需要
                 return this.getMinOffset(ctx, request);
-            case RequestCode.GET_EARLIEST_MSG_STORETIME:
+            case RequestCode.GET_EARLIEST_MSG_STORETIME: // 需要
                 return this.getEarliestMsgStoretime(ctx, request);
             case RequestCode.GET_BROKER_RUNTIME_INFO:
                 return this.getBrokerRuntimeInfo(ctx, request);
-            case RequestCode.LOCK_BATCH_MQ:
+            case RequestCode.LOCK_BATCH_MQ: // 需要
                 return this.lockBatchMQ(ctx, request);
-            case RequestCode.UNLOCK_BATCH_MQ:
+            case RequestCode.UNLOCK_BATCH_MQ: // 需要
                 return this.unlockBatchMQ(ctx, request);
-            case RequestCode.UPDATE_AND_CREATE_SUBSCRIPTIONGROUP:
+            case RequestCode.UPDATE_AND_CREATE_SUBSCRIPTIONGROUP: // 管控端
                 return this.updateAndCreateSubscriptionGroup(ctx, request);
             case RequestCode.GET_ALL_SUBSCRIPTIONGROUP_CONFIG:
                 return this.getAllSubscriptionGroup(ctx, request);
-            case RequestCode.DELETE_SUBSCRIPTIONGROUP:
+            case RequestCode.DELETE_SUBSCRIPTIONGROUP: // 管控端
                 return this.deleteSubscriptionGroup(ctx, request);
             case RequestCode.GET_TOPIC_STATS_INFO:
                 return this.getTopicStatsInfo(ctx, request);
-            case RequestCode.GET_CONSUMER_CONNECTION_LIST:
+            case RequestCode.GET_CONSUMER_CONNECTION_LIST: // 需要
                 return this.getConsumerConnectionList(ctx, request);
-            case RequestCode.GET_PRODUCER_CONNECTION_LIST:
+            case RequestCode.GET_PRODUCER_CONNECTION_LIST: // 需要
                 return this.getProducerConnectionList(ctx, request);
             case RequestCode.GET_CONSUME_STATS:
                 return this.getConsumeStats(ctx, request);
@@ -142,11 +142,11 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
                 return this.getAllConsumerOffset(ctx, request);
             case RequestCode.GET_ALL_DELAY_OFFSET:
                 return this.getAllDelayOffset(ctx, request);
-            case RequestCode.INVOKE_BROKER_TO_RESET_OFFSET:
+            case RequestCode.INVOKE_BROKER_TO_RESET_OFFSET: // 需要
                 return this.resetOffset(ctx, request);
             case RequestCode.INVOKE_BROKER_TO_GET_CONSUMER_STATUS:
                 return this.getConsumerStatus(ctx, request);
-            case RequestCode.QUERY_TOPIC_CONSUME_BY_WHO:
+            case RequestCode.QUERY_TOPIC_CONSUME_BY_WHO: // 管控端
                 return this.queryTopicConsumeByWho(ctx, request);
             case RequestCode.QUERY_CONSUME_TIME_SPAN:
                 return this.queryConsumeTimeSpan(ctx, request);
@@ -156,7 +156,7 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
                 return this.cleanExpiredConsumeQueue();
             case RequestCode.CLEAN_UNUSED_TOPIC:
                 return this.cleanUnusedTopic();
-            case RequestCode.GET_CONSUMER_RUNNING_INFO:
+            case RequestCode.GET_CONSUMER_RUNNING_INFO: // 管控端
                 return this.getConsumerRunningInfo(ctx, request);
             case RequestCode.QUERY_CORRECTION_OFFSET:
                 return this.queryCorrectionOffset(ctx, request);
