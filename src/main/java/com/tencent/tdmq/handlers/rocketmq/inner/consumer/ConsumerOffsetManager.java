@@ -11,15 +11,11 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.common.UtilAll;
-import org.apache.rocketmq.common.constant.LoggerName;
-import org.apache.rocketmq.logging.InternalLogger;
-import org.apache.rocketmq.logging.InternalLoggerFactory;
 
 
 @Slf4j
 public class ConsumerOffsetManager {
 
-    private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
     private static final String TOPIC_GROUP_SEPARATOR = "@";
 
     /**
@@ -62,7 +58,7 @@ public class ConsumerOffsetManager {
 
         while (it.hasNext() && result) {
             Entry<Integer, Long> next = it.next();
-            long minOffsetInStore = 0L/*this.brokerController.getMessageStore().getMinOffsetInQueue(topic, next.getKey())*/;
+            long minOffsetInStore = 0L/*TODO this.brokerController.getMessageStore().getMinOffsetInQueue(topic, next.getKey())*/;
             long offsetInPersist = next.getValue();
             result = offsetInPersist <= minOffsetInStore;
         }
@@ -171,7 +167,7 @@ public class ConsumerOffsetManager {
             String[] topicGroupArr = topicGroup.split(TOPIC_GROUP_SEPARATOR);
             if (topic.equals(topicGroupArr[0])) {
                 for (Entry<Integer, Long> entry : offSetEntry.getValue().entrySet()) {
-                    long minOffset = 0L/*this.brokerController.getMessageStore().getMinOffsetInQueue(topic, entry.getKey())*/;
+                    long minOffset = 0L/*TODO this.brokerController.getMessageStore().getMinOffsetInQueue(topic, entry.getKey())*/;
                     if (entry.getValue() >= minOffset) {
                         Long offset = queueMinOffset.get(entry.getKey());
                         if (offset == null) {
@@ -197,7 +193,7 @@ public class ConsumerOffsetManager {
         ConcurrentMap<Integer, Long> offsets = this.offsetTable.get(topic + TOPIC_GROUP_SEPARATOR + srcGroup);
         if (offsets != null) {
             this.offsetTable
-                    .put(topic + TOPIC_GROUP_SEPARATOR + destGroup, new ConcurrentHashMap<Integer, Long>(offsets));
+                    .put(topic + TOPIC_GROUP_SEPARATOR + destGroup, new ConcurrentHashMap<>(offsets));
         }
     }
 

@@ -1,5 +1,6 @@
 package com.tencent.tdmq.handlers.rocketmq.inner.consumer;
 
+import com.tencent.tdmq.handlers.rocketmq.utils.CommonUtils;
 import io.netty.channel.Channel;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -30,7 +31,8 @@ public class ConsumerManager {
     }
 
     public ClientChannelInfo findChannel(String group, String clientId) {
-        ConsumerGroupInfo consumerGroupInfo = this.consumerTable.get(group);
+        String tdmqGroupName = CommonUtils.tdmqGroupName(group);
+        ConsumerGroupInfo consumerGroupInfo = this.consumerTable.get(tdmqGroupName);
         if (consumerGroupInfo != null) {
             return consumerGroupInfo.findChannel(clientId);
         }
@@ -43,7 +45,8 @@ public class ConsumerManager {
     }
 
     public ConsumerGroupInfo getConsumerGroupInfo(String group) {
-        return this.consumerTable.get(group);
+        String tdmqGroupName = CommonUtils.tdmqGroupName(group);
+        return this.consumerTable.get(tdmqGroupName);
     }
 
     public int findSubscriptionDataCount(String group) {
@@ -56,21 +59,21 @@ public class ConsumerManager {
 
         while (it.hasNext()) {
             Entry<String, ConsumerGroupInfo> next = (Entry) it.next();
-            ConsumerGroupInfo info = (ConsumerGroupInfo) next.getValue();
+            ConsumerGroupInfo info = next.getValue();
             boolean removed = info.doChannelCloseEvent(remoteAddr, channel);
             if (removed) {
                 if (info.getChannelInfoTable().isEmpty()) {
-                    ConsumerGroupInfo remove = (ConsumerGroupInfo) this.consumerTable.remove(next.getKey());
+                    ConsumerGroupInfo remove = this.consumerTable.remove(next.getKey());
                     if (remove != null) {
                         log.info("unregister consumer ok, no any connection, and remove consumer group, {}",
                                 next.getKey());
                         this.consumerIdsChangeListener
-                                .handle(ConsumerGroupEvent.UNREGISTER, (String) next.getKey(), new Object[0]);
+                                .handle(ConsumerGroupEvent.UNREGISTER, next.getKey(), new Object[0]);
                     }
                 }
 
                 this.consumerIdsChangeListener
-                        .handle(ConsumerGroupEvent.CHANGE, (String) next.getKey(), new Object[]{info.getAllChannel()});
+                        .handle(ConsumerGroupEvent.CHANGE, next.getKey(), new Object[]{info.getAllChannel()});
             }
         }
 
@@ -79,10 +82,11 @@ public class ConsumerManager {
     public boolean registerConsumer(String group, ClientChannelInfo clientChannelInfo, ConsumeType consumeType,
             MessageModel messageModel, ConsumeFromWhere consumeFromWhere, Set<SubscriptionData> subList,
             boolean isNotifyConsumerIdsChangedEnable) {
-        ConsumerGroupInfo consumerGroupInfo = this.consumerTable.get(group);
+        String tdmqGroupName = CommonUtils.tdmqGroupName(group);
+        ConsumerGroupInfo consumerGroupInfo = this.consumerTable.get(tdmqGroupName);
         if (null == consumerGroupInfo) {
-            ConsumerGroupInfo tmp = new ConsumerGroupInfo(group, consumeType, messageModel, consumeFromWhere);
-            ConsumerGroupInfo prev = this.consumerTable.putIfAbsent(group, tmp);
+            ConsumerGroupInfo tmp = new ConsumerGroupInfo(tdmqGroupName, consumeType, messageModel, consumeFromWhere);
+            ConsumerGroupInfo prev = this.consumerTable.putIfAbsent(tdmqGroupName, tmp);
             consumerGroupInfo = prev != null ? prev : tmp;
         }
 
@@ -90,29 +94,31 @@ public class ConsumerManager {
         boolean r2 = consumerGroupInfo.updateSubscription(subList);
         if ((r1 || r2) && isNotifyConsumerIdsChangedEnable) {
             this.consumerIdsChangeListener
-                    .handle(ConsumerGroupEvent.CHANGE, group, new Object[]{consumerGroupInfo.getAllChannel()});
+                    .handle(ConsumerGroupEvent.CHANGE, tdmqGroupName, new Object[]{consumerGroupInfo.getAllChannel()});
         }
 
-        this.consumerIdsChangeListener.handle(ConsumerGroupEvent.REGISTER, group, new Object[]{subList});
+        this.consumerIdsChangeListener.handle(ConsumerGroupEvent.REGISTER, tdmqGroupName, new Object[]{subList});
         return r1 || r2;
     }
 
     public void unregisterConsumer(String group, ClientChannelInfo clientChannelInfo,
             boolean isNotifyConsumerIdsChangedEnable) {
-        ConsumerGroupInfo consumerGroupInfo = this.consumerTable.get(group);
+        String tdmqGroupName = CommonUtils.tdmqGroupName(group);
+        ConsumerGroupInfo consumerGroupInfo = this.consumerTable.get(tdmqGroupName);
         if (null != consumerGroupInfo) {
             consumerGroupInfo.unregisterChannel(clientChannelInfo);
             if (consumerGroupInfo.getChannelInfoTable().isEmpty()) {
-                ConsumerGroupInfo remove = this.consumerTable.remove(group);
+                ConsumerGroupInfo remove = this.consumerTable.remove(tdmqGroupName);
                 if (remove != null) {
-                    log.info("unregister consumer ok, no any connection, and remove consumer group, {}", group);
-                    this.consumerIdsChangeListener.handle(ConsumerGroupEvent.UNREGISTER, group, new Object[0]);
+                    log.info("unregister consumer ok, no any connection, and remove consumer group, {}", tdmqGroupName);
+                    this.consumerIdsChangeListener.handle(ConsumerGroupEvent.UNREGISTER, tdmqGroupName, new Object[0]);
                 }
             }
 
             if (isNotifyConsumerIdsChangedEnable) {
                 this.consumerIdsChangeListener
-                        .handle(ConsumerGroupEvent.CHANGE, group, new Object[]{consumerGroupInfo.getAllChannel()});
+                        .handle(ConsumerGroupEvent.CHANGE, tdmqGroupName,
+                                new Object[]{consumerGroupInfo.getAllChannel()});
             }
         }
 

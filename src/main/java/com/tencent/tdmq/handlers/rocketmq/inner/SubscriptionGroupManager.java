@@ -1,5 +1,7 @@
 package com.tencent.tdmq.handlers.rocketmq.inner;
 
+import com.tencent.tdmq.handlers.rocketmq.utils.CommonUtils;
+import com.tencent.tdmq.handlers.rocketmq.utils.RocketMQTopic;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import lombok.extern.slf4j.Slf4j;
@@ -8,7 +10,7 @@ import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.subscription.SubscriptionGroupConfig;
 
 @Slf4j
-public class SubscriptionGroupManager implements RocketMQLoader {
+public class SubscriptionGroupManager {
 
     private final ConcurrentMap<String, SubscriptionGroupConfig> subscriptionGroupTable = new ConcurrentHashMap(512);
     private final DataVersion dataVersion = new DataVersion();
@@ -30,7 +32,9 @@ public class SubscriptionGroupManager implements RocketMQLoader {
     }
 
     public void updateSubscriptionGroupConfig(SubscriptionGroupConfig config) {
-        SubscriptionGroupConfig old = this.subscriptionGroupTable.put(config.getGroupName(), config);
+        String tdmqGroupName = CommonUtils.tdmqGroupName(config.getGroupName());
+        config.setGroupName(tdmqGroupName);
+        SubscriptionGroupConfig old = this.subscriptionGroupTable.put(tdmqGroupName, config);
         if (old != null) {
             log.info("update subscription group config, old: {} new: {}", old, config);
         } else {
@@ -40,6 +44,7 @@ public class SubscriptionGroupManager implements RocketMQLoader {
     }
 
     public void disableConsume(String groupName) {
+        String tdmqGroupName = CommonUtils.tdmqGroupName(groupName);
         SubscriptionGroupConfig old = this.subscriptionGroupTable.get(groupName);
         if (old != null) {
             old.setConsumeEnable(false);
@@ -49,13 +54,16 @@ public class SubscriptionGroupManager implements RocketMQLoader {
     }
 
     public SubscriptionGroupConfig findSubscriptionGroupConfig(String group) {
-        SubscriptionGroupConfig subscriptionGroupConfig = this.subscriptionGroupTable.get(group);
+        RocketMQTopic rmqGroup = new RocketMQTopic(group);
+        String tdmqGroupName = rmqGroup.getOrigNoDomainTopicName();
+        String noNamespaceGroupName = rmqGroup.getPulsarTopicName().getLocalName();
+        SubscriptionGroupConfig subscriptionGroupConfig = this.subscriptionGroupTable.get(tdmqGroupName);
         if (null == subscriptionGroupConfig && (this.brokerController.getServerConfig().isAutoCreateSubscriptionGroup()
-                || MixAll.isSysConsumerGroup(group))) {
+                || MixAll.isSysConsumerGroup(noNamespaceGroupName))) {
             subscriptionGroupConfig = new SubscriptionGroupConfig();
-            subscriptionGroupConfig.setGroupName(group);
+            subscriptionGroupConfig.setGroupName(tdmqGroupName);
             SubscriptionGroupConfig preConfig = this.subscriptionGroupTable
-                    .putIfAbsent(group, subscriptionGroupConfig);
+                    .putIfAbsent(tdmqGroupName, subscriptionGroupConfig);
             if (null == preConfig) {
                 log.info("auto create a subscription group, {}", subscriptionGroupConfig.toString());
             }
@@ -74,17 +82,7 @@ public class SubscriptionGroupManager implements RocketMQLoader {
     }
 
     public void deleteSubscriptionGroupConfig(String groupName) {
-
-    }
-
-    @Override
-    public boolean load() {
-        return true;
-    }
-
-    @Override
-    public boolean unLoad() {
-        return false;
+//TODO: need to implement it
     }
 }
 

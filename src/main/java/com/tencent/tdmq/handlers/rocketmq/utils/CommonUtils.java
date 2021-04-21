@@ -3,11 +3,14 @@ package com.tencent.tdmq.handlers.rocketmq.utils;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.apache.rocketmq.common.message.MessageDecoder.CHARSET_UTF8;
 
+import com.google.common.base.Splitter;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
+import java.util.List;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.logging.log4j.util.Strings;
 import org.apache.pulsar.client.impl.MessageIdImpl;
 import org.apache.pulsar.common.util.Murmur3_32Hash;
 import org.apache.rocketmq.common.TopicFilterType;
@@ -25,9 +28,38 @@ public class CommonUtils {
     public static final String UNDERSCORE_CHAR = "_";
     public static final String PERCENTAGE_CHAR = "%";
     public static final String VERTICAL_LINE_CHAR = "｜";
+    public static final String SLASH_CHAR = "/";
+    public static final String BACKSLASH_CHAR = "\\";
     private static int MESSAGE_BYTEBUF_SIZE = 28;
     private static ThreadLocal<ByteBuffer> byteBufLocal = ThreadLocal
             .withInitial(() -> ByteBuffer.allocate(MESSAGE_BYTEBUF_SIZE));
+
+    /**
+     * @param tdmqTopicName => [tenant/ns/topicName]
+     * @return rmqTopicName => [tenant|ns%topicName]
+     */
+    public static String rmqTopicName(String tdmqTopicName) {
+        if (Strings.isBlank(tdmqTopicName)) return Strings.EMPTY;
+        List<String> splits = Splitter.on('/').splitToList(tdmqTopicName);
+        if (splits.size() >= 3) {
+            return splits.get(0) + VERTICAL_LINE_CHAR + splits.get(1) + PERCENTAGE_CHAR + splits.get(2);
+        }
+        return tdmqTopicName;
+    }
+
+    public static String tdmqTopicName(String rmqTopicName) {
+        if (Strings.isBlank(rmqTopicName)) return Strings.EMPTY;
+        RocketMQTopic rmqTopic = new RocketMQTopic(rmqTopicName);
+        return rmqTopic.getOrigNoDomainTopicName();
+    }
+
+    public static String tdmqGroupName(String rmqGroupName) {
+        return tdmqTopicName(rmqGroupName);
+    }
+
+    public static String rmqGroupName(String tdmqGroupName) {
+        return rmqTopicName(tdmqGroupName);
+    }
 
     public static int newBrokerId(final InetSocketAddress address) {
         return Murmur3_32Hash.getInstance().makeHash((address.getHostString() + address.getPort()).getBytes(UTF_8));
