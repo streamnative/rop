@@ -108,7 +108,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
         this.lookupCache.cleanUp();
     }
 
-    // call pulsarclient.lookup.getbroker to get and own a topic.
+    // call pulsarClient.lookup.getBroker to get and own a topic.
     // when error happens, the returned future will complete with null.
     public Map<Integer, InetSocketAddress> getTopicBrokerAddr(TopicName topicName) {
         if (lookupCache.getIfPresent(topicName) != null) {

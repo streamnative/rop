@@ -23,7 +23,7 @@ import com.tencent.tdmq.handlers.rocketmq.inner.listener.DefaultConsumerIdsChang
 import com.tencent.tdmq.handlers.rocketmq.inner.listener.DefaultTransactionalMessageCheckListener;
 import com.tencent.tdmq.handlers.rocketmq.inner.listener.NotifyMessageArrivingListener;
 import com.tencent.tdmq.handlers.rocketmq.inner.namesvr.MQTopicManager;
-import com.tencent.tdmq.handlers.rocketmq.inner.namesvr.NamesvrProcessor;
+import com.tencent.tdmq.handlers.rocketmq.inner.namesvr.NameserverProcessor;
 import com.tencent.tdmq.handlers.rocketmq.inner.processor.AdminBrokerProcessor;
 import com.tencent.tdmq.handlers.rocketmq.inner.processor.ClientManageProcessor;
 import com.tencent.tdmq.handlers.rocketmq.inner.processor.ConsumerManageProcessor;
@@ -74,7 +74,7 @@ public class RocketMQBrokerController {
     private final MessageArrivingListener messageArrivingListener;
     private final SubscriptionGroupManager subscriptionGroupManager;
     private final ConsumerIdsChangeListener consumerIdsChangeListener;
-    private final RebalanceLockManager rebalanceLockManager = new RebalanceLockManager();
+    private final RebalancedLockManager rebalanceLockManager = new RebalancedLockManager();
     private final ScheduledExecutorService scheduledExecutorService = Executors
             .newSingleThreadScheduledExecutor(new ThreadFactoryImpl(
                     "BrokerControllerScheduledThread"));
@@ -329,7 +329,7 @@ public class RocketMQBrokerController {
          */
         AdminBrokerProcessor adminProcessor = new AdminBrokerProcessor(this);
         this.remotingServer.registerDefaultProcessor(adminProcessor, this.adminBrokerExecutor);
-        NamesvrProcessor namesvrProcessor = new NamesvrProcessor(this);
+        NameserverProcessor namesvrProcessor = new NameserverProcessor(this);
         this.remotingServer.registerDefaultProcessor(namesvrProcessor, this.adminBrokerExecutor);
     }
 

@@ -22,9 +22,6 @@ import org.apache.pulsar.common.naming.TopicDomain;
 import org.apache.pulsar.common.naming.TopicName;
 import org.apache.rocketmq.common.message.MessageQueue;
 
-/**
- * 这个工具类主要用来将 RocketMQ 和 pulsar 中的 topic 组合关系进行映射
- */
 public class TopicNameUtils {
 
     public static TopicName pulsarTopicName(MessageQueue topicPartition, NamespaceName namespace) {

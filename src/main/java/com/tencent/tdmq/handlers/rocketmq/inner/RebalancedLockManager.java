@@ -23,13 +23,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.common.message.MessageQueue;
 
 @Slf4j
-public class RebalanceLockManager {
+public class RebalancedLockManager {
 
-    private final static long REBALANCE_LOCK_MAX_LIVE_TIME = Long.parseLong(System.getProperty(
-            "rocketmq.rebalance.lockMaxLiveTime", "60000"));
+    private final static long REBALANCED_LOCK_MAX_LIVE_TIME = Long.parseLong(System.getProperty(
+            "rocketmq.rebalanced.lockMaxLiveTime", "60000"));
     private final Lock lock = new ReentrantLock();
-    private final ConcurrentMap<String/* group */, ConcurrentHashMap<MessageQueue, RebalanceLockManager.LockEntry>> mqLockTable =
-            new ConcurrentHashMap<String, ConcurrentHashMap<MessageQueue, RebalanceLockManager.LockEntry>>(1024);
+    private final ConcurrentMap<String/* group */, ConcurrentHashMap<MessageQueue, RebalancedLockManager.LockEntry>> mqLockTable =
+            new ConcurrentHashMap<String, ConcurrentHashMap<MessageQueue, RebalancedLockManager.LockEntry>>(1024);
 
     public boolean tryLock(final String group, final MessageQueue mq, final String clientId) {
 
@@ -37,16 +37,16 @@ public class RebalanceLockManager {
             try {
                 this.lock.lockInterruptibly();
                 try {
-                    ConcurrentHashMap<MessageQueue, RebalanceLockManager.LockEntry> groupValue = this.mqLockTable
+                    ConcurrentHashMap<MessageQueue, RebalancedLockManager.LockEntry> groupValue = this.mqLockTable
                             .get(group);
                     if (null == groupValue) {
                         groupValue = new ConcurrentHashMap<>(32);
                         this.mqLockTable.put(group, groupValue);
                     }
 
-                    RebalanceLockManager.LockEntry lockEntry = groupValue.get(mq);
+                    RebalancedLockManager.LockEntry lockEntry = groupValue.get(mq);
                     if (null == lockEntry) {
-                        lockEntry = new RebalanceLockManager.LockEntry();
+                        lockEntry = new RebalancedLockManager.LockEntry();
                         lockEntry.setClientId(clientId);
                         groupValue.put(mq, lockEntry);
                         log.info("tryLock, message queue not locked, I got it. Group: {} NewClientId: {} {}",
@@ -95,9 +95,9 @@ public class RebalanceLockManager {
     }
 
     private boolean isLocked(final String group, final MessageQueue mq, final String clientId) {
-        ConcurrentHashMap<MessageQueue, RebalanceLockManager.LockEntry> groupValue = this.mqLockTable.get(group);
+        ConcurrentHashMap<MessageQueue, RebalancedLockManager.LockEntry> groupValue = this.mqLockTable.get(group);
         if (groupValue != null) {
-            RebalanceLockManager.LockEntry lockEntry = groupValue.get(mq);
+            RebalancedLockManager.LockEntry lockEntry = groupValue.get(mq);
             if (lockEntry != null) {
                 boolean locked = lockEntry.isLocked(clientId);
                 if (locked) {
@@ -128,7 +128,7 @@ public class RebalanceLockManager {
             try {
                 this.lock.lockInterruptibly();
                 try {
-                    ConcurrentHashMap<MessageQueue, RebalanceLockManager.LockEntry> groupValue = this.mqLockTable
+                    ConcurrentHashMap<MessageQueue, RebalancedLockManager.LockEntry> groupValue = this.mqLockTable
                             .get(group);
                     if (null == groupValue) {
                         groupValue = new ConcurrentHashMap<>(32);
@@ -136,9 +136,9 @@ public class RebalanceLockManager {
                     }
 
                     for (MessageQueue mq : notLockedMqs) {
-                        RebalanceLockManager.LockEntry lockEntry = groupValue.get(mq);
+                        RebalancedLockManager.LockEntry lockEntry = groupValue.get(mq);
                         if (null == lockEntry) {
-                            lockEntry = new RebalanceLockManager.LockEntry();
+                            lockEntry = new RebalancedLockManager.LockEntry();
                             lockEntry.setClientId(clientId);
                             groupValue.put(mq, lockEntry);
                             log.info(
@@ -191,11 +191,11 @@ public class RebalanceLockManager {
         try {
             this.lock.lockInterruptibly();
             try {
-                ConcurrentHashMap<MessageQueue, RebalanceLockManager.LockEntry> groupValue = this.mqLockTable
+                ConcurrentHashMap<MessageQueue, RebalancedLockManager.LockEntry> groupValue = this.mqLockTable
                         .get(group);
                 if (null != groupValue) {
                     for (MessageQueue mq : mqs) {
-                        RebalanceLockManager.LockEntry lockEntry = groupValue.get(mq);
+                        RebalancedLockManager.LockEntry lockEntry = groupValue.get(mq);
                         if (null != lockEntry) {
                             if (lockEntry.getClientId().equals(clientId)) {
                                 groupValue.remove(mq);
@@ -258,7 +258,7 @@ public class RebalanceLockManager {
 
         public boolean isExpired() {
             boolean expired =
-                    (System.currentTimeMillis() - this.lastUpdateTimestamp) > REBALANCE_LOCK_MAX_LIVE_TIME;
+                    (System.currentTimeMillis() - this.lastUpdateTimestamp) > REBALANCED_LOCK_MAX_LIVE_TIME;
 
             return expired;
         }

@@ -31,7 +31,7 @@ import org.apache.rocketmq.remoting.common.RemotingUtil;
 public class ProducerManager {
 
     private static final long CHANNEL_EXPIRED_TIMEOUT = 1000 * 120;
-    private static final int GET_AVALIABLE_CHANNEL_RETRY_COUNT = 3;
+    private static final int GET_AVAILABLE_CHANNEL_RETRY_COUNT = 3;
     /**
      * groupName = [tenant/ns/groupName]
      */
@@ -160,7 +160,7 @@ public class ProducerManager {
         Channel channel = channelList.get(index);
         int count = 0;
         boolean isOk = channel.isActive() && channel.isWritable();
-        while (count++ < GET_AVALIABLE_CHANNEL_RETRY_COUNT) {
+        while (count++ < GET_AVAILABLE_CHANNEL_RETRY_COUNT) {
             if (isOk) {
                 return channel;
             }

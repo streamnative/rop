@@ -28,7 +28,6 @@ import java.util.concurrent.ConcurrentMap;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.common.UtilAll;
 
-
 @Slf4j
 public class ConsumerOffsetManager {
 

@@ -44,16 +44,16 @@ import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 
 @Slf4j
-public class NamesvrProcessor implements NettyRequestProcessor {
+public class NameserverProcessor implements NettyRequestProcessor {
 
-    public static final Pattern BROKER_ADDR_PAT = Pattern.compile("([^/:]+:)(\\d+)");
+    public static final Pattern BROKER_ADDER_PAT = Pattern.compile("([^/:]+:)(\\d+)");
     private final RocketMQBrokerController brokerController;
     private final RocketMQServiceConfiguration config;
     private final int defaultNumPartitions;
     private final MQTopicManager mqTopicManager;
-    private int servicePort = 9876;
+    private final int servicePort = 9876;
 
-    public NamesvrProcessor(RocketMQBrokerController brokerController) {
+    public NameserverProcessor(RocketMQBrokerController brokerController) {
         this.brokerController = brokerController;
         this.config = brokerController.getServerConfig();
         this.defaultNumPartitions = config.getDefaultNumPartitions();
@@ -176,7 +176,7 @@ public class NamesvrProcessor implements NettyRequestProcessor {
             log.error("The brokerAddress is null, please check.");
             return "";
         }
-        Matcher matcher = BROKER_ADDR_PAT.matcher(brokerAddress);
+        Matcher matcher = BROKER_ADDER_PAT.matcher(brokerAddress);
         String result = brokerAddress;
         if (matcher.find()) {
             result = matcher.group(1) + servicePort;
