@@ -1,5 +1,6 @@
 package com.tencent.tdmq.handlers.rocketmq.inner.pulsar;
 
+import com.tencent.tdmq.handlers.rocketmq.inner.format.RopMessageFilter;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageExtBatch;
 import org.apache.rocketmq.common.protocol.header.PullMessageRequestHeader;
@@ -12,7 +13,7 @@ public interface PulsarMessageStore {
 
     PutMessageResult putMessage(MessageExtBrokerInner messageExtBrokerInner, String producerGroup);
 
-    GetMessageResult getMessage(RemotingCommand request, PullMessageRequestHeader requestHeader);
+    GetMessageResult getMessage(RemotingCommand request, PullMessageRequestHeader requestHeader, RopMessageFilter messageFilter);
 
     PutMessageResult putMessages(MessageExtBatch batchMessage, String producerGroup);
 

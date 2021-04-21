@@ -3,6 +3,7 @@ package com.tencent.tdmq.handlers.rocketmq.inner.processor;
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
 import com.tencent.tdmq.handlers.rocketmq.inner.RopClientChannelCnx;
 import com.tencent.tdmq.handlers.rocketmq.inner.consumer.ConsumerGroupInfo;
+import com.tencent.tdmq.handlers.rocketmq.inner.format.RopMessageFilter;
 import com.tencent.tdmq.handlers.rocketmq.inner.pulsar.PulsarMessageStore;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
@@ -195,8 +196,10 @@ public class PullMessageProcessor implements NettyRequestProcessor {
             }
         }
 
+        RopMessageFilter messageFilter = new RopMessageFilter(subscriptionData);
+
         // 从 message store 中获取接收消息的数据并处理
-        final GetMessageResult getMessageResult = serverCnxMsgStore.getMessage(request, requestHeader);
+        final GetMessageResult getMessageResult = serverCnxMsgStore.getMessage(request, requestHeader, messageFilter);
         if (getMessageResult != null) {
             response.setRemark(getMessageResult.getStatus().name());
             responseHeader.setNextBeginOffset(getMessageResult.getNextBeginOffset());

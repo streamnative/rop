@@ -204,7 +204,7 @@ public class ScheduleMessageService {
             try {
                 Preconditions.checkNotNull(this.delayedConsumer);
                 int i = 0;
-                while (i++ < PULL_MESSAGE_TIMEOUT_MS && timeoutTimer.size() < PULL_MESSAGE_TIMEOUT_MS) {
+                while (i++ < MAX_BATCH_SIZE && timeoutTimer.size() < MAX_BATCH_SIZE) {
                     Message<byte[]> message = this.delayedConsumer
                             .receive(PULL_MESSAGE_TIMEOUT_MS, TimeUnit.MILLISECONDS);
                     if (message == null) {

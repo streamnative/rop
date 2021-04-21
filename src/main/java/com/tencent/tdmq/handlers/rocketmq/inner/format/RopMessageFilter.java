@@ -24,7 +24,7 @@ public class RopMessageFilter implements Predicate<Message> {
 
             byte[] body = message.getData();
             Long tagsCode = null;
-            if (body != null && body.length >= 4) {
+            if (body != null && body.length >= 8) {
                 tagsCode = ByteBuffer.wrap(body).getLong();
             }
             return (tagsCode != null) && subscriptionData.getCodeSet().contains(tagsCode);

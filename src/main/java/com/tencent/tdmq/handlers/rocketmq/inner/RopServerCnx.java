@@ -3,6 +3,7 @@ package com.tencent.tdmq.handlers.rocketmq.inner;
 import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
 import com.tencent.tdmq.handlers.rocketmq.inner.format.RopEntryFormatter;
+import com.tencent.tdmq.handlers.rocketmq.inner.format.RopMessageFilter;
 import com.tencent.tdmq.handlers.rocketmq.inner.pulsar.PulsarMessageStore;
 import com.tencent.tdmq.handlers.rocketmq.utils.CommonUtils;
 import com.tencent.tdmq.handlers.rocketmq.utils.MessageIdUtils;
@@ -19,6 +20,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Predicate;
+import java.util.stream.Stream;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang.exception.ExceptionUtils;
@@ -59,7 +62,6 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
     private final ConcurrentLongHashMap<Consumer> consumers;
     private final ConcurrentLongHashMap<Reader> readers;
     private final RopEntryFormatter entryFormatter = new RopEntryFormatter();
-    private final AtomicLong seqGenerator = new AtomicLong();
     private RocketMQBrokerController brokerController;
     private ChannelHandlerContext ctx;
     private SocketAddress remoteAddress;
@@ -274,7 +276,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
     }
 
     @Override
-    public GetMessageResult getMessage(RemotingCommand request, PullMessageRequestHeader requestHeader) {
+    public GetMessageResult getMessage(RemotingCommand request, PullMessageRequestHeader requestHeader,
+            RopMessageFilter messageFilter) {
         GetMessageResult getResult = new GetMessageResult();
 
         String consumerGroup = requestHeader.getConsumerGroup();
@@ -290,17 +293,9 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             return getResult;
         }
 
-        // subscription 字段主要是用来做tag过滤的
-        String subscription = requestHeader.getSubscription();
-        int sysFlag = requestHeader.getSysFlag();
-        // expressionType 表达式类型，可取值TAG、SQL92
-        String expressionType = requestHeader.getExpressionType();
-        Map<String, String> properties = request.getExtFields();
         String ctxId = this.ctx.channel().id().asLongText();
 
         long readerId = buildPulsarReaderId(consumerGroup, topic, ctxId);
-        long seqId = seqGenerator.incrementAndGet();
-
         if (log.isDebugEnabled()) {
             log.debug("The commit offset is: {} and the queue offset is:{}", commitOffset, queueOffset);
         }
@@ -311,7 +306,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             if (!this.readers.containsKey(readerId)) {
                 Reader<byte[]> reader = this.service.pulsar().getClient().newReader()
                         .topic(topic)
-                        .receiverQueueSize(20)
+                        .receiverQueueSize(100)
                         .startMessageId(messageId)
                         .readerName(consumerGroup + readerId)
                         .create();
@@ -334,7 +329,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             e.printStackTrace();
         }
         assert messageList != null;
-        List<MessageExt> messageExtList = this.entryFormatter.decodePulsarMessage(messageList, null);
+        List<MessageExt> messageExtList = this.entryFormatter.decodePulsarMessage(messageList, messageFilter);
+
         MessageIdImpl maxMessageID = (MessageIdImpl) messageList.get(maxMsgNums - 1).getMessageId();
         long maxOffset = MessageIdUtils
                 .getOffset(maxMessageID.getLedgerId(), maxMessageID.getEntryId(), maxMessageID.getPartitionIndex());
