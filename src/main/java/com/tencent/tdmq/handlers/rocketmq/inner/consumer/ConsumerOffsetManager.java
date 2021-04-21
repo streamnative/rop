@@ -1,6 +1,8 @@
 package com.tencent.tdmq.handlers.rocketmq.inner.consumer;
 
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
+import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientGroupAndTopicName;
+import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientGroupName;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -11,15 +13,11 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.common.UtilAll;
-import org.apache.rocketmq.common.constant.LoggerName;
-import org.apache.rocketmq.logging.InternalLogger;
-import org.apache.rocketmq.logging.InternalLoggerFactory;
 
 
 @Slf4j
 public class ConsumerOffsetManager {
 
-    private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
     private static final String TOPIC_GROUP_SEPARATOR = "@";
     private final RocketMQBrokerController brokerController;
     /**
@@ -28,7 +26,7 @@ public class ConsumerOffsetManager {
      * group => tenant/namespace/groupName
      * map   => [key => queueId] & [value => offset]
      **/
-    private ConcurrentMap<String, ConcurrentMap<Integer, Long>> offsetTable =
+    private ConcurrentMap<ClientGroupAndTopicName, ConcurrentMap<Integer, Long>> offsetTable =
             new ConcurrentHashMap<>(512);
 
     public ConsumerOffsetManager(RocketMQBrokerController brokerController) {
@@ -36,20 +34,18 @@ public class ConsumerOffsetManager {
     }
 
     public void scanUnsubscribedTopic() {
-        Iterator<Entry<String, ConcurrentMap<Integer, Long>>> it = this.offsetTable.entrySet().iterator();
+        Iterator<Entry<ClientGroupAndTopicName, ConcurrentMap<Integer, Long>>> it = this.offsetTable.entrySet()
+                .iterator();
         while (it.hasNext()) {
-            Entry<String, ConcurrentMap<Integer, Long>> next = it.next();
-            String topicAtGroup = next.getKey();
-            String[] arrays = topicAtGroup.split(TOPIC_GROUP_SEPARATOR);
-            if (arrays.length == 2) {
-                String topic = arrays[0];
-                String group = arrays[1];
-
-                if (null == brokerController.getConsumerManager().findSubscriptionData(group, topic)
-                        && this.offsetBehindMuchThanData(topic, next.getValue())) {
-                    it.remove();
-                    log.warn("remove topic offset, {}", topicAtGroup);
-                }
+            Entry<ClientGroupAndTopicName, ConcurrentMap<Integer, Long>> next = it.next();
+            ClientGroupAndTopicName topicAtGroup = next.getKey();
+            if (null == brokerController.getConsumerManager()
+                    .findSubscriptionData(topicAtGroup.getClientGroupName().getRmqGroupName(),
+                            topicAtGroup.getClientTopicName().getRmqTopicName())
+                    && this
+                    .offsetBehindMuchThanData(topicAtGroup.getClientTopicName().getRmqTopicName(), next.getValue())) {
+                it.remove();
+                log.warn("remove topic offset, {}", topicAtGroup);
             }
         }
     }
@@ -60,7 +56,7 @@ public class ConsumerOffsetManager {
 
         while (it.hasNext() && result) {
             Entry<Integer, Long> next = it.next();
-            long minOffsetInStore = 0L/*this.brokerController.getMessageStore().getMinOffsetInQueue(topic, next.getKey())*/;
+            long minOffsetInStore = 0L/*TODO this.brokerController.getMessageStore().getMinOffsetInQueue(topic, next.getKey())*/;
             long offsetInPersist = next.getValue();
             result = offsetInPersist <= minOffsetInStore;
         }
@@ -69,68 +65,57 @@ public class ConsumerOffsetManager {
     }
 
     public Set<String> whichTopicByConsumer(final String group) {
-        Set<String> topics = new HashSet<String>();
-
-        Iterator<Entry<String, ConcurrentMap<Integer, Long>>> it = this.offsetTable.entrySet().iterator();
+        Set<String> topics = new HashSet<>();
+        Iterator<Entry<ClientGroupAndTopicName, ConcurrentMap<Integer, Long>>> it = this.offsetTable.entrySet()
+                .iterator();
         while (it.hasNext()) {
-            Entry<String, ConcurrentMap<Integer, Long>> next = it.next();
-            String topicAtGroup = next.getKey();
-            String[] arrays = topicAtGroup.split(TOPIC_GROUP_SEPARATOR);
-            if (arrays.length == 2) {
-                if (group.equals(arrays[1])) {
-                    topics.add(arrays[0]);
-                }
-            }
+            Entry<ClientGroupAndTopicName, ConcurrentMap<Integer, Long>> next = it.next();
+            String topicAtGroup = next.getKey().getClientTopicName().getRmqTopicName();
+            topics.add(topicAtGroup);
         }
-
         return topics;
     }
 
     public Set<String> whichGroupByTopic(final String topic) {
-        Set<String> groups = new HashSet<String>();
-
-        Iterator<Entry<String, ConcurrentMap<Integer, Long>>> it = this.offsetTable.entrySet().iterator();
+        Set<String> groups = new HashSet<>();
+        Iterator<Entry<ClientGroupAndTopicName, ConcurrentMap<Integer, Long>>> it = this.offsetTable.entrySet()
+                .iterator();
         while (it.hasNext()) {
-            Entry<String, ConcurrentMap<Integer, Long>> next = it.next();
-            String topicAtGroup = next.getKey();
-            String[] arrays = topicAtGroup.split(TOPIC_GROUP_SEPARATOR);
-            if (arrays.length == 2) {
-                if (topic.equals(arrays[0])) {
-                    groups.add(arrays[1]);
-                }
-            }
+            Entry<ClientGroupAndTopicName, ConcurrentMap<Integer, Long>> next = it.next();
+            ClientGroupName clientGroupName = next.getKey().getClientGroupName();
+            groups.add(clientGroupName.getRmqGroupName());
         }
-
         return groups;
     }
 
     public void commitOffset(final String clientHost, final String group, final String topic, final int queueId,
             final long offset) {
         // topic@group
-        String key = topic + TOPIC_GROUP_SEPARATOR + group;
-        this.commitOffset(clientHost, key, queueId, offset);
+        ClientGroupAndTopicName clientGroupAndTopicName = new ClientGroupAndTopicName(group, topic);
+        this.commitOffset(clientHost, clientGroupAndTopicName, queueId, offset);
     }
 
-    private void commitOffset(final String clientHost, final String key, final int queueId, final long offset) {
-        ConcurrentMap<Integer, Long> map = this.offsetTable.get(key);
+    private void commitOffset(final String clientHost, final ClientGroupAndTopicName clientGroupAndTopicName,
+            final int queueId, final long offset) {
+        ConcurrentMap<Integer, Long> map = this.offsetTable.get(clientGroupAndTopicName);
         if (null == map) {
-            map = new ConcurrentHashMap<Integer, Long>(32);
+            map = new ConcurrentHashMap<>(32);
             map.put(queueId, offset);
-            this.offsetTable.put(key, map);
+            this.offsetTable.put(clientGroupAndTopicName, map);
         } else {
             Long storeOffset = map.put(queueId, offset);
             if (storeOffset != null && offset < storeOffset) {
                 log.warn(
                         "[NOTIFYME]update consumer offset less than store. clientHost={}, key={}, queueId={}, requestOffset={}, storeOffset={}",
-                        clientHost, key, queueId, offset, storeOffset);
+                        clientHost, clientGroupAndTopicName, queueId, offset, storeOffset);
             }
         }
     }
 
     public long queryOffset(final String group, final String topic, final int queueId) {
         // topic@group
-        String key = topic + TOPIC_GROUP_SEPARATOR + group;
-        ConcurrentMap<Integer, Long> map = this.offsetTable.get(key);
+        ClientGroupAndTopicName clientGroupAndTopicName = new ClientGroupAndTopicName(group, topic);
+        ConcurrentMap<Integer, Long> map = this.offsetTable.get(clientGroupAndTopicName);
         if (null != map) {
             Long offset = map.get(queueId);
             if (offset != null) {
@@ -138,38 +123,37 @@ public class ConsumerOffsetManager {
             }
         }
 
-        return -1;
+        return -1L;
     }
 
-    public ConcurrentMap<String, ConcurrentMap<Integer, Long>> getOffsetTable() {
+    public ConcurrentMap<ClientGroupAndTopicName, ConcurrentMap<Integer, Long>> getOffsetTable() {
         return offsetTable;
     }
 
-    public void setOffsetTable(ConcurrentHashMap<String, ConcurrentMap<Integer, Long>> offsetTable) {
+    public void setOffsetTable(ConcurrentHashMap<ClientGroupAndTopicName, ConcurrentMap<Integer, Long>> offsetTable) {
         this.offsetTable = offsetTable;
     }
 
     public Map<Integer, Long> queryMinOffsetInAllGroup(final String topic, final String filterGroups) {
-
-        Map<Integer, Long> queueMinOffset = new HashMap<Integer, Long>();
-        Set<String> topicGroups = this.offsetTable.keySet();
+        Map<Integer, Long> queueMinOffset = new HashMap<>();
+        Set<ClientGroupAndTopicName> topicGroups = this.offsetTable.keySet();
         if (!UtilAll.isBlank(filterGroups)) {
             for (String group : filterGroups.split(",")) {
-                Iterator<String> it = topicGroups.iterator();
+                Iterator<ClientGroupAndTopicName> it = topicGroups.iterator();
                 while (it.hasNext()) {
-                    if (group.equals(it.next().split(TOPIC_GROUP_SEPARATOR)[1])) {
+                    if (group.equals(it.next().getClientGroupName().getRmqGroupName())) {
                         it.remove();
                     }
                 }
             }
         }
 
-        for (Map.Entry<String, ConcurrentMap<Integer, Long>> offSetEntry : this.offsetTable.entrySet()) {
-            String topicGroup = offSetEntry.getKey();
-            String[] topicGroupArr = topicGroup.split(TOPIC_GROUP_SEPARATOR);
-            if (topic.equals(topicGroupArr[0])) {
+        for (Map.Entry<ClientGroupAndTopicName, ConcurrentMap<Integer, Long>> offSetEntry : this.offsetTable
+                .entrySet()) {
+            ClientGroupAndTopicName topicGroup = offSetEntry.getKey();
+            if (topic.equals(topicGroup.getClientTopicName().getRmqTopicName())) {
                 for (Entry<Integer, Long> entry : offSetEntry.getValue().entrySet()) {
-                    long minOffset = 0L/*this.brokerController.getMessageStore().getMinOffsetInQueue(topic, entry.getKey())*/;
+                    long minOffset = 0L/*TODO this.brokerController.getMessageStore().getMinOffsetInQueue(topic, entry.getKey())*/;
                     if (entry.getValue() >= minOffset) {
                         Long offset = queueMinOffset.get(entry.getKey());
                         if (offset == null) {
@@ -186,16 +170,15 @@ public class ConsumerOffsetManager {
     }
 
     public Map<Integer, Long> queryOffset(final String group, final String topic) {
-        // topic@group
-        String key = topic + TOPIC_GROUP_SEPARATOR + group;
-        return this.offsetTable.get(key);
+        // topic@grou
+        return this.offsetTable.get(new ClientGroupAndTopicName(group, topic));
     }
 
     public void cloneOffset(final String srcGroup, final String destGroup, final String topic) {
-        ConcurrentMap<Integer, Long> offsets = this.offsetTable.get(topic + TOPIC_GROUP_SEPARATOR + srcGroup);
+        ConcurrentMap<Integer, Long> offsets = this.offsetTable.get(new ClientGroupAndTopicName(srcGroup, topic));
         if (offsets != null) {
             this.offsetTable
-                    .put(topic + TOPIC_GROUP_SEPARATOR + destGroup, new ConcurrentHashMap<Integer, Long>(offsets));
+                    .put(new ClientGroupAndTopicName(destGroup, topic), new ConcurrentHashMap<>(offsets));
         }
     }
 

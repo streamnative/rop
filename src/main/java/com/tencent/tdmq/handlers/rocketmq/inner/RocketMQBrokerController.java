@@ -3,6 +3,7 @@ package com.tencent.tdmq.handlers.rocketmq.inner;
 import com.tencent.tdmq.handlers.rocketmq.RocketMQServiceConfiguration;
 import com.tencent.tdmq.handlers.rocketmq.inner.consumer.ConsumerManager;
 import com.tencent.tdmq.handlers.rocketmq.inner.consumer.ConsumerOffsetManager;
+import com.tencent.tdmq.handlers.rocketmq.inner.consumer.SubscriptionGroupManager;
 import com.tencent.tdmq.handlers.rocketmq.inner.listener.AbstractTransactionalMessageCheckListener;
 import com.tencent.tdmq.handlers.rocketmq.inner.listener.DefaultConsumerIdsChangeListener;
 import com.tencent.tdmq.handlers.rocketmq.inner.listener.DefaultTransactionalMessageCheckListener;
@@ -133,29 +134,7 @@ public class RocketMQBrokerController {
     }
 
     public boolean initialize() throws Exception {
-        boolean result = this.subscriptionGroupManager.load();
-        if (result) {
-            try {
-//                this.messageStore =
-//                        new DefaultMessageStore(this.messageStoreConfig, this.brokerStatsManager,
-//                                this.messageArrivingListener,
-//                                this.brokerConfig);
-//
-//                this.brokerStats = new BrokerStats((DefaultMessageStore) this.messageStore);
-//                //load plugin
-//                MessageStorePluginContext context = new MessageStorePluginContext(messageStoreConfig,
-//                        brokerStatsManager, messageArrivingListener, brokerConfig);
-//                this.messageStore = MessageStoreFactory.build(context, this.messageStore);
-//                this.messageStore.getDispatcherList()
-//                        .addFirst(new CommitLogDispatcherCalcBitMap(this.brokerConfig, this.consumerFilterManager));
-            } catch (Exception e) {
-                result = false;
-                log.error("Failed to initialize", e);
-            }
-        }
-
-        //result = result && this.messageStore.load();
-
+        boolean result = true;
         if (result) {
             this.sendMessageExecutor = new BrokerFixedThreadPoolExecutor(
                     this.serverConfig.getSendMessageThreadPoolNums(),

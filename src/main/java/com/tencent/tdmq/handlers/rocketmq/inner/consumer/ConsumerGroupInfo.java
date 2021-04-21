@@ -1,5 +1,6 @@
 package com.tencent.tdmq.handlers.rocketmq.inner.consumer;
 
+import com.tencent.tdmq.handlers.rocketmq.utils.CommonUtils;
 import io.netty.channel.Channel;
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -19,7 +20,8 @@ import org.apache.rocketmq.common.protocol.heartbeat.SubscriptionData;
 public class ConsumerGroupInfo {
 
     private final String groupName;
-    private final ConcurrentMap<String/* Topic */, SubscriptionData> subscriptionTable =
+
+    private final ConcurrentMap<String, SubscriptionData> subscriptionTable =
             new ConcurrentHashMap<>();
     private final ConcurrentMap<Channel, ClientChannelInfo> channelInfoTable =
             new ConcurrentHashMap<Channel, ClientChannelInfo>(16);
@@ -66,7 +68,6 @@ public class ConsumerGroupInfo {
 
     public List<String> getAllClientId() {
         List<String> result = new ArrayList<>();
-
         Iterator<Entry<Channel, ClientChannelInfo>> it = this.channelInfoTable.entrySet().iterator();
 
         while (it.hasNext()) {
@@ -134,9 +135,10 @@ public class ConsumerGroupInfo {
         boolean updated = false;
 
         for (SubscriptionData sub : subList) {
-            SubscriptionData old = this.subscriptionTable.get(sub.getTopic());
+            String tdmqTopicName = CommonUtils.tdmqTopicName(sub.getTopic());
+            SubscriptionData old = this.subscriptionTable.get(tdmqTopicName);
             if (old == null) {
-                SubscriptionData prev = this.subscriptionTable.putIfAbsent(sub.getTopic(), sub);
+                SubscriptionData prev = this.subscriptionTable.putIfAbsent(tdmqTopicName, sub);
                 if (null == prev) {
                     updated = true;
                     log.info("subscription changed, add new topic, group: {} {}",
@@ -152,14 +154,14 @@ public class ConsumerGroupInfo {
                     );
                 }
 
-                this.subscriptionTable.put(sub.getTopic(), sub);
+                this.subscriptionTable.put(tdmqTopicName, sub);
             }
         }
 
         Iterator<Entry<String, SubscriptionData>> it = this.subscriptionTable.entrySet().iterator();
         while (it.hasNext()) {
             Entry<String, SubscriptionData> next = it.next();
-            String oldTopic = next.getKey();
+            String oldTopic = CommonUtils.tdmqTopicName(next.getKey());
 
             boolean exist = false;
             for (SubscriptionData sub : subList) {
