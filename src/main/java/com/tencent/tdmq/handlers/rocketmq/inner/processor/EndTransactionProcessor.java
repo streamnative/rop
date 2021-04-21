@@ -198,7 +198,7 @@ public class EndTransactionProcessor implements NettyRequestProcessor {
 
     private RemotingCommand sendFinalMessage(MessageExtBrokerInner msgInner) {
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
-        final PutMessageResult putMessageResult = this.brokerController.getMessageStore().putMessage(msgInner);
+        final PutMessageResult putMessageResult = null/*this.brokerController.getMessageStore().putMessage(msgInner)*/;
         if (putMessageResult != null) {
             switch (putMessageResult.getPutMessageStatus()) {
                 // Success

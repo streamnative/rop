@@ -2,6 +2,7 @@ package com.tencent.tdmq.handlers.rocketmq.inner.processor;
 
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
 import com.tencent.tdmq.handlers.rocketmq.inner.RopClientChannelCnx;
+import com.tencent.tdmq.handlers.rocketmq.inner.consumer.ConsumerGroupInfo;
 import com.tencent.tdmq.handlers.rocketmq.inner.pulsar.PulsarMessageStore;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
@@ -13,7 +14,6 @@ import java.util.List;
 import java.util.concurrent.ConcurrentMap;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.broker.client.ClientChannelInfo;
-import org.apache.rocketmq.broker.client.ConsumerGroupInfo;
 import org.apache.rocketmq.broker.longpolling.PullRequest;
 import org.apache.rocketmq.broker.mqtrace.ConsumeMessageContext;
 import org.apache.rocketmq.broker.mqtrace.ConsumeMessageHook;
@@ -450,8 +450,8 @@ public class PullMessageProcessor implements NettyRequestProcessor {
         }
 
         // TODO: brokerController.getMessageStore() 需要实现 MessageStore 的逻辑
-        this.brokerController.getBrokerStatsManager().recordDiskFallBehindTime(group, topic, queueId,
-                this.brokerController.getMessageStore().now() - storeTimestamp);
+        /*this.brokerController.getBrokerStatsManager().recordDiskFallBehindTime(group, topic, queueId,
+                this.brokerController.getMessageStore().now() - storeTimestamp);*/
         return byteBuffer.array();
     }
 

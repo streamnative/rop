@@ -1,7 +1,7 @@
 package com.tencent.tdmq.handlers.rocketmq.inner.processor;
 
-import com.alibaba.fastjson.JSON;
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
+import com.tencent.tdmq.handlers.rocketmq.inner.consumer.ConsumerGroupInfo;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import java.io.UnsupportedEncodingException;
@@ -18,7 +18,6 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentMap;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.broker.client.ClientChannelInfo;
-import org.apache.rocketmq.broker.client.ConsumerGroupInfo;
 import org.apache.rocketmq.broker.topic.TopicValidator;
 import org.apache.rocketmq.broker.transaction.queue.TransactionalMessageUtil;
 import org.apache.rocketmq.common.MQVersion;
@@ -28,17 +27,13 @@ import org.apache.rocketmq.common.UtilAll;
 import org.apache.rocketmq.common.admin.ConsumeStats;
 import org.apache.rocketmq.common.admin.OffsetWrapper;
 import org.apache.rocketmq.common.message.MessageAccessor;
-import org.apache.rocketmq.common.message.MessageConst;
 import org.apache.rocketmq.common.message.MessageDecoder;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageId;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.common.protocol.RequestCode;
 import org.apache.rocketmq.common.protocol.ResponseCode;
-import org.apache.rocketmq.common.protocol.body.BrokerStatsData;
-import org.apache.rocketmq.common.protocol.body.BrokerStatsItem;
 import org.apache.rocketmq.common.protocol.body.Connection;
-import org.apache.rocketmq.common.protocol.body.ConsumeQueueData;
 import org.apache.rocketmq.common.protocol.body.ConsumeStatsList;
 import org.apache.rocketmq.common.protocol.body.ConsumerConnection;
 import org.apache.rocketmq.common.protocol.body.GroupList;
@@ -46,7 +41,6 @@ import org.apache.rocketmq.common.protocol.body.KVTable;
 import org.apache.rocketmq.common.protocol.body.LockBatchRequestBody;
 import org.apache.rocketmq.common.protocol.body.LockBatchResponseBody;
 import org.apache.rocketmq.common.protocol.body.ProducerConnection;
-import org.apache.rocketmq.common.protocol.body.QueryConsumeQueueResponseBody;
 import org.apache.rocketmq.common.protocol.body.QueryConsumeTimeSpanBody;
 import org.apache.rocketmq.common.protocol.body.QueryCorrectionOffsetBody;
 import org.apache.rocketmq.common.protocol.body.QueueTimeSpan;
@@ -82,10 +76,7 @@ import org.apache.rocketmq.common.protocol.header.SearchOffsetRequestHeader;
 import org.apache.rocketmq.common.protocol.header.SearchOffsetResponseHeader;
 import org.apache.rocketmq.common.protocol.header.ViewBrokerStatsDataRequestHeader;
 import org.apache.rocketmq.common.protocol.heartbeat.SubscriptionData;
-import org.apache.rocketmq.common.stats.StatsItem;
-import org.apache.rocketmq.common.stats.StatsSnapshot;
 import org.apache.rocketmq.common.subscription.SubscriptionGroupConfig;
-import org.apache.rocketmq.filter.util.BitsArray;
 import org.apache.rocketmq.remoting.common.RemotingHelper;
 import org.apache.rocketmq.remoting.exception.RemotingCommandException;
 import org.apache.rocketmq.remoting.exception.RemotingTimeoutException;
@@ -93,14 +84,7 @@ import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
 import org.apache.rocketmq.remoting.protocol.LanguageCode;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.remoting.protocol.RemotingSerializable;
-import org.apache.rocketmq.store.ConsumeQueue;
-import org.apache.rocketmq.store.ConsumeQueueExt;
-import org.apache.rocketmq.store.DefaultMessageStore;
 import org.apache.rocketmq.store.MessageExtBrokerInner;
-import org.apache.rocketmq.store.MessageFilter;
-import org.apache.rocketmq.store.MessageStore;
-import org.apache.rocketmq.store.PutMessageResult;
-import org.apache.rocketmq.store.PutMessageStatus;
 import org.apache.rocketmq.store.SelectMappedBufferResult;
 
 @Slf4j
@@ -122,10 +106,10 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
                 return this.deleteTopic(ctx, request);
             case RequestCode.GET_ALL_TOPIC_CONFIG:
                 return this.getAllTopicConfig(ctx, request);
-/*            case RequestCode.UPDATE_BROKER_CONFIG:
+            case RequestCode.UPDATE_BROKER_CONFIG:
                 return this.updateBrokerConfig(ctx, request);
             case RequestCode.GET_BROKER_CONFIG:
-                return this.getBrokerConfig(ctx, request);*/
+                return this.getBrokerConfig(ctx, request);
             case RequestCode.SEARCH_OFFSET_BY_TIMESTAMP:
                 return this.searchOffsetByTimestamp(ctx, request);
             case RequestCode.GET_MAX_OFFSET:
@@ -186,7 +170,7 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
                 return fetchAllConsumeStatsInBroker(ctx, request);
             case RequestCode.QUERY_CONSUME_QUEUE:
                 return queryConsumeQueue(ctx, request);
-/*  TODO:          case RequestCode.UPDATE_AND_CREATE_ACL_CONFIG:
+/*            case RequestCode.UPDATE_AND_CREATE_ACL_CONFIG:
                 return updateAndCreateAccessConfig(ctx, request);
             case RequestCode.DELETE_ACL_CONFIG:
                 return deleteAccessConfig(ctx, request);
@@ -264,8 +248,8 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
         log.info("deleteTopic called by {}", RemotingHelper.parseChannelRemoteAddr(ctx.channel()));
 
         this.brokerController.getTopicConfigManager().deleteTopicConfig(requestHeader.getTopic());
-        this.brokerController.getMessageStore()
-                .cleanUnusedTopic(this.brokerController.getTopicConfigManager().getTopicConfigTable().keySet());
+/*TODO        this.brokerController.getMessageStore()
+                .cleanUnusedTopic(this.brokerController.getTopicConfigManager().getTopicConfigTable().keySet());*/
 
         response.setCode(ResponseCode.SUCCESS);
         response.setRemark(null);
@@ -372,9 +356,9 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
         final SearchOffsetRequestHeader requestHeader =
                 (SearchOffsetRequestHeader) request.decodeCommandCustomHeader(SearchOffsetRequestHeader.class);
 
-        long offset = this.brokerController.getMessageStore()
+        long offset = 0L;/*TODO:this.brokerController.getMessageStore()
                 .getOffsetInQueueByTime(requestHeader.getTopic(), requestHeader.getQueueId(),
-                        requestHeader.getTimestamp());
+                        requestHeader.getTimestamp());*/
 
         responseHeader.setOffset(offset);
 
@@ -390,8 +374,8 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
         final GetMaxOffsetRequestHeader requestHeader =
                 (GetMaxOffsetRequestHeader) request.decodeCommandCustomHeader(GetMaxOffsetRequestHeader.class);
 
-        long offset = this.brokerController.getMessageStore()
-                .getMaxOffsetInQueue(requestHeader.getTopic(), requestHeader.getQueueId());
+        long offset = 0L; /*TODO this.brokerController.getMessageStore()
+                .getMaxOffsetInQueue(requestHeader.getTopic(), requestHeader.getQueueId());*/
 
         responseHeader.setOffset(offset);
 
@@ -407,8 +391,8 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
         final GetMinOffsetRequestHeader requestHeader =
                 (GetMinOffsetRequestHeader) request.decodeCommandCustomHeader(GetMinOffsetRequestHeader.class);
 
-        long offset = this.brokerController.getMessageStore()
-                .getMinOffsetInQueue(requestHeader.getTopic(), requestHeader.getQueueId());
+        long offset = 0L;/*TODO this.brokerController.getMessageStore()
+                .getMinOffsetInQueue(requestHeader.getTopic(), requestHeader.getQueueId());*/
 
         responseHeader.setOffset(offset);
         response.setCode(ResponseCode.SUCCESS);
@@ -426,9 +410,9 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
                 (GetEarliestMsgStoretimeRequestHeader) request
                         .decodeCommandCustomHeader(GetEarliestMsgStoretimeRequestHeader.class);
 
-        long timestamp =
+        long timestamp = 0L;/* TODO:
                 this.brokerController.getMessageStore()
-                        .getEarliestMessageTime(requestHeader.getTopic(), requestHeader.getQueueId());
+                        .getEarliestMessageTime(requestHeader.getTopic(), requestHeader.getQueueId());*/
 
         responseHeader.setTimestamp(timestamp);
         response.setCode(ResponseCode.SUCCESS);
@@ -716,7 +700,7 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
 
                 OffsetWrapper offsetWrapper = new OffsetWrapper();
 
-                long brokerOffset = this.brokerController.getMessageStore().getMaxOffsetInQueue(topic, i);
+                long brokerOffset = 0L;/*TODO this.brokerController.getMessageStore().getMaxOffsetInQueue(topic, i);*/
                 if (brokerOffset < 0) {
                     brokerOffset = 0;
                 }
@@ -734,8 +718,8 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
 
                 long timeOffset = consumerOffset - 1;
                 if (timeOffset >= 0) {
-                    long lastTimestamp = this.brokerController.getMessageStore()
-                            .getMessageStoreTimeStamp(topic, i, timeOffset);
+                    long lastTimestamp = 0L/*this.brokerController.getMessageStore()
+                            .getMessageStoreTimeStamp(topic, i, timeOffset)*/;
                     if (lastTimestamp > 0) {
                         offsetWrapper.setLastTimestamp(lastTimestamp);
                     }
@@ -761,7 +745,7 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
     private RemotingCommand getAllConsumerOffset(ChannelHandlerContext ctx, RemotingCommand request) {
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
 
-        String content = this.brokerController.getConsumerOffsetManager().encode();
+        /*String content = this.brokerController.getConsumerOffsetManager().encode();
         if (content != null && content.length() > 0) {
             try {
                 response.setBody(content.getBytes(MixAll.DEFAULT_CHARSET));
@@ -777,7 +761,7 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
             response.setCode(ResponseCode.SYSTEM_ERROR);
             response.setRemark("No consumer offset in this broker");
             return response;
-        }
+        }*/
 
         response.setCode(ResponseCode.SUCCESS);
         response.setRemark(null);
@@ -788,7 +772,7 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
     private RemotingCommand getAllDelayOffset(ChannelHandlerContext ctx, RemotingCommand request) {
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
 
-        if (!(this.brokerController.getMessageStore() instanceof DefaultMessageStore)) {
+       /* if (!(this.brokerController.getMessageStore() instanceof DefaultMessageStore)) {
             log.error("Delay offset not supported in this messagetore, client: {} ", ctx.channel().remoteAddress());
             response.setCode(ResponseCode.SYSTEM_ERROR);
             response.setRemark("Delay offset not supported in this messagetore");
@@ -812,7 +796,7 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
             response.setCode(ResponseCode.SYSTEM_ERROR);
             response.setRemark("No delay offset in this broker");
             return response;
-        }
+        }*/
 
         response.setCode(ResponseCode.SUCCESS);
         response.setRemark(null);
@@ -897,7 +881,7 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
         }
 
         List<QueueTimeSpan> timeSpanSet = new ArrayList<QueueTimeSpan>();
-        for (int i = 0; i < topicConfig.getWriteQueueNums(); i++) {
+        /*TODO for (int i = 0; i < topicConfig.getWriteQueueNums(); i++) {
             QueueTimeSpan timeSpan = new QueueTimeSpan();
             MessageQueue mq = new MessageQueue();
             mq.setTopic(topic);
@@ -931,7 +915,7 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
                 timeSpan.setDelayTime(System.currentTimeMillis() - nextTime);
             }
             timeSpanSet.add(timeSpan);
-        }
+        }*/
 
         QueryConsumeTimeSpanBody queryConsumeTimeSpanBody = new QueryConsumeTimeSpanBody();
         queryConsumeTimeSpanBody.setConsumeTimeSpanSet(timeSpanSet);
@@ -957,7 +941,7 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
     public RemotingCommand cleanExpiredConsumeQueue() {
         log.warn("invoke cleanExpiredConsumeQueue start.");
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
-        brokerController.getMessageStore().cleanExpiredConsumerQueue();
+        /*TODO brokerController.getMessageStore().cleanExpiredConsumerQueue();*/
         log.warn("invoke cleanExpiredConsumeQueue end.");
         response.setCode(ResponseCode.SUCCESS);
         response.setRemark(null);
@@ -967,8 +951,8 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
     public RemotingCommand cleanUnusedTopic() {
         log.warn("invoke cleanUnusedTopic start.");
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
-        brokerController.getMessageStore()
-                .cleanUnusedTopic(brokerController.getTopicConfigManager().getTopicConfigTable().keySet());
+        /*TODO brokerController.getMessageStore()
+                .cleanUnusedTopic(brokerController.getTopicConfigManager().getTopicConfigTable().keySet());*/
         log.warn("invoke cleanUnusedTopic end.");
         response.setCode(ResponseCode.SUCCESS);
         response.setRemark(null);
@@ -1024,8 +1008,8 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
         SelectMappedBufferResult selectMappedBufferResult = null;
         try {
             MessageId messageId = MessageDecoder.decodeMessageId(requestHeader.getMsgId());
-            selectMappedBufferResult = this.brokerController.getMessageStore()
-                    .selectOneMessageByOffset(messageId.getOffset());
+            /*TODO selectMappedBufferResult = this.brokerController.getMessageStore()
+                    .selectOneMessageByOffset(messageId.getOffset());*/
 
             byte[] body = new byte[selectMappedBufferResult.getSize()];
             selectMappedBufferResult.getByteBuffer().get(body);
@@ -1051,7 +1035,7 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
         if (UtilAll.isBlank(requestHeader.getTopic())) {
             topics = this.brokerController.getConsumerOffsetManager().whichTopicByConsumer(requestHeader.getSrcGroup());
         } else {
-            topics = new HashSet<String>();
+            topics = new HashSet<>();
             topics.add(requestHeader.getTopic());
         }
 
@@ -1092,7 +1076,7 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
                 (ViewBrokerStatsDataRequestHeader) request
                         .decodeCommandCustomHeader(ViewBrokerStatsDataRequestHeader.class);
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
-        MessageStore messageStore = this.brokerController.getMessageStore();
+        /*TODO MessageStore messageStore = this.brokerController.getMessageStore();
 
         StatsItem statsItem = messageStore.getBrokerStatsManager()
                 .getStatsItem(requestHeader.getStatsName(), requestHeader.getStatsKey());
@@ -1132,7 +1116,7 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
             brokerStatsData.setStatsDay(it);
         }
 
-        response.setBody(brokerStatsData.encode());
+        response.setBody(brokerStatsData.encode());*/
         response.setCode(ResponseCode.SUCCESS);
         response.setRemark(null);
         return response;
@@ -1185,7 +1169,7 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
                     mq.setBrokerName(this.brokerController.getServerConfig().getBrokerName());
                     mq.setQueueId(i);
                     OffsetWrapper offsetWrapper = new OffsetWrapper();
-                    long brokerOffset = this.brokerController.getMessageStore().getMaxOffsetInQueue(topic, i);
+                    long brokerOffset = 0L;/*TODO this.brokerController.getMessageStore().getMaxOffsetInQueue(topic, i);*/
                     if (brokerOffset < 0) {
                         brokerOffset = 0;
                     }
@@ -1202,8 +1186,8 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
 
                     long timeOffset = consumerOffset - 1;
                     if (timeOffset >= 0) {
-                        long lastTimestamp = this.brokerController.getMessageStore()
-                                .getMessageStoreTimeStamp(topic, i, timeOffset);
+                        long lastTimestamp = 0L;/*TODO this.brokerController.getMessageStore()
+                                .getMessageStoreTimeStamp(topic, i, timeOffset);*/
                         if (lastTimestamp > 0) {
                             offsetWrapper.setLastTimestamp(lastTimestamp);
                         }
@@ -1230,7 +1214,7 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
     }
 
     private HashMap<String, String> prepareRuntimeInfo() {
-        HashMap<String, String> runtimeInfo = this.brokerController.getMessageStore().getRuntimeInfo();
+        /* TODO HashMap<String, String> runtimeInfo = this.brokerController.getMessageStore().getRuntimeInfo();
         runtimeInfo.put("brokerVersionDesc", MQVersion.getVersionDesc(MQVersion.CURRENT_VERSION));
         runtimeInfo.put("brokerVersion", String.valueOf(MQVersion.CURRENT_VERSION));
 
@@ -1298,12 +1282,12 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
                             false));
         }
 
-   /* TODO:    java.io.File commitLogDir = new java.io.File(this.brokerController.getMessageStoreConfig().getStorePathRootDir());
+        TODO:    java.io.File commitLogDir = new java.io.File(this.brokerController.getMessageStoreConfig().getStorePathRootDir());
         if (commitLogDir.exists()) {
             runtimeInfo.put("commitLogDirCapacity", String.format("Total : %s, Free : %s.", MixAll.humanReadableByteCount(commitLogDir.getTotalSpace(), false), MixAll.humanReadableByteCount(commitLogDir.getFreeSpace(), false)));
         }*/
 
-        return runtimeInfo;
+        return new HashMap<>();
     }
 
     private RemotingCommand callConsumer(
@@ -1359,7 +1343,7 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
 
         RemotingCommand response = RemotingCommand.createResponseCommand(null);
 
-        ConsumeQueue consumeQueue = this.brokerController.getMessageStore().getConsumeQueue(requestHeader.getTopic(),
+        /*TODO ConsumeQueue consumeQueue = this.brokerController.getMessageStore().getConsumeQueue(requestHeader.getTopic(),
                 requestHeader.getQueueId());
         if (consumeQueue == null) {
             response.setCode(ResponseCode.SYSTEM_ERROR);
@@ -1385,12 +1369,12 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
                 body.setFilterData(String.format("%s@%s is not online!", requestHeader.getConsumerGroup(),
                         requestHeader.getTopic()));
             } else {
-/*   TODO:             ConsumerFilterData filterData = this.brokerController.getConsumerFilterManager()
+*//*   TODO:             ConsumerFilterData filterData = this.brokerController.getConsumerFilterManager()
                         .get(requestHeader.getTopic(), requestHeader.getConsumerGroup());
                 body.setFilterData(JSON.toJSONString(filterData, true));
 
                 messageFilter = new ExpressionMessageFilter(subscriptionData, filterData,
-                        this.brokerController.getConsumerFilterManager());*/
+                        this.brokerController.getConsumerFilterManager());*//*
             }
         }
 
@@ -1432,7 +1416,7 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
             body.setQueueData(queues);
         } finally {
             result.release();
-        }
+        }*/
 
         return response;
     }
@@ -1444,7 +1428,7 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
                 .decodeCommandCustomHeader(ResumeCheckHalfMessageRequestHeader.class);
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
         SelectMappedBufferResult selectMappedBufferResult = null;
-        try {
+        /*try {
             MessageId messageId = MessageDecoder.decodeMessageId(requestHeader.getMsgId());
             selectMappedBufferResult = this.brokerController.getMessageStore()
                     .selectOneMessageByOffset(messageId.getOffset());
@@ -1472,7 +1456,7 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
             if (selectMappedBufferResult != null) {
                 selectMappedBufferResult.release();
             }
-        }
+        }*/
         return response;
     }
 

@@ -69,10 +69,10 @@ public class QueryMessageProcessor implements NettyRequestProcessor {
             requestHeader.setMaxNum(this.brokerController.getServerConfig().getDefaultQueryMaxNum());
         }
 
-        final QueryMessageResult queryMessageResult =
-                this.brokerController.getMessageStore().queryMessage(requestHeader.getTopic(),
+        final QueryMessageResult queryMessageResult = null
+                /*TODO this.brokerController.getMessageStore().queryMessage(requestHeader.getTopic(),
                         requestHeader.getKey(), requestHeader.getMaxNum(), requestHeader.getBeginTimestamp(),
-                        requestHeader.getEndTimestamp());
+                        requestHeader.getEndTimestamp())*/;
         assert queryMessageResult != null;
 
         responseHeader.setIndexLastUpdatePhyoffset(queryMessageResult.getIndexLastUpdatePhyoffset());
@@ -116,8 +116,8 @@ public class QueryMessageProcessor implements NettyRequestProcessor {
 
         response.setOpaque(request.getOpaque());
 
-        final SelectMappedBufferResult selectMappedBufferResult =
-                this.brokerController.getMessageStore().selectOneMessageByOffset(requestHeader.getOffset());
+        final SelectMappedBufferResult selectMappedBufferResult = null
+                /*TODO this.brokerController.getMessageStore().selectOneMessageByOffset(requestHeader.getOffset())*/;
         if (selectMappedBufferResult != null) {
             response.setCode(ResponseCode.SUCCESS);
             response.setRemark(null);

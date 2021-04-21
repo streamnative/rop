@@ -1,10 +1,10 @@
 package com.tencent.tdmq.handlers.rocketmq.inner.processor;
 
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
+import com.tencent.tdmq.handlers.rocketmq.inner.consumer.ConsumerGroupInfo;
 import io.netty.channel.ChannelHandlerContext;
 import java.util.List;
-import org.apache.rocketmq.broker.client.ConsumerGroupInfo;
-import org.apache.rocketmq.common.constant.LoggerName;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.common.protocol.RequestCode;
 import org.apache.rocketmq.common.protocol.ResponseCode;
 import org.apache.rocketmq.common.protocol.header.GetConsumerListByGroupRequestHeader;
@@ -14,16 +14,13 @@ import org.apache.rocketmq.common.protocol.header.QueryConsumerOffsetRequestHead
 import org.apache.rocketmq.common.protocol.header.QueryConsumerOffsetResponseHeader;
 import org.apache.rocketmq.common.protocol.header.UpdateConsumerOffsetRequestHeader;
 import org.apache.rocketmq.common.protocol.header.UpdateConsumerOffsetResponseHeader;
-import org.apache.rocketmq.logging.InternalLogger;
-import org.apache.rocketmq.logging.InternalLoggerFactory;
 import org.apache.rocketmq.remoting.common.RemotingHelper;
 import org.apache.rocketmq.remoting.exception.RemotingCommandException;
 import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 
+@Slf4j
 public class ConsumerManageProcessor implements NettyRequestProcessor {
-
-    private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
 
     private final RocketMQBrokerController brokerController;
 
@@ -120,12 +117,12 @@ public class ConsumerManageProcessor implements NettyRequestProcessor {
             response.setCode(ResponseCode.SUCCESS);
             response.setRemark(null);
         } else {
-            long minOffset =
-                    this.brokerController.getMessageStore().getMinOffsetInQueue(requestHeader.getTopic(),
-                            requestHeader.getQueueId());
+            long minOffset = 0L
+                    /*this.brokerController.getMessageStore().getMinOffsetInQueue(requestHeader.getTopic(),
+                            requestHeader.getQueueId())*/;
             if (minOffset <= 0
-                    && !this.brokerController.getMessageStore().checkInDiskByConsumeOffset(
-                    requestHeader.getTopic(), requestHeader.getQueueId(), 0)) {
+                    /*&& !this.brokerController.getMessageStore().checkInDiskByConsumeOffset(
+                    requestHeader.getTopic(), requestHeader.getQueueId(), 0)*/) {
                 responseHeader.setOffset(0L);
                 response.setCode(ResponseCode.SUCCESS);
                 response.setRemark(null);

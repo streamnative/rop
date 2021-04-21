@@ -1,6 +1,7 @@
 package com.tencent.tdmq.handlers.rocketmq.inner;
 
 
+import com.tencent.tdmq.handlers.rocketmq.inner.consumer.ConsumerGroupInfo;
 import io.netty.channel.Channel;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -10,7 +11,6 @@ import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentMap;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.broker.client.ClientChannelInfo;
-import org.apache.rocketmq.broker.client.ConsumerGroupInfo;
 import org.apache.rocketmq.common.MQVersion;
 import org.apache.rocketmq.common.TopicConfig;
 import org.apache.rocketmq.common.UtilAll;
@@ -118,9 +118,9 @@ public class Broker2Client {
             long timeStampOffset;
             if (timeStamp == -1) {
 
-                timeStampOffset = this.brokerController.getMessageStore().getMaxOffsetInQueue(topic, i);
+                timeStampOffset = 0L/*TODO this.brokerController.getMessageStore().getMaxOffsetInQueue(topic, i)*/;
             } else {
-                timeStampOffset = this.brokerController.getMessageStore().getOffsetInQueueByTime(topic, i, timeStamp);
+                timeStampOffset = 0L/*this.brokerController.getMessageStore().getOffsetInQueueByTime(topic, i, timeStamp)*/;
             }
 
             if (timeStampOffset < 0) {

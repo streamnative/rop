@@ -2,11 +2,9 @@ package com.tencent.tdmq.handlers.rocketmq.inner.listener;
 
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
 import io.netty.channel.Channel;
-import java.util.Collection;
 import java.util.List;
 import org.apache.rocketmq.broker.client.ConsumerGroupEvent;
 import org.apache.rocketmq.broker.client.ConsumerIdsChangeListener;
-import org.apache.rocketmq.common.protocol.heartbeat.SubscriptionData;
 
 public class DefaultConsumerIdsChangeListener implements ConsumerIdsChangeListener {
 
@@ -34,14 +32,8 @@ public class DefaultConsumerIdsChangeListener implements ConsumerIdsChangeListen
                 }
                 break;
             case UNREGISTER:
-                this.brokerController.getConsumerFilterManager().unRegister(group);
                 break;
             case REGISTER:
-                if (args == null || args.length < 1) {
-                    return;
-                }
-                Collection<SubscriptionData> subscriptionDataList = (Collection<SubscriptionData>) args[0];
-                this.brokerController.getConsumerFilterManager().register(group, subscriptionDataList);
                 break;
             default:
                 throw new RuntimeException("Unknown event " + event);

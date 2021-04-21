@@ -1,7 +1,6 @@
 package com.tencent.tdmq.handlers.rocketmq.inner;
 
 import com.tencent.tdmq.handlers.rocketmq.RocketMQServiceConfiguration;
-import com.tencent.tdmq.handlers.rocketmq.inner.consumer.ConsumerFilterManager;
 import com.tencent.tdmq.handlers.rocketmq.inner.consumer.ConsumerManager;
 import com.tencent.tdmq.handlers.rocketmq.inner.consumer.ConsumerOffsetManager;
 import com.tencent.tdmq.handlers.rocketmq.inner.listener.AbstractTransactionalMessageCheckListener;
@@ -42,7 +41,6 @@ import org.apache.rocketmq.common.UtilAll;
 import org.apache.rocketmq.common.protocol.RequestCode;
 import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
 import org.apache.rocketmq.store.MessageArrivingListener;
-import org.apache.rocketmq.store.MessageStore;
 import org.apache.rocketmq.store.stats.BrokerStats;
 import org.apache.rocketmq.store.stats.BrokerStatsManager;
 
@@ -62,7 +60,6 @@ public class RocketMQBrokerController {
     private final MessageArrivingListener messageArrivingListener;
     private final SubscriptionGroupManager subscriptionGroupManager;
     private final ConsumerIdsChangeListener consumerIdsChangeListener;
-    private final ConsumerFilterManager consumerFilterManager;
     private final RebalanceLockManager rebalanceLockManager = new RebalanceLockManager();
     private final ScheduledExecutorService scheduledExecutorService = Executors
             .newSingleThreadScheduledExecutor(new ThreadFactoryImpl(
@@ -81,7 +78,7 @@ public class RocketMQBrokerController {
     private final List<ConsumeMessageHook> consumeMessageHookList = new ArrayList<>();
     private final RocketMQRemoteServer remotingServer;
     private final Broker2Client broker2Client = new Broker2Client(this);
-    private MessageStore messageStore;
+
     private MQTopicManager topicConfigManager;
     private ExecutorService sendMessageExecutor;
     private ExecutorService pullMessageExecutor;
@@ -108,7 +105,6 @@ public class RocketMQBrokerController {
         this.pullRequestHoldService = new PullRequestHoldService(this);
         this.messageArrivingListener = new NotifyMessageArrivingListener(this.pullRequestHoldService);
         this.consumerIdsChangeListener = new DefaultConsumerIdsChangeListener(this);
-        this.consumerFilterManager = new ConsumerFilterManager(this);
         this.consumerManager = new ConsumerManager(this.consumerIdsChangeListener);
         this.producerManager = new ProducerManager();
         this.clientHousekeepingService = new ClientHousekeepingService(this);
@@ -137,8 +133,7 @@ public class RocketMQBrokerController {
     }
 
     public boolean initialize() throws Exception {
-        boolean result = this.consumerOffsetManager.load();
-        result = result && this.subscriptionGroupManager.load();
+        boolean result = this.subscriptionGroupManager.load();
         if (result) {
             try {
 //                this.messageStore =
@@ -267,7 +262,7 @@ public class RocketMQBrokerController {
                 .loadClass(ServiceProvider.TRANSACTION_SERVICE_ID, TransactionalMessageService.class);
         if (null == this.transactionalMessageService) {
             this.transactionalMessageService = new TransactionalMessageServiceImpl(
-                    new TransactionalMessageBridge(this, this.getMessageStore()));
+                    new TransactionalMessageBridge(this, null));
             log.warn("Load default transaction message hook service: {}",
                     TransactionalMessageServiceImpl.class.getSimpleName());
         }
@@ -405,16 +400,12 @@ public class RocketMQBrokerController {
             this.remotingServer.shutdown();
         }
 
-        if (this.messageStore != null) {
-            this.messageStore.shutdown();
-        }
-
         this.scheduledExecutorService.shutdown();
         try {
             this.scheduledExecutorService.awaitTermination(5000, TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
         }
-        
+
         if (this.sendMessageExecutor != null) {
             this.sendMessageExecutor.shutdown();
         }
@@ -459,9 +450,6 @@ public class RocketMQBrokerController {
     }
 
     public void start() throws Exception {
-        if (this.messageStore != null) {
-            this.messageStore.start();
-        }
 
         if (this.remotingServer != null) {
             this.remotingServer.start();

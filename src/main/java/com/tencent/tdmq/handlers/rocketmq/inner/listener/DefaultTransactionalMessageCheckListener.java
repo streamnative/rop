@@ -27,7 +27,7 @@ public class DefaultTransactionalMessageCheckListener extends AbstractTransactio
 
         try {
             MessageExtBrokerInner brokerInner = toMessageExtBrokerInner(msgExt);
-            PutMessageResult putMessageResult = this.getBrokerController().getMessageStore().putMessage(brokerInner);
+            PutMessageResult putMessageResult = null;/*TODO this.getBrokerController().getMessageStore().putMessage(brokerInner);*/
             if (putMessageResult != null && putMessageResult.getPutMessageStatus() == PutMessageStatus.PUT_OK) {
                 log.info(
                         "Put checked-too-many-time half message to TRANS_CHECK_MAXTIME_TOPIC OK. Restored in queueOffset={}, "
