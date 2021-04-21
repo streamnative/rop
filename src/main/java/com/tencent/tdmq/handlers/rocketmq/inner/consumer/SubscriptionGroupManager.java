@@ -94,7 +94,8 @@ public class SubscriptionGroupManager {
     }
 
     public void deleteSubscriptionGroupConfig(String groupName) {
-//TODO: need to implement it
+        ClientGroupName clientGroupName = new ClientGroupName(groupName);
+        subscriptionGroupTable.keySet().removeIf(key -> key == clientGroupName);
     }
 }
 
