@@ -21,7 +21,7 @@ public class ConsumerOffsetManager {
 
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
     private static final String TOPIC_GROUP_SEPARATOR = "@";
-
+    private final RocketMQBrokerController brokerController;
     /**
      * key   => topic@group
      * topic => tenant/namespace/topicName
@@ -30,8 +30,6 @@ public class ConsumerOffsetManager {
      **/
     private ConcurrentMap<String, ConcurrentMap<Integer, Long>> offsetTable =
             new ConcurrentHashMap<>(512);
-
-    private final RocketMQBrokerController brokerController;
 
     public ConsumerOffsetManager(RocketMQBrokerController brokerController) {
         this.brokerController = brokerController;

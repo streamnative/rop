@@ -43,6 +43,10 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
                 (MessageIdImpl) message.getMessageId(), true, false);
     }
 
+    public static ByteBuffer decodePulsarMessageResBuffer(Message message) {
+        return CommonUtils.decode(ByteBuffer.wrap(message.getData()));
+    }
+
     @Override
     public List<ByteBuffer> encode(MessageExt record, int numMessages) throws RopEncodeException {
         Preconditions.checkNotNull(record);
@@ -86,6 +90,18 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
                     .collect(Collectors.toList());
         } else {
             return messages.stream().map(RopEntryFormatter::decodePulsarMessage).collect(Collectors.toList());
+        }
+    }
+
+    @Override
+    public List<ByteBuffer> decodePulsarMessageResBuffer(List<Message> messages,
+            Predicate predicate) {//Message in pulsar
+        if (predicate != null) {
+            return messages.stream().filter((Predicate<Message>) predicate)
+                    .map(RopEntryFormatter::decodePulsarMessageResBuffer)
+                    .collect(Collectors.toList());
+        } else {
+            return messages.stream().map(RopEntryFormatter::decodePulsarMessageResBuffer).collect(Collectors.toList());
         }
     }
 

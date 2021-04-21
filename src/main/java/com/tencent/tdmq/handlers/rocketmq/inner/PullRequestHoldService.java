@@ -1,8 +1,6 @@
 package com.tencent.tdmq.handlers.rocketmq.inner;
 
-import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -12,10 +10,10 @@ import org.apache.rocketmq.broker.longpolling.ManyPullRequest;
 import org.apache.rocketmq.broker.longpolling.PullRequest;
 import org.apache.rocketmq.common.ServiceThread;
 import org.apache.rocketmq.common.SystemClock;
-import org.apache.rocketmq.store.ConsumeQueueExt.CqExtUnit;
 
 @Slf4j
 public class PullRequestHoldService extends ServiceThread {
+
     private static final String TOPIC_QUEUEID_SEPARATOR = "@";
     private final RocketMQBrokerController brokerController;
     private final SystemClock systemClock = new SystemClock();
@@ -128,8 +126,9 @@ public class PullRequestHoldService extends ServiceThread {
 
                         if (match) {
                             try {
-                                this.brokerController.getPullMessageProcessor().executeRequestWhenWakeup(request.getClientChannel(),
-                                        request.getRequestCommand());
+                                this.brokerController.getPullMessageProcessor()
+                                        .executeRequestWhenWakeup(request.getClientChannel(),
+                                                request.getRequestCommand());
                             } catch (Throwable e) {
                                 log.error("execute request when wakeup failed.", e);
                             }
@@ -139,8 +138,9 @@ public class PullRequestHoldService extends ServiceThread {
 
                     if (System.currentTimeMillis() >= (request.getSuspendTimestamp() + request.getTimeoutMillis())) {
                         try {
-                            this.brokerController.getPullMessageProcessor().executeRequestWhenWakeup(request.getClientChannel(),
-                                    request.getRequestCommand());
+                            this.brokerController.getPullMessageProcessor()
+                                    .executeRequestWhenWakeup(request.getClientChannel(),
+                                            request.getRequestCommand());
                         } catch (Throwable e) {
                             log.error("execute request when wakeup failed.", e);
                         }

@@ -5,6 +5,7 @@ import static org.apache.rocketmq.common.message.MessageDecoder.CHARSET_UTF8;
 
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
@@ -231,5 +232,12 @@ public class CommonUtils {
         }
 
         return null;
+    }
+
+    public static ByteBuffer decode(ByteBuffer byteBuffer) {
+        ByteBuffer slice = byteBuffer.slice();
+        // 去除 tags 标记位的 8 个字节之后，将原先的 byteBuffer 返回
+        Buffer buffer = slice.position(byteBuffer.position() + 8);
+        return ((ByteBuffer) buffer).slice();
     }
 }

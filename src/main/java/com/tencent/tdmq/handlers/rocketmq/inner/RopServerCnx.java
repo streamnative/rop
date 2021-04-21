@@ -2,6 +2,7 @@ package com.tencent.tdmq.handlers.rocketmq.inner;
 
 import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
+import com.tencent.tdmq.handlers.rocketmq.inner.consumer.RopGetMessageResult;
 import com.tencent.tdmq.handlers.rocketmq.inner.format.RopEntryFormatter;
 import com.tencent.tdmq.handlers.rocketmq.inner.format.RopMessageFilter;
 import com.tencent.tdmq.handlers.rocketmq.inner.pulsar.PulsarMessageStore;
@@ -15,13 +16,9 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.Predicate;
-import java.util.stream.Stream;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang.exception.ExceptionUtils;
@@ -276,7 +273,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
     }
 
     @Override
-    public GetMessageResult getMessage(RemotingCommand request, PullMessageRequestHeader requestHeader,
+    public RopGetMessageResult getMessage(RemotingCommand request, PullMessageRequestHeader requestHeader,
             RopMessageFilter messageFilter) {
         GetMessageResult getResult = new GetMessageResult();
 
@@ -290,7 +287,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         int maxMsgNums = requestHeader.getMaxMsgNums();
         if (maxMsgNums < 1) {
             getResult.setStatus(GetMessageStatus.NO_MATCHED_MESSAGE);
-            return getResult;
+            getResult.setNextBeginOffset(queueOffset);
+            return new RopGetMessageResult(getResult, null);
         }
 
         String ctxId = this.ctx.channel().id().asLongText();
@@ -329,8 +327,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             e.printStackTrace();
         }
         assert messageList != null;
-        List<MessageExt> messageExtList = this.entryFormatter.decodePulsarMessage(messageList, messageFilter);
-
+        List<ByteBuffer> messagesBufferList = this.entryFormatter
+                .decodePulsarMessageResBuffer(messageList, messageFilter);
         MessageIdImpl maxMessageID = (MessageIdImpl) messageList.get(maxMsgNums - 1).getMessageId();
         long maxOffset = MessageIdUtils
                 .getOffset(maxMessageID.getLedgerId(), maxMessageID.getEntryId(), maxMessageID.getPartitionIndex());
@@ -343,7 +341,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
 //        getResult.setSuggestPullingFromSlave();
 //        getResult.setMsgCount4Commercial();
 
-        return getResult;
+        return new RopGetMessageResult(getResult, messagesBufferList);
     }
 
     private long buildPulsarConsumerId(String... tags) {

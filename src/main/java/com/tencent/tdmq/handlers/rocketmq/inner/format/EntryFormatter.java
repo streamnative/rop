@@ -5,6 +5,7 @@ import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.function.Predicate;
 import org.apache.pulsar.client.api.Message;
+import org.apache.rocketmq.common.message.MessageExt;
 
 public interface EntryFormatter<T> {
 
@@ -17,7 +18,9 @@ public interface EntryFormatter<T> {
      */
     List<ByteBuffer> encode(final T record, final int numMessages) throws RopEncodeException;
 
-    List<T> decodePulsarMessage(final List<Message> entries, Predicate predicate);
+    List<MessageExt> decodePulsarMessage(final List<Message> entries, Predicate predicate);
+
+    List<ByteBuffer> decodePulsarMessageResBuffer(final List<Message> entries, Predicate predicate);
 
     default int parseNumMessages(final T record) {
         return 1;

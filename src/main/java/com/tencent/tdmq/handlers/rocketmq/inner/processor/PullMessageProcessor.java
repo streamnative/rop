@@ -3,13 +3,13 @@ package com.tencent.tdmq.handlers.rocketmq.inner.processor;
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
 import com.tencent.tdmq.handlers.rocketmq.inner.RopClientChannelCnx;
 import com.tencent.tdmq.handlers.rocketmq.inner.consumer.ConsumerGroupInfo;
+import com.tencent.tdmq.handlers.rocketmq.inner.consumer.RopGetMessageResult;
 import com.tencent.tdmq.handlers.rocketmq.inner.format.RopMessageFilter;
 import com.tencent.tdmq.handlers.rocketmq.inner.pulsar.PulsarMessageStore;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.FileRegion;
 import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.concurrent.ConcurrentMap;
@@ -18,7 +18,6 @@ import org.apache.rocketmq.broker.client.ClientChannelInfo;
 import org.apache.rocketmq.broker.longpolling.PullRequest;
 import org.apache.rocketmq.broker.mqtrace.ConsumeMessageContext;
 import org.apache.rocketmq.broker.mqtrace.ConsumeMessageHook;
-import org.apache.rocketmq.broker.pagecache.ManyMessageTransfer;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.TopicConfig;
 import org.apache.rocketmq.common.constant.PermName;
@@ -199,7 +198,10 @@ public class PullMessageProcessor implements NettyRequestProcessor {
         RopMessageFilter messageFilter = new RopMessageFilter(subscriptionData);
 
         // 从 message store 中获取接收消息的数据并处理
-        final GetMessageResult getMessageResult = serverCnxMsgStore.getMessage(request, requestHeader, messageFilter);
+        final RopGetMessageResult ropGetMessageResult = serverCnxMsgStore
+                .getMessage(request, requestHeader, messageFilter);
+        GetMessageResult getMessageResult = ropGetMessageResult.getGetMessageResult();
+        List<ByteBuffer> messagesBuffer = ropGetMessageResult.getByteBufferList();
         if (getMessageResult != null) {
             response.setRemark(getMessageResult.getStatus().name());
             responseHeader.setNextBeginOffset(getMessageResult.getNextBeginOffset());
@@ -320,22 +322,10 @@ public class PullMessageProcessor implements NettyRequestProcessor {
                                     getMessageResult.getBufferTotalSize());
 
                     this.brokerController.getBrokerStatsManager().incBrokerGetNums(getMessageResult.getMessageCount());
-                    if (this.brokerController.getServerConfig().isTransferMsgByHeap()) {
-                        final long beginTimeMills = this.serverCnxMsgStore.now();
-                        final byte[] r = this.readGetMessageResult(getMessageResult, requestHeader.getConsumerGroup(),
-                                requestHeader.getTopic(), requestHeader.getQueueId());
-                        this.brokerController.getBrokerStatsManager()
-                                .incGroupGetLatency(requestHeader.getConsumerGroup(),
-                                        requestHeader.getTopic(), requestHeader.getQueueId(),
-                                        (int) (this.serverCnxMsgStore.now() - beginTimeMills));
-                        response.setBody(r);
-                    } else {
+
+                    for (int i = 0; i < messagesBuffer.size(); i++) {
                         try {
-                            FileRegion fileRegion =
-                                    new ManyMessageTransfer(
-                                            response.encodeHeader(getMessageResult.getBufferTotalSize()),
-                                            getMessageResult);
-                            channel.writeAndFlush(fileRegion).addListener(new ChannelFutureListener() {
+                            channel.writeAndFlush(messagesBuffer.get(i)).addListener(new ChannelFutureListener() {
                                 @Override
                                 public void operationComplete(ChannelFuture future) throws Exception {
                                     getMessageResult.release();
@@ -390,20 +380,6 @@ public class PullMessageProcessor implements NettyRequestProcessor {
             response.setCode(ResponseCode.SYSTEM_ERROR);
             response.setRemark("store getMessage return null");
         }
-
-        // TODO： impl offset store and this data should be stored in Pulsar
-
-//        boolean storeOffsetEnable = brokerAllowSuspend;
-//        storeOffsetEnable = storeOffsetEnable && hasCommitOffsetFlag;
-//        storeOffsetEnable = storeOffsetEnable
-//                && this.brokerController.getMessageStoreConfig().getBrokerRole() != BrokerRole.SLAVE;
-//        if (storeOffsetEnable) {
-//            this.brokerController.getConsumerOffsetManager()
-//                    .commitOffset(RemotingHelper.parseChannelRemoteAddr(channel),
-//                            requestHeader.getConsumerGroup(), requestHeader.getTopic(), requestHeader.getQueueId(),
-//                            requestHeader.getCommitOffset());
-//        }
-
         return null;
     }
 
