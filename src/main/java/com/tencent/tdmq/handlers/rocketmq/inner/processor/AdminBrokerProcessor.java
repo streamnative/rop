@@ -2,6 +2,7 @@ package com.tencent.tdmq.handlers.rocketmq.inner.processor;
 
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
 import com.tencent.tdmq.handlers.rocketmq.inner.consumer.ConsumerGroupInfo;
+import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientGroupName;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import java.io.UnsupportedEncodingException;
@@ -1128,18 +1129,17 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
         GetConsumeStatsInBrokerHeader requestHeader =
                 (GetConsumeStatsInBrokerHeader) request.decodeCommandCustomHeader(GetConsumeStatsInBrokerHeader.class);
         boolean isOrder = requestHeader.isOrder();
-        ConcurrentMap<String, SubscriptionGroupConfig> subscriptionGroups =
+        ConcurrentMap<ClientGroupName, SubscriptionGroupConfig> subscriptionGroups =
                 brokerController.getSubscriptionGroupManager().getSubscriptionGroupTable();
 
-        List<Map<String/* subscriptionGroupName */, List<ConsumeStats>>> brokerConsumeStatsList =
-                new ArrayList<Map<String, List<ConsumeStats>>>();
+        /* key => subscriptionGroupName */
+        List<Map<String, List<ConsumeStats>>> brokerConsumeStatsList = new ArrayList<>();
 
         long totalDiff = 0L;
-
-        for (String group : subscriptionGroups.keySet()) {
-            Map<String, List<ConsumeStats>> subscripTopicConsumeMap = new HashMap<String, List<ConsumeStats>>();
-            Set<String> topics = this.brokerController.getConsumerOffsetManager().whichTopicByConsumer(group);
-            List<ConsumeStats> consumeStatsList = new ArrayList<ConsumeStats>();
+        for (ClientGroupName group : subscriptionGroups.keySet()) {
+            Map<String, List<ConsumeStats>> subscripTopicConsumeMap = new HashMap<>();
+            Set<String> topics = this.brokerController.getConsumerOffsetManager().whichTopicByConsumer(group.getRmqGroupName());
+            List<ConsumeStats> consumeStatsList = new ArrayList<>();
             for (String topic : topics) {
                 ConsumeStats consumeStats = new ConsumeStats();
                 TopicConfig topicConfig = this.brokerController.getTopicConfigManager().selectTopicConfig(topic);
@@ -1154,10 +1154,10 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
 
                 {
                     SubscriptionData findSubscriptionData = this.brokerController.getConsumerManager()
-                            .findSubscriptionData(group, topic);
+                            .findSubscriptionData(group.getRmqGroupName(), topic);
 
                     if (null == findSubscriptionData
-                            && this.brokerController.getConsumerManager().findSubscriptionDataCount(group) > 0) {
+                            && this.brokerController.getConsumerManager().findSubscriptionDataCount(group.getRmqGroupName()) > 0) {
                         log.warn("consumeStats, the consumer group[{}], topic[{}] not exist", group, topic);
                         continue;
                     }
@@ -1174,7 +1174,7 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
                         brokerOffset = 0;
                     }
                     long consumerOffset = this.brokerController.getConsumerOffsetManager().queryOffset(
-                            group,
+                            group.getRmqGroupName(),
                             topic,
                             i);
                     if (consumerOffset < 0) {
@@ -1194,13 +1194,13 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
                     }
                     consumeStats.getOffsetTable().put(mq, offsetWrapper);
                 }
-                double consumeTps = this.brokerController.getBrokerStatsManager().tpsGroupGetNums(group, topic);
+                double consumeTps = this.brokerController.getBrokerStatsManager().tpsGroupGetNums(group.getRmqGroupName(), topic);
                 consumeTps += consumeStats.getConsumeTps();
                 consumeStats.setConsumeTps(consumeTps);
                 totalDiff += consumeStats.computeTotalDiff();
                 consumeStatsList.add(consumeStats);
             }
-            subscripTopicConsumeMap.put(group, consumeStatsList);
+            subscripTopicConsumeMap.put(group.getRmqGroupName(), consumeStatsList);
             brokerConsumeStatsList.add(subscripTopicConsumeMap);
         }
         ConsumeStatsList consumeStats = new ConsumeStatsList();

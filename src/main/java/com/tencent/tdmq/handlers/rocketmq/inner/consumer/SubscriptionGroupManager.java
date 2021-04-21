@@ -1,5 +1,7 @@
-package com.tencent.tdmq.handlers.rocketmq.inner;
+package com.tencent.tdmq.handlers.rocketmq.inner.consumer;
 
+import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
+import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientGroupName;
 import com.tencent.tdmq.handlers.rocketmq.utils.CommonUtils;
 import com.tencent.tdmq.handlers.rocketmq.utils.RocketMQTopic;
 import java.util.concurrent.ConcurrentHashMap;
@@ -12,7 +14,8 @@ import org.apache.rocketmq.common.subscription.SubscriptionGroupConfig;
 @Slf4j
 public class SubscriptionGroupManager {
 
-    private final ConcurrentMap<String, SubscriptionGroupConfig> subscriptionGroupTable = new ConcurrentHashMap(512);
+    private final ConcurrentMap<ClientGroupName, SubscriptionGroupConfig> subscriptionGroupTable = new ConcurrentHashMap(
+            512);
     private final DataVersion dataVersion = new DataVersion();
     private transient RocketMQBrokerController brokerController;
 
@@ -24,17 +27,15 @@ public class SubscriptionGroupManager {
     private void init() {
         SubscriptionGroupConfig subscriptionGroupConfig = new SubscriptionGroupConfig();
         subscriptionGroupConfig.setGroupName("TOOLS_CONSUMER");
-        this.subscriptionGroupTable.put("TOOLS_CONSUMER", subscriptionGroupConfig);
+        this.subscriptionGroupTable.put(new ClientGroupName("TOOLS_CONSUMER"), subscriptionGroupConfig);
 
         subscriptionGroupConfig = new SubscriptionGroupConfig();
         subscriptionGroupConfig.setGroupName("SELF_TEST_C_GROUP");
-        this.subscriptionGroupTable.put("SELF_TEST_C_GROUP", subscriptionGroupConfig);
+        this.subscriptionGroupTable.put(new ClientGroupName("SELF_TEST_C_GROUP"), subscriptionGroupConfig);
     }
 
     public void updateSubscriptionGroupConfig(SubscriptionGroupConfig config) {
-        String tdmqGroupName = CommonUtils.tdmqGroupName(config.getGroupName());
-        config.setGroupName(tdmqGroupName);
-        SubscriptionGroupConfig old = this.subscriptionGroupTable.put(tdmqGroupName, config);
+        SubscriptionGroupConfig old = this.subscriptionGroupTable.put(new ClientGroupName(config.getGroupName()), config);
         if (old != null) {
             log.info("update subscription group config, old: {} new: {}", old, config);
         } else {
@@ -44,8 +45,7 @@ public class SubscriptionGroupManager {
     }
 
     public void disableConsume(String groupName) {
-        String tdmqGroupName = CommonUtils.tdmqGroupName(groupName);
-        SubscriptionGroupConfig old = this.subscriptionGroupTable.get(groupName);
+        SubscriptionGroupConfig old = this.subscriptionGroupTable.get(new ClientGroupName(groupName));
         if (old != null) {
             old.setConsumeEnable(false);
             this.dataVersion.nextVersion();
@@ -54,16 +54,14 @@ public class SubscriptionGroupManager {
     }
 
     public SubscriptionGroupConfig findSubscriptionGroupConfig(String group) {
-        RocketMQTopic rmqGroup = new RocketMQTopic(group);
-        String tdmqGroupName = rmqGroup.getOrigNoDomainTopicName();
-        String noNamespaceGroupName = rmqGroup.getPulsarTopicName().getLocalName();
-        SubscriptionGroupConfig subscriptionGroupConfig = this.subscriptionGroupTable.get(tdmqGroupName);
+        ClientGroupName groupName = new ClientGroupName(group);
+        SubscriptionGroupConfig subscriptionGroupConfig = this.subscriptionGroupTable.get(groupName);
         if (null == subscriptionGroupConfig && (this.brokerController.getServerConfig().isAutoCreateSubscriptionGroup()
-                || MixAll.isSysConsumerGroup(noNamespaceGroupName))) {
+                || MixAll.isSysConsumerGroup(groupName.getRmqGroupName()))) {
             subscriptionGroupConfig = new SubscriptionGroupConfig();
-            subscriptionGroupConfig.setGroupName(tdmqGroupName);
+            subscriptionGroupConfig.setGroupName(groupName.getRmqGroupName());
             SubscriptionGroupConfig preConfig = this.subscriptionGroupTable
-                    .putIfAbsent(tdmqGroupName, subscriptionGroupConfig);
+                    .putIfAbsent(groupName, subscriptionGroupConfig);
             if (null == preConfig) {
                 log.info("auto create a subscription group, {}", subscriptionGroupConfig.toString());
             }
@@ -73,7 +71,7 @@ public class SubscriptionGroupManager {
     }
 
 
-    public ConcurrentMap<String, SubscriptionGroupConfig> getSubscriptionGroupTable() {
+    public ConcurrentMap<ClientGroupName, SubscriptionGroupConfig> getSubscriptionGroupTable() {
         return this.subscriptionGroupTable;
     }
 

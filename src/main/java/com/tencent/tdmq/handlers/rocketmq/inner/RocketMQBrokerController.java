@@ -3,6 +3,7 @@ package com.tencent.tdmq.handlers.rocketmq.inner;
 import com.tencent.tdmq.handlers.rocketmq.RocketMQServiceConfiguration;
 import com.tencent.tdmq.handlers.rocketmq.inner.consumer.ConsumerManager;
 import com.tencent.tdmq.handlers.rocketmq.inner.consumer.ConsumerOffsetManager;
+import com.tencent.tdmq.handlers.rocketmq.inner.consumer.SubscriptionGroupManager;
 import com.tencent.tdmq.handlers.rocketmq.inner.listener.AbstractTransactionalMessageCheckListener;
 import com.tencent.tdmq.handlers.rocketmq.inner.listener.DefaultConsumerIdsChangeListener;
 import com.tencent.tdmq.handlers.rocketmq.inner.listener.DefaultTransactionalMessageCheckListener;

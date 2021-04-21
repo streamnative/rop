@@ -1,6 +1,5 @@
 package com.tencent.tdmq.handlers.rocketmq.inner.producer;
 
-import com.tencent.tdmq.handlers.rocketmq.utils.CommonUtils;
 import io.netty.channel.Channel;
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -9,7 +8,6 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.logging.log4j.util.Strings;
 import org.apache.rocketmq.broker.client.ClientChannelInfo;
 import org.apache.rocketmq.broker.util.PositiveAtomicCounter;
 import org.apache.rocketmq.remoting.common.RemotingHelper;
@@ -23,22 +21,22 @@ public class ProducerManager {
     /**
      * groupName = [tenant/ns/groupName]
      */
-    private final ConcurrentHashMap<String, ConcurrentHashMap<Channel, ClientChannelInfo>> groupChannelTable =
+    private final ConcurrentHashMap<ClientGroupName, ConcurrentHashMap<Channel, ClientChannelInfo>> groupChannelTable =
             new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, Channel> clientChannelTable = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Channel> clientIdChannelTable = new ConcurrentHashMap<>();
     private PositiveAtomicCounter positiveAtomicCounter = new PositiveAtomicCounter();
 
     public ProducerManager() {
     }
 
-    public ConcurrentHashMap<String, ConcurrentHashMap<Channel, ClientChannelInfo>> getGroupChannelTable() {
+    public ConcurrentHashMap<ClientGroupName, ConcurrentHashMap<Channel, ClientChannelInfo>> getGroupChannelTable() {
         return groupChannelTable;
     }
 
     public void scanNotActiveChannel() {
-        for (final Map.Entry<String, ConcurrentHashMap<Channel, ClientChannelInfo>> entry : this.groupChannelTable
+        for (final Map.Entry<ClientGroupName, ConcurrentHashMap<Channel, ClientChannelInfo>> entry : this.groupChannelTable
                 .entrySet()) {
-            final String group = entry.getKey();
+            final String group = entry.getKey().getPulsarGroupName();
             final ConcurrentHashMap<Channel, ClientChannelInfo> chlMap = entry.getValue();
 
             Iterator<Entry<Channel, ClientChannelInfo>> it = chlMap.entrySet().iterator();
@@ -50,7 +48,7 @@ public class ProducerManager {
                 long diff = System.currentTimeMillis() - info.getLastUpdateTimestamp();
                 if (diff > CHANNEL_EXPIRED_TIMEOUT) {
                     it.remove();
-                    clientChannelTable.remove(info.getClientId());
+                    clientIdChannelTable.remove(info.getClientId());
                     log.warn(
                             "SCAN: remove expired channel[{}] from ProducerManager groupChannelTable, producer group name: {}",
                             RemotingHelper.parseChannelRemoteAddr(info.getChannel()), group);
@@ -62,15 +60,15 @@ public class ProducerManager {
 
     public synchronized void doChannelCloseEvent(final String remoteAddr, final Channel channel) {
         if (channel != null) {
-            for (final Map.Entry<String, ConcurrentHashMap<Channel, ClientChannelInfo>> entry : this.groupChannelTable
+            for (final Map.Entry<ClientGroupName, ConcurrentHashMap<Channel, ClientChannelInfo>> entry : this.groupChannelTable
                     .entrySet()) {
-                final String group = entry.getKey();
+                final String group = entry.getKey().getPulsarGroupName();
                 final ConcurrentHashMap<Channel, ClientChannelInfo> clientChannelInfoTable =
                         entry.getValue();
                 final ClientChannelInfo clientChannelInfo =
                         clientChannelInfoTable.remove(channel);
                 if (clientChannelInfo != null) {
-                    clientChannelTable.remove(clientChannelInfo.getClientId());
+                    clientIdChannelTable.remove(clientChannelInfo.getClientId());
                     log.info(
                             "NETTY EVENT: remove channel[{}][{}] from ProducerManager groupChannelTable, producer group: {}",
                             clientChannelInfo.toString(), remoteAddr, group);
@@ -82,18 +80,18 @@ public class ProducerManager {
 
     public synchronized void registerProducer(final String group, final ClientChannelInfo clientChannelInfo) {
         ClientChannelInfo clientChannelInfoFound = null;
-        String tdmqGroupName = CommonUtils.tdmqGroupName(group);
-        ConcurrentHashMap<Channel, ClientChannelInfo> channelTable = this.groupChannelTable.get(tdmqGroupName);
+        ClientGroupName clientGroupName = new ClientGroupName(group);
+        ConcurrentHashMap<Channel, ClientChannelInfo> channelTable = this.groupChannelTable.get(clientGroupName);
         if (null == channelTable) {
             channelTable = new ConcurrentHashMap<>();
-            this.groupChannelTable.put(tdmqGroupName, channelTable);
+            this.groupChannelTable.put(clientGroupName, channelTable);
         }
 
         clientChannelInfoFound = channelTable.get(clientChannelInfo.getChannel());
         if (null == clientChannelInfoFound) {
             channelTable.put(clientChannelInfo.getChannel(), clientChannelInfo);
-            clientChannelTable.put(clientChannelInfo.getClientId(), clientChannelInfo.getChannel());
-            log.info("new producer connected, group: {} channel: {}", tdmqGroupName,
+            clientIdChannelTable.put(clientChannelInfo.getClientId(), clientChannelInfo.getChannel());
+            log.info("new producer connected, group: {} channel: {}", clientGroupName,
                     clientChannelInfo.toString());
         }
 
@@ -103,42 +101,42 @@ public class ProducerManager {
     }
 
     public synchronized void unregisterProducer(final String group, final ClientChannelInfo clientChannelInfo) {
-        String tdmqGroupName = CommonUtils.tdmqGroupName(group);
-        ConcurrentHashMap<Channel, ClientChannelInfo> channelTable = this.groupChannelTable.get(tdmqGroupName);
+        ClientGroupName clientGroupName = new ClientGroupName(group);
+        ConcurrentHashMap<Channel, ClientChannelInfo> channelTable = this.groupChannelTable.get(clientGroupName);
         if (null != channelTable && !channelTable.isEmpty()) {
             ClientChannelInfo old = channelTable.remove(clientChannelInfo.getChannel());
-            clientChannelTable.remove(clientChannelInfo.getClientId());
+            clientIdChannelTable.remove(clientChannelInfo.getClientId());
             if (old != null) {
-                log.info("unregister a producer[{}] from groupChannelTable {}", tdmqGroupName,
+                log.info("unregister a producer[{}] from groupChannelTable {}", clientGroupName,
                         clientChannelInfo.toString());
             }
 
             if (channelTable.isEmpty()) {
-                this.groupChannelTable.remove(tdmqGroupName);
-                log.info("unregister a producer group[{}] from groupChannelTable", tdmqGroupName);
+                this.groupChannelTable.remove(clientGroupName);
+                log.info("unregister a producer group[{}] from groupChannelTable", clientGroupName);
             }
         }
     }
 
-    public Channel getAvaliableChannel(String groupId) {
-        if (groupId == null) {
+    public Channel getAvaliableChannel(String groupName) {
+        if (groupName == null) {
             return null;
         }
-        String tdmqGroupName = CommonUtils.tdmqGroupName(groupId);
+        ClientGroupName clientGroupName = new ClientGroupName(groupName);
         List<Channel> channelList = new ArrayList<>();
-        ConcurrentHashMap<Channel, ClientChannelInfo> channelClientChannelInfoHashMap = groupChannelTable.get(tdmqGroupName);
+        ConcurrentHashMap<Channel, ClientChannelInfo> channelClientChannelInfoHashMap = groupChannelTable.get(clientGroupName);
         if (channelClientChannelInfoHashMap != null) {
             for (Channel channel : channelClientChannelInfoHashMap.keySet()) {
                 channelList.add(channel);
             }
         } else {
-            log.warn("Check transaction failed, channel table is empty. groupId={}", tdmqGroupName);
+            log.warn("Check transaction failed, channel table is empty. groupId={}", clientGroupName);
             return null;
         }
 
         int size = channelList.size();
         if (0 == size) {
-            log.warn("Channel list is empty. groupId={}", tdmqGroupName);
+            log.warn("Channel list is empty. groupId={}", clientGroupName);
             return null;
         }
 
@@ -164,13 +162,13 @@ public class ProducerManager {
     }
 
     public Channel findChannel(String clientId) {
-        return clientChannelTable.get(clientId);
+        return clientIdChannelTable.get(clientId);
     }
 
     public ClientChannelInfo findChlInfo(String groupName, Channel channel) {
-        String tdmqGroupName = CommonUtils.tdmqGroupName(groupName);
-        if (Strings.isNotBlank(tdmqGroupName) && groupChannelTable.containsKey(tdmqGroupName)) {
-            return groupChannelTable.get(tdmqGroupName).get(channel);
+        ClientGroupName clientGroupName = new ClientGroupName(groupName);
+        if (groupChannelTable.containsKey(clientGroupName)) {
+            return groupChannelTable.get(clientGroupName).get(channel);
         } else {
             for (Map<Channel, ClientChannelInfo> m : groupChannelTable.values()) {
                 if (m.containsKey(channel)) {

@@ -1,6 +1,6 @@
 package com.tencent.tdmq.handlers.rocketmq.inner.consumer;
 
-import com.tencent.tdmq.handlers.rocketmq.utils.CommonUtils;
+import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientGroupName;
 import io.netty.channel.Channel;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -23,7 +23,8 @@ import org.apache.rocketmq.remoting.common.RemotingUtil;
 public class ConsumerManager {
 
     private static final long CHANNEL_EXPIRED_TIMEOUT = 120000L;
-    private final ConcurrentMap<String, ConsumerGroupInfo> consumerTable = new ConcurrentHashMap(1024);
+    private final ConcurrentMap<ClientGroupName, ConsumerGroupInfo> consumerTable = new ConcurrentHashMap(1024);
+    //ConsumerIdsChangeListener groupName is rocketmq groupName example: tenant|ns%topicName; %RETRY%tenant|ns%topicName
     private final ConsumerIdsChangeListener consumerIdsChangeListener;
 
     public ConsumerManager(ConsumerIdsChangeListener consumerIdsChangeListener) {
@@ -31,8 +32,8 @@ public class ConsumerManager {
     }
 
     public ClientChannelInfo findChannel(String group, String clientId) {
-        String tdmqGroupName = CommonUtils.tdmqGroupName(group);
-        ConsumerGroupInfo consumerGroupInfo = this.consumerTable.get(tdmqGroupName);
+        ClientGroupName clientGroupName = new ClientGroupName(group);
+        ConsumerGroupInfo consumerGroupInfo = this.consumerTable.get(clientGroupName);
         if (consumerGroupInfo != null) {
             return consumerGroupInfo.findChannel(clientId);
         }
@@ -45,8 +46,8 @@ public class ConsumerManager {
     }
 
     public ConsumerGroupInfo getConsumerGroupInfo(String group) {
-        String tdmqGroupName = CommonUtils.tdmqGroupName(group);
-        return this.consumerTable.get(tdmqGroupName);
+        ClientGroupName clientGroupName = new ClientGroupName(group);
+        return this.consumerTable.get(clientGroupName);
     }
 
     public int findSubscriptionDataCount(String group) {
@@ -58,7 +59,7 @@ public class ConsumerManager {
         Iterator it = this.consumerTable.entrySet().iterator();
 
         while (it.hasNext()) {
-            Entry<String, ConsumerGroupInfo> next = (Entry) it.next();
+            Entry<ClientGroupName, ConsumerGroupInfo> next = (Entry) it.next();
             ConsumerGroupInfo info = next.getValue();
             boolean removed = info.doChannelCloseEvent(remoteAddr, channel);
             if (removed) {
@@ -66,14 +67,15 @@ public class ConsumerManager {
                     ConsumerGroupInfo remove = this.consumerTable.remove(next.getKey());
                     if (remove != null) {
                         log.info("unregister consumer ok, no any connection, and remove consumer group, {}",
-                                next.getKey());
+                                next.getKey().getPulsarGroupName());
                         this.consumerIdsChangeListener
-                                .handle(ConsumerGroupEvent.UNREGISTER, next.getKey(), new Object[0]);
+                                .handle(ConsumerGroupEvent.UNREGISTER, next.getKey().getRmqGroupName(), new Object[0]);
                     }
                 }
 
                 this.consumerIdsChangeListener
-                        .handle(ConsumerGroupEvent.CHANGE, next.getKey(), new Object[]{info.getAllChannel()});
+                        .handle(ConsumerGroupEvent.CHANGE, next.getKey().getRmqGroupName(),
+                                new Object[]{info.getAllChannel()});
             }
         }
 
@@ -82,11 +84,11 @@ public class ConsumerManager {
     public boolean registerConsumer(String group, ClientChannelInfo clientChannelInfo, ConsumeType consumeType,
             MessageModel messageModel, ConsumeFromWhere consumeFromWhere, Set<SubscriptionData> subList,
             boolean isNotifyConsumerIdsChangedEnable) {
-        String tdmqGroupName = CommonUtils.tdmqGroupName(group);
-        ConsumerGroupInfo consumerGroupInfo = this.consumerTable.get(tdmqGroupName);
+        ClientGroupName clientGroupName = new ClientGroupName(group);
+        ConsumerGroupInfo consumerGroupInfo = this.consumerTable.get(clientGroupName);
         if (null == consumerGroupInfo) {
-            ConsumerGroupInfo tmp = new ConsumerGroupInfo(tdmqGroupName, consumeType, messageModel, consumeFromWhere);
-            ConsumerGroupInfo prev = this.consumerTable.putIfAbsent(tdmqGroupName, tmp);
+            ConsumerGroupInfo tmp = new ConsumerGroupInfo(group, consumeType, messageModel, consumeFromWhere);
+            ConsumerGroupInfo prev = this.consumerTable.putIfAbsent(clientGroupName, tmp);
             consumerGroupInfo = prev != null ? prev : tmp;
         }
 
@@ -94,31 +96,31 @@ public class ConsumerManager {
         boolean r2 = consumerGroupInfo.updateSubscription(subList);
         if ((r1 || r2) && isNotifyConsumerIdsChangedEnable) {
             this.consumerIdsChangeListener
-                    .handle(ConsumerGroupEvent.CHANGE, tdmqGroupName, new Object[]{consumerGroupInfo.getAllChannel()});
+                    .handle(ConsumerGroupEvent.CHANGE, group, new Object[]{consumerGroupInfo.getAllChannel()});
         }
 
-        this.consumerIdsChangeListener.handle(ConsumerGroupEvent.REGISTER, tdmqGroupName, new Object[]{subList});
+        this.consumerIdsChangeListener.handle(ConsumerGroupEvent.REGISTER, group, new Object[]{subList});
         return r1 || r2;
     }
 
     public void unregisterConsumer(String group, ClientChannelInfo clientChannelInfo,
             boolean isNotifyConsumerIdsChangedEnable) {
-        String tdmqGroupName = CommonUtils.tdmqGroupName(group);
-        ConsumerGroupInfo consumerGroupInfo = this.consumerTable.get(tdmqGroupName);
+        ClientGroupName clientGroupName = new ClientGroupName(group);
+        ConsumerGroupInfo consumerGroupInfo = this.consumerTable.get(clientGroupName);
         if (null != consumerGroupInfo) {
             consumerGroupInfo.unregisterChannel(clientChannelInfo);
             if (consumerGroupInfo.getChannelInfoTable().isEmpty()) {
-                ConsumerGroupInfo remove = this.consumerTable.remove(tdmqGroupName);
+                ConsumerGroupInfo remove = this.consumerTable.remove(clientGroupName);
                 if (remove != null) {
-                    log.info("unregister consumer ok, no any connection, and remove consumer group, {}", tdmqGroupName);
-                    this.consumerIdsChangeListener.handle(ConsumerGroupEvent.UNREGISTER, tdmqGroupName, new Object[0]);
+                    log.info("unregister consumer ok, no any connection, and remove consumer group, {}",
+                            clientGroupName);
+                    this.consumerIdsChangeListener.handle(ConsumerGroupEvent.UNREGISTER, group, new Object[0]);
                 }
             }
 
             if (isNotifyConsumerIdsChangedEnable) {
                 this.consumerIdsChangeListener
-                        .handle(ConsumerGroupEvent.CHANGE, tdmqGroupName,
-                                new Object[]{consumerGroupInfo.getAllChannel()});
+                        .handle(ConsumerGroupEvent.CHANGE, group, new Object[]{consumerGroupInfo.getAllChannel()});
             }
         }
 
@@ -128,8 +130,8 @@ public class ConsumerManager {
         Iterator it = this.consumerTable.entrySet().iterator();
 
         while (it.hasNext()) {
-            Entry<String, ConsumerGroupInfo> next = (Entry) it.next();
-            String group = next.getKey();
+            Entry<ClientGroupName, ConsumerGroupInfo> next = (Entry) it.next();
+            ClientGroupName group = next.getKey();
             ConsumerGroupInfo consumerGroupInfo = next.getValue();
             ConcurrentMap<Channel, ClientChannelInfo> channelInfoTable = consumerGroupInfo.getChannelInfoTable();
             Iterator itChannel = channelInfoTable.entrySet().iterator();
@@ -161,10 +163,10 @@ public class ConsumerManager {
         Iterator it = this.consumerTable.entrySet().iterator();
 
         while (it.hasNext()) {
-            Entry<String, ConsumerGroupInfo> entry = (Entry) it.next();
+            Entry<ClientGroupName, ConsumerGroupInfo> entry = (Entry) it.next();
             ConcurrentMap<String, SubscriptionData> subscriptionTable = entry.getValue().getSubscriptionTable();
             if (subscriptionTable.containsKey(topic)) {
-                groups.add(entry.getKey());
+                groups.add(entry.getKey().getRmqGroupName());
             }
         }
         return groups;
