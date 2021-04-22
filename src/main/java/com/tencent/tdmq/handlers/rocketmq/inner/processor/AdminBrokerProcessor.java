@@ -3,7 +3,7 @@
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,6 +17,8 @@ package com.tencent.tdmq.handlers.rocketmq.inner.processor;
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
 import com.tencent.tdmq.handlers.rocketmq.inner.consumer.ConsumerGroupInfo;
 import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientGroupName;
+import com.tencent.tdmq.handlers.rocketmq.utils.CommonUtils;
+import com.tencent.tdmq.handlers.rocketmq.utils.MessageIdUtils;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import java.io.UnsupportedEncodingException;
@@ -28,10 +30,14 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ConcurrentMap;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.bookkeeper.mledger.impl.PositionImpl;
+import org.apache.pulsar.broker.service.Topic;
+import org.apache.pulsar.broker.service.persistent.PersistentTopic;
 import org.apache.rocketmq.broker.client.ClientChannelInfo;
 import org.apache.rocketmq.broker.topic.TopicValidator;
 import org.apache.rocketmq.broker.transaction.queue.TransactionalMessageUtil;
@@ -389,12 +395,27 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
         final GetMaxOffsetRequestHeader requestHeader =
                 (GetMaxOffsetRequestHeader) request.decodeCommandCustomHeader(GetMaxOffsetRequestHeader.class);
 
-        long offset = 0L; /*TODO this.brokerController.getMessageStore()
-                .getMaxOffsetInQueue(requestHeader.getTopic(), requestHeader.getQueueId());*/
+        String pulsarTopicName = CommonUtils.tdmqGroupName(requestHeader.getTopic());
+        try {
+            Optional<Topic> optionalTopic = this.brokerController.getBrokerService()
+                    .getTopicIfExists(pulsarTopicName).get();
+            if (optionalTopic.isPresent()) {
+                PersistentTopic persistentTopic = (PersistentTopic) optionalTopic.get();
+                PositionImpl lastPosition = (PositionImpl) persistentTopic.getLastPosition();
+                long offset = MessageIdUtils.getOffset(lastPosition.getLedgerId(), lastPosition.getEntryId());
 
-        responseHeader.setOffset(offset);
+                responseHeader.setOffset(offset);
+                response.setCode(ResponseCode.SUCCESS);
+                response.setRemark(null);
+                return response;
+            } else {
+                log.warn("GetMaxOffset: topic [{}] not found.", pulsarTopicName);
+            }
+        } catch (Exception e) {
+            log.error("GetMaxOffset: get topic [{}] from broker error", pulsarTopicName);
+        }
 
-        response.setCode(ResponseCode.SUCCESS);
+        response.setCode(ResponseCode.SYSTEM_ERROR);
         response.setRemark(null);
         return response;
     }
@@ -406,11 +427,28 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
         final GetMinOffsetRequestHeader requestHeader =
                 (GetMinOffsetRequestHeader) request.decodeCommandCustomHeader(GetMinOffsetRequestHeader.class);
 
-        long offset = 0L;/*TODO this.brokerController.getMessageStore()
-                .getMinOffsetInQueue(requestHeader.getTopic(), requestHeader.getQueueId());*/
+        String pulsarTopicName = CommonUtils.tdmqGroupName(requestHeader.getTopic());
+        try {
+            Optional<Topic> optionalTopic = this.brokerController.getBrokerService()
+                    .getTopicIfExists(pulsarTopicName).get();
+            if (optionalTopic.isPresent()) {
+                PersistentTopic persistentTopic = (PersistentTopic) optionalTopic.get();
+                PositionImpl lastPosition = persistentTopic.getFirstPosition();
+                long offset = MessageIdUtils.getOffset(lastPosition.getLedgerId(), lastPosition.getEntryId());
 
-        responseHeader.setOffset(offset);
-        response.setCode(ResponseCode.SUCCESS);
+                responseHeader.setOffset(offset);
+
+                response.setCode(ResponseCode.SUCCESS);
+                response.setRemark(null);
+                return response;
+            } else {
+                log.warn("GetMinOffset: topic [{}] not found.", pulsarTopicName);
+            }
+        } catch (Exception e) {
+            log.error("GetMinOffset: get topic [{}] from broker error", pulsarTopicName);
+        }
+
+        response.setCode(ResponseCode.SYSTEM_ERROR);
         response.setRemark(null);
         return response;
     }
@@ -1152,7 +1190,8 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
         long totalDiff = 0L;
         for (ClientGroupName group : subscriptionGroups.keySet()) {
             Map<String, List<ConsumeStats>> subscripTopicConsumeMap = new HashMap<>();
-            Set<String> topics = this.brokerController.getConsumerOffsetManager().whichTopicByConsumer(group.getRmqGroupName());
+            Set<String> topics = this.brokerController.getConsumerOffsetManager()
+                    .whichTopicByConsumer(group.getRmqGroupName());
             List<ConsumeStats> consumeStatsList = new ArrayList<>();
             for (String topic : topics) {
                 ConsumeStats consumeStats = new ConsumeStats();
@@ -1171,7 +1210,8 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
                             .findSubscriptionData(group.getRmqGroupName(), topic);
 
                     if (null == findSubscriptionData
-                            && this.brokerController.getConsumerManager().findSubscriptionDataCount(group.getRmqGroupName()) > 0) {
+                            && this.brokerController.getConsumerManager()
+                            .findSubscriptionDataCount(group.getRmqGroupName()) > 0) {
                         log.warn("consumeStats, the consumer group[{}], topic[{}] not exist", group, topic);
                         continue;
                     }
@@ -1208,7 +1248,8 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
                     }
                     consumeStats.getOffsetTable().put(mq, offsetWrapper);
                 }
-                double consumeTps = this.brokerController.getBrokerStatsManager().tpsGroupGetNums(group.getRmqGroupName(), topic);
+                double consumeTps = this.brokerController.getBrokerStatsManager()
+                        .tpsGroupGetNums(group.getRmqGroupName(), topic);
                 consumeTps += consumeStats.getConsumeTps();
                 consumeStats.setConsumeTps(consumeTps);
                 totalDiff += consumeStats.computeTotalDiff();
