@@ -277,6 +277,10 @@ public class ConsumerOffsetManager {
         });
     }
 
+    public synchronized void start() {
+
+    }
+
     private boolean isPulsarTopicCached(ClientGroupAndTopicName groupAndTopicName, int partitionId) {
         if (groupAndTopicName == null) {
             return false;

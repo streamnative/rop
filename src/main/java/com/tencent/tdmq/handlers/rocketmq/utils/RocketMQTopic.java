@@ -34,10 +34,10 @@ public class RocketMQTopic {
     private static final char TENANT_NAMESPACE_SEP = '|';
     private static final char ROCKETMQ_NAMESPACE_TOPIC_SEP = NamespaceUtil.NAMESPACE_SEPARATOR;
     private static final TopicDomain domain = TopicDomain.persistent;
-    private static String defaultTenant = "rocketmq";
-    private static String defaultNamespace = "public";
-    private static String metaTenant = "rocketmq";
-    private static String metaNamespace = "__rocketmq";
+    public static String defaultTenant = "rocketmq";
+    public static String defaultNamespace = "public";
+    public static String metaTenant = "rocketmq";
+    public static String metaNamespace = "__rocketmq";
     @Getter
     private TopicName pulsarTopicName;
     private String rocketmqTenant = Strings.EMPTY;

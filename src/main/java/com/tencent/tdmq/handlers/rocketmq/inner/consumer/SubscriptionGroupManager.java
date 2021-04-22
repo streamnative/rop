@@ -14,7 +14,9 @@
 
 package com.tencent.tdmq.handlers.rocketmq.inner.consumer;
 
+import com.google.common.base.Preconditions;
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
+import com.tencent.tdmq.handlers.rocketmq.inner.namesvr.MQTopicManager;
 import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientGroupName;
 import com.tencent.tdmq.handlers.rocketmq.utils.CommonUtils;
 import com.tencent.tdmq.handlers.rocketmq.utils.RocketMQTopic;
@@ -31,7 +33,7 @@ public class SubscriptionGroupManager {
     private final ConcurrentMap<ClientGroupName, SubscriptionGroupConfig> subscriptionGroupTable = new ConcurrentHashMap(
             512);
     private final DataVersion dataVersion = new DataVersion();
-    private transient RocketMQBrokerController brokerController;
+    private final RocketMQBrokerController brokerController;
 
     public SubscriptionGroupManager(RocketMQBrokerController brokerController) {
         this.brokerController = brokerController;
@@ -46,6 +48,21 @@ public class SubscriptionGroupManager {
         subscriptionGroupConfig = new SubscriptionGroupConfig();
         subscriptionGroupConfig.setGroupName("SELF_TEST_C_GROUP");
         this.subscriptionGroupTable.put(new ClientGroupName("SELF_TEST_C_GROUP"), subscriptionGroupConfig);
+    }
+
+    public void start(){
+        log.info("starting SubscriptionGroupManager service...");
+        Preconditions.checkNotNull(brokerController);
+        MQTopicManager topicConfigManager = this.brokerController.getTopicConfigManager();
+        topicConfigManager.getPulsarTopicCache().forEach(((clientTopicName, persistentTopicMap) -> {
+                persistentTopicMap.values().stream().forEach((topic) -> {
+                    topic.getSubscriptions().forEach((grp, subscription) -> {
+                        SubscriptionGroupConfig config = new SubscriptionGroupConfig();
+                        config.setGroupName(grp);
+                        subscriptionGroupTable.put(new ClientGroupName(grp), config);
+                    });
+                });
+        }));
     }
 
     public void updateSubscriptionGroupConfig(SubscriptionGroupConfig config) {

@@ -3,7 +3,7 @@
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -23,20 +23,28 @@ import com.google.common.cache.CacheBuilder;
 import com.google.common.collect.Sets;
 import com.tencent.tdmq.handlers.rocketmq.RocketMQProtocolHandler;
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
+import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientTopicName;
 import com.tencent.tdmq.handlers.rocketmq.utils.TopicNameUtils;
 import java.net.InetSocketAddress;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.logging.log4j.util.Strings;
 import org.apache.pulsar.broker.PulsarServerException;
 import org.apache.pulsar.broker.PulsarService;
 import org.apache.pulsar.broker.namespace.NamespaceBundleOwnershipListener;
 import org.apache.pulsar.broker.service.BrokerService;
+import org.apache.pulsar.broker.service.Topic;
+import org.apache.pulsar.broker.service.persistent.PersistentTopic;
 import org.apache.pulsar.client.admin.PulsarAdmin;
 import org.apache.pulsar.client.admin.PulsarAdminException.ConflictException;
 import org.apache.pulsar.client.impl.Backoff;
@@ -53,14 +61,18 @@ import org.apache.rocketmq.common.TopicConfig;
 @Slf4j
 public class MQTopicManager extends TopicConfigManager implements NamespaceBundleOwnershipListener {
 
-    private final int MAX_CACHE_SIZE = 10000;
+    private final int MAX_CACHE_SIZE = 1024;
     private final int MAX_CACHE_TIME_IN_SEC = 120;
     //cache-key TopicName = {tenant/ns/topic}, Map key={partition id} nonPartitionedTopic, only one record in map.
-    public final Cache<TopicName, Map<Integer, InetSocketAddress>> lookupCache = CacheBuilder
+    @Getter
+    private final Cache<TopicName, Map<Integer, InetSocketAddress>> lookupCache = CacheBuilder
             .newBuilder()
             .initialCapacity(MAX_CACHE_SIZE).maximumSize(MAX_CACHE_SIZE)
             .expireAfterWrite(MAX_CACHE_TIME_IN_SEC, TimeUnit.SECONDS)
             .build();
+    @Getter
+    private ConcurrentHashMap<ClientTopicName, ConcurrentMap<Integer, PersistentTopic>> pulsarTopicCache =
+            new ConcurrentHashMap<>(MAX_CACHE_SIZE);
     private final int servicePort;
     private PulsarService pulsarService;
     private BrokerService brokerService;
@@ -74,6 +86,40 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
         this.rocketmqMetaNs = NamespaceName
                 .get(config.getRocketmqMetadataTenant(), config.getRocketmqMetadataNamespace());
         this.rocketmqTopicNs = NamespaceName.get(config.getRocketmqTenant(), config.getRocketmqNamespace());
+    }
+
+    private boolean isPulsarTopicCached(ClientTopicName clientTopicName, int partitionId) {
+        if (clientTopicName == null) {
+            return false;
+        }
+        return pulsarTopicCache.containsKey(clientTopicName) && pulsarTopicCache.get(clientTopicName)
+                .containsKey(partitionId);
+    }
+
+    public PersistentTopic getPulsarPersistentTopic(ClientTopicName clientTopicName, int partitionId) {
+        if (isPulsarTopicCached(clientTopicName, partitionId)) {
+            return this.pulsarTopicCache.get(clientTopicName).get(partitionId);
+        } else {
+            synchronized (pulsarTopicCache) {
+                TopicName pulsarTopicName = TopicName.get(clientTopicName.getPulsarTopicName());
+                try {
+                    Optional<Topic> optionalTopic = this.brokerController.getBrokerService()
+                            .getTopicIfExists(pulsarTopicName.toString()).get();
+                    if (optionalTopic.isPresent()) {
+                        PersistentTopic topic = (PersistentTopic) optionalTopic.get();
+                        if (!this.pulsarTopicCache.containsKey(clientTopicName)) {
+                            this.pulsarTopicCache.putIfAbsent(clientTopicName, new ConcurrentHashMap<>());
+                        }
+                        this.pulsarTopicCache.get(clientTopicName).putIfAbsent(partitionId, topic);
+                        return topic;
+                    }
+                } catch (Exception e) {
+                }
+            }
+        }
+        log.warn("getPulsarPersistentTopic error, topicName=[{}], partitionId=[{}].", clientTopicName,
+                partitionId);
+        return null;
     }
 
     @Override
@@ -106,6 +152,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
 
     public void shutdown() {
         this.lookupCache.cleanUp();
+        this.pulsarTopicCache.clear();
     }
 
     // call pulsarClient.lookup.getBroker to get and own a topic.
@@ -117,8 +164,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
         Map<Integer, InetSocketAddress> partitionedTopicAddr = new HashMap<>();
         try {
             String noDomainTopicName = TopicNameUtils.getNoDomainTopicName(topicName);
-            PartitionedTopicMetadata partitionedMetadata = adminClient.topics()
-                    .getPartitionedTopicMetadata(noDomainTopicName);
+            PartitionedTopicMetadata partitionedMetadata = adminClient.topics().getPartitionedTopicMetadata(noDomainTopicName);
 
             CompletableFuture<InetSocketAddress> resultFuture = new CompletableFuture<>();
 
@@ -197,6 +243,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                             TopicName name = TopicName.get(TopicName.get(topic).getPartitionedTopicName());
                             getTopicBrokerAddr(name);
                         }
+                        loadPersistentTopic(topics);
                     } else {
                         log.error("Failed to get owned topic list for "
                                         + "OffsetAndTopicListener when triggering on-loading bundle {}.",
@@ -205,15 +252,36 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                 });
     }
 
+    private void loadPersistentTopic(List<String> topics) {
+        topics.stream().forEach(topic -> {
+            try {
+                Optional<Topic> optionalTopic = this.brokerService.getTopicIfExists(topic).get();
+                if (optionalTopic.isPresent()) {
+                    PersistentTopic persistentTopic = (PersistentTopic) optionalTopic.get();
+                    TopicName topicName = TopicName.get(topic);
+                    ClientTopicName clientTopicName = new ClientTopicName(topicName);
+                    if (!pulsarTopicCache.containsKey(clientTopicName)) {
+                        pulsarTopicCache.put(clientTopicName, new ConcurrentHashMap<>());
+                    }
+                    pulsarTopicCache.get(clientTopicName).put(topicName.getPartitionIndex(), persistentTopic);
+                }
+            } catch (Exception e) {
+                log.warn("getTopicIfExists error, topic=[{}].", topic, e);
+            }
+        });
+    }
+
     @Override
     public void unLoad(NamespaceBundle bundle) {
         pulsarService.getNamespaceService().getOwnedTopicListForNamespaceBundle(bundle)
                 .whenComplete((topics, ex) -> {
                     if (ex == null) {
-                        log.info("get owned topic list when unLoad bundle {}, topic size {} ", bundle, topics.size());
+                        log.info("get owned topic list when unLoad bundle {}, topic size {} ", bundle,
+                                topics.size());
                         for (String topic : topics) {
                             TopicName name = TopicName.get(topic);
                             lookupCache.invalidate(name);
+                            this.pulsarTopicCache.remove(new ClientTopicName(topic));
                         }
                     } else {
                         log.error("Failed to get owned topic list for "
