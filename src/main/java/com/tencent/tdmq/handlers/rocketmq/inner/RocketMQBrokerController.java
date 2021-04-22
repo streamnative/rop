@@ -226,7 +226,7 @@ public class RocketMQBrokerController {
                 @Override
                 public void run() {
                     try {
-                        //RocketMQBrokerController.this.consumerOffsetManager.persist();
+                        RocketMQBrokerController.this.consumerOffsetManager.persist();
                     } catch (Throwable e) {
                         log.error("schedule persist consumerOffset error.", e);
                     }

@@ -247,6 +247,7 @@ public class ConsumerOffsetManager {
                         return topic;
                     }
                 } catch (Exception e) {
+                    log.warn("getPulsarPersistentTopic error, topicAtGroup=[{}].", groupAndTopic, e);
                 }
             }
         }

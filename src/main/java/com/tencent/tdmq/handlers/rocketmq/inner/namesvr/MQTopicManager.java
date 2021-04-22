@@ -162,10 +162,10 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
         Map<Integer, InetSocketAddress> partitionedTopicAddr = new HashMap<>();
         try {
             String noDomainTopicName = TopicNameUtils.getNoDomainTopicName(topicName);
-            PartitionedTopicMetadata partitionedMetadata = adminClient.topics().getPartitionedTopicMetadata(noDomainTopicName);
+            PartitionedTopicMetadata partitionedMetadata = adminClient.topics()
+                    .getPartitionedTopicMetadata(noDomainTopicName);
 
             CompletableFuture<InetSocketAddress> resultFuture = new CompletableFuture<>();
-
             //non-partitioned topic
             if (partitionedMetadata.partitions <= 0) {
                 Backoff backoff = new Backoff(
@@ -241,7 +241,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                             TopicName name = TopicName.get(TopicName.get(topic).getPartitionedTopicName());
                             getTopicBrokerAddr(name);
                         }
-                        loadPersistentTopic(topics);
+                        //loadPersistentTopic(topics);
                     } else {
                         log.error("Failed to get owned topic list for "
                                         + "OffsetAndTopicListener when triggering on-loading bundle {}.",
@@ -250,7 +250,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                 });
     }
 
-    private void loadPersistentTopic(List<String> topics) {
+    public void loadPersistentTopic(List<String> topics) {
         topics.stream().forEach(topic -> {
             try {
                 Optional<Topic> optionalTopic = this.brokerService.getTopicIfExists(topic).get();
