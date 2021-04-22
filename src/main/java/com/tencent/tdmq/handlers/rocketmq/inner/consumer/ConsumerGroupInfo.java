@@ -14,7 +14,6 @@
 
 package com.tencent.tdmq.handlers.rocketmq.inner.consumer;
 
-import com.tencent.tdmq.handlers.rocketmq.utils.CommonUtils;
 import io.netty.channel.Channel;
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -33,8 +32,8 @@ import org.apache.rocketmq.common.protocol.heartbeat.SubscriptionData;
 @Slf4j
 public class ConsumerGroupInfo {
 
+    //rocketmq groupName
     private final String groupName;
-
     private final ConcurrentMap<String, SubscriptionData> subscriptionTable =
             new ConcurrentHashMap<>();
     private final ConcurrentMap<Channel, ClientChannelInfo> channelInfoTable =
@@ -141,7 +140,6 @@ public class ConsumerGroupInfo {
 
         this.lastUpdateTimestamp = System.currentTimeMillis();
         infoOld.setLastUpdateTimestamp(this.lastUpdateTimestamp);
-
         return updated;
     }
 
@@ -149,10 +147,9 @@ public class ConsumerGroupInfo {
         boolean updated = false;
 
         for (SubscriptionData sub : subList) {
-            String tdmqTopicName = CommonUtils.tdmqTopicName(sub.getTopic());
-            SubscriptionData old = this.subscriptionTable.get(tdmqTopicName);
+            SubscriptionData old = this.subscriptionTable.get(sub.getTopic());
             if (old == null) {
-                SubscriptionData prev = this.subscriptionTable.putIfAbsent(tdmqTopicName, sub);
+                SubscriptionData prev = this.subscriptionTable.putIfAbsent(sub.getTopic(), sub);
                 if (null == prev) {
                     updated = true;
                     log.info("subscription changed, add new topic, group: {} {}",
@@ -168,14 +165,14 @@ public class ConsumerGroupInfo {
                     );
                 }
 
-                this.subscriptionTable.put(tdmqTopicName, sub);
+                this.subscriptionTable.put(sub.getTopic(), sub);
             }
         }
 
         Iterator<Entry<String, SubscriptionData>> it = this.subscriptionTable.entrySet().iterator();
         while (it.hasNext()) {
             Entry<String, SubscriptionData> next = it.next();
-            String oldTopic = CommonUtils.tdmqTopicName(next.getKey());
+            String oldTopic = next.getKey();
 
             boolean exist = false;
             for (SubscriptionData sub : subList) {
@@ -198,7 +195,6 @@ public class ConsumerGroupInfo {
         }
 
         this.lastUpdateTimestamp = System.currentTimeMillis();
-
         return updated;
     }
 
