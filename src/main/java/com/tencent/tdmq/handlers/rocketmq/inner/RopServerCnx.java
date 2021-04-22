@@ -16,9 +16,12 @@ package com.tencent.tdmq.handlers.rocketmq.inner;
 
 import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
+import com.tencent.tdmq.handlers.rocketmq.inner.consumer.ConsumerOffsetManager;
 import com.tencent.tdmq.handlers.rocketmq.inner.consumer.RopGetMessageResult;
 import com.tencent.tdmq.handlers.rocketmq.inner.format.RopEntryFormatter;
 import com.tencent.tdmq.handlers.rocketmq.inner.format.RopMessageFilter;
+import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientGroupAndTopicName;
+import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientGroupName;
 import com.tencent.tdmq.handlers.rocketmq.inner.pulsar.PulsarMessageStore;
 import com.tencent.tdmq.handlers.rocketmq.utils.CommonUtils;
 import com.tencent.tdmq.handlers.rocketmq.utils.MessageIdUtils;
@@ -60,6 +63,7 @@ import org.apache.rocketmq.store.GetMessageStatus;
 import org.apache.rocketmq.store.MessageExtBrokerInner;
 import org.apache.rocketmq.store.PutMessageResult;
 import org.apache.rocketmq.store.PutMessageStatus;
+import org.apache.rocketmq.store.config.BrokerRole;
 
 @Slf4j
 @Getter
@@ -301,6 +305,31 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             return new RopGetMessageResult(getResult, null);
         }
 
+        ClientGroupAndTopicName clientGroupName = new ClientGroupAndTopicName(consumerGroup, topic);
+        ConsumerOffsetManager offsetManager = new ConsumerOffsetManager(brokerController);
+        long minOffsetInQueue = offsetManager.getMinOffsetInQueue(clientGroupName, partitionID);
+        long maxOffsetInQueue = offsetManager.getMaxOffsetInQueue(clientGroupName, partitionID);
+        long nextBeginOffset = queueOffset;
+
+        GetMessageStatus status = GetMessageStatus.NO_MESSAGE_IN_QUEUE;
+        if (minOffsetInQueue == 0) {
+            status = GetMessageStatus.NO_MESSAGE_IN_QUEUE;
+            nextBeginOffset = nextOffsetCorrection(queueOffset, 0);
+        } else if (queueOffset < minOffsetInQueue) {
+            status = GetMessageStatus.OFFSET_TOO_SMALL;
+            nextBeginOffset = nextOffsetCorrection(queueOffset, minOffsetInQueue);
+        } else if (queueOffset == maxOffsetInQueue) {
+            status = GetMessageStatus.OFFSET_OVERFLOW_ONE;
+            nextBeginOffset = nextOffsetCorrection(queueOffset, queueOffset);
+        } else if (queueOffset > maxOffsetInQueue) {
+            status = GetMessageStatus.OFFSET_OVERFLOW_BADLY;
+            if (0 == minOffsetInQueue) {
+                nextBeginOffset = nextOffsetCorrection(queueOffset, minOffsetInQueue);
+            } else {
+                nextBeginOffset = nextOffsetCorrection(queueOffset, minOffsetInQueue);
+            }
+        }
+
         String ctxId = this.ctx.channel().id().asLongText();
 
         long readerId = buildPulsarReaderId(consumerGroup, topic, ctxId);
@@ -339,19 +368,25 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         assert messageList != null;
         List<ByteBuffer> messagesBufferList = this.entryFormatter
                 .decodePulsarMessageResBuffer(messageList, messageFilter);
-        MessageIdImpl maxMessageID = (MessageIdImpl) messageList.get(maxMsgNums - 1).getMessageId();
-        long maxOffset = MessageIdUtils
-                .getOffset(maxMessageID.getLedgerId(), maxMessageID.getEntryId(), maxMessageID.getPartitionIndex());
+        if (null != messagesBufferList){
+            status = GetMessageStatus.FOUND;
+        }
 
-//        getResult.setBufferTotalSize();
-        getResult.setMaxOffset(maxOffset);
-        getResult.setMinOffset(commitOffset);
-        getResult.setStatus(GetMessageStatus.FOUND);
-//        getResult.setNextBeginOffset();
-//        getResult.setSuggestPullingFromSlave();
-//        getResult.setMsgCount4Commercial();
+        getResult.setMaxOffset(maxOffsetInQueue);
+        getResult.setMinOffset(minOffsetInQueue);
+        getResult.setStatus(status);
+        getResult.setNextBeginOffset(nextBeginOffset);
 
         return new RopGetMessageResult(getResult, messagesBufferList);
+    }
+
+    private long nextOffsetCorrection(long oldOffset, long newOffset) {
+        long nextOffset = oldOffset;
+        // TODO: check the broker status
+//        if (this.getMessageStoreConfig().getBrokerRole() != BrokerRole.SLAVE || this.getMessageStoreConfig().isOffsetCheckInSlave()) {
+//            nextOffset = newOffset;
+//        }
+        return nextOffset;
     }
 
     private long buildPulsarConsumerId(String... tags) {

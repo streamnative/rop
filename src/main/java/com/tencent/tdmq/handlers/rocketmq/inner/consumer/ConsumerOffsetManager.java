@@ -75,13 +75,15 @@ public class ConsumerOffsetManager {
         }
     }
 
-    private boolean offsetBehindMuchThanData(final ClientGroupAndTopicName topicAtGroup, ConcurrentMap<Integer, Long> table) {
+    private boolean offsetBehindMuchThanData(final ClientGroupAndTopicName topicAtGroup,
+            ConcurrentMap<Integer, Long> table) {
         Iterator<Entry<Integer, Long>> it = table.entrySet().iterator();
         boolean result = !table.isEmpty();
 
         while (it.hasNext() && result) {
             Entry<Integer, Long> next = it.next();
-            long minOffsetInStore = getMinOffsetInQueue(topicAtGroup, next.getKey());;
+            long minOffsetInStore = getMinOffsetInQueue(topicAtGroup, next.getKey());
+            ;
             long offsetInPersist = next.getValue();
             result = offsetInPersist <= minOffsetInStore;
         }
@@ -204,7 +206,7 @@ public class ConsumerOffsetManager {
         }
     }
 
-    private long getMinOffsetInQueue(ClientGroupAndTopicName groupAndTopic, int partitionId) {
+    public long getMinOffsetInQueue(ClientGroupAndTopicName groupAndTopic, int partitionId) {
         PersistentTopic persistentTopic = getPulsarPersistentTopic(groupAndTopic, partitionId);
         if (persistentTopic != null) {
             try {
@@ -214,6 +216,15 @@ public class ConsumerOffsetManager {
                 log.warn("getMinOffsetInQueue error, ClientGroupAndTopicName=[{}], partitionId=[{}].", groupAndTopic,
                         partitionId);
             }
+        }
+        return 0L;
+    }
+
+    public long getMaxOffsetInQueue(ClientGroupAndTopicName groupAndTopic, int partitionId) {
+        PersistentTopic persistentTopic = getPulsarPersistentTopic(groupAndTopic, partitionId);
+        if (persistentTopic != null) {
+            PositionImpl lastPosition = (PositionImpl) persistentTopic.getLastPosition();
+            return MessageIdUtils.getOffset(lastPosition.getLedgerId(), lastPosition.getEntryId());
         }
         return 0L;
     }
