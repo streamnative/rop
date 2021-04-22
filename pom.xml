@@ -5,8 +5,8 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>com.tencent.tdmq.handlers</groupId>
-    <artifactId>tdmq-protocol-handler-rocketmq-parent</artifactId>
-    <version>1.0-SNAPSHOT</version>
+    <artifactId>tdmq-protocol-handler-rocketmq</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
     <name>Tencent :: TDMQ Protocol Handler :: RoP Parent</name>
     <description>Parent for RocketMQ on TDMQ implemented using TDMQ Protocol Handler.</description>
 
@@ -312,14 +312,14 @@
                 <artifactId>maven-antrun-plugin</artifactId>
                 <executions>
                     <execution>
-                        <phase>deploy</phase>
+                        <phase>install</phase>
                         <goals>
                             <goal>run</goal>
                         </goals>
                         <configuration>
                             <tasks>
                                 <echo>copy protocol handler</echo>
-                                <copy file="${basedir}/target/tdmq-protocol-handler-rocketmq-parent-${project.version}.nar"
+                                <copy file="${basedir}/target/tdmq-protocol-handler-rocketmq-${project.version}.nar"
                                         tofile="${basedir}/src/test/resources/test-protocol-handler.nar"/>
                             </tasks>
                         </configuration>
