@@ -144,8 +144,6 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
         this.brokerService = pulsarService.getBrokerService();
         this.adminClient = this.pulsarService.getAdminClient();
 
-        // 每次启动的时候，移除 global cluster，避免 global cluster 集群创建失败
-        adminClient.clusters().deleteCluster("global");
         createSysResource();
         this.pulsarService.getNamespaceService().addNamespaceBundleOwnershipListener(this);
     }
