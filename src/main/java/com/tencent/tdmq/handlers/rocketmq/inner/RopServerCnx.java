@@ -70,7 +70,6 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
     private final int MAX_BATCH_MESSAGE_NUM = 20;
     private final BrokerService service;
     private final ConcurrentLongHashMap<Producer> producers;
-    private final ConcurrentLongHashMap<Consumer> consumers;
     private final ConcurrentLongHashMap<Reader> readers;
     private final RopEntryFormatter entryFormatter = new RopEntryFormatter();
     private RocketMQBrokerController brokerController;
@@ -86,7 +85,6 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         this.remoteAddress = ctx.channel().remoteAddress();
         this.state = State.Connected;
         this.producers = new ConcurrentLongHashMap(8, 1);
-        this.consumers = new ConcurrentLongHashMap(8, 1);
         this.readers = new ConcurrentLongHashMap(8, 1);
         synchronized (ctx) {
             if (ctx.pipeline().get(ROP_HANDLER_NAME) == null) {
@@ -106,10 +104,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         log.info("Closed connection from {}", remoteAddress);
         // Connection is gone, close the resources immediately
         producers.values().forEach((producer) -> producer.closeAsync());
-        consumers.values().forEach((consumer) -> consumer.closeAsync());
         readers.values().forEach((reader) -> reader.closeAsync());
         producers.clear();
-        consumers.clear();
         readers.clear();
     }
 
