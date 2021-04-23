@@ -190,9 +190,9 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                         log.warn("getTopicBrokerAddr error.", e);
                     }
                 });
+                putPulsarTopic2Config(topicName, partitionedMetadata.partitions);
             }
 
-            putPulsarTopic2Config(topicName, partitionedMetadata.partitions);
             lookupCache.put(topicName, partitionedTopicAddr);
         } catch (Exception e) {
             log.error("getTopicBroker info error for the topic[{}].", topicName, e);
@@ -241,6 +241,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                     if (ex == null) {
                         log.info("get owned topic list when onLoad bundle {}, topic size {} ", bundle, topics.size());
                         for (String topic : topics) {
+                            log.info("NamespaceBundle onLoad topic = [{}].", topic);
                             TopicName name = TopicName.get(TopicName.get(topic).getPartitionedTopicName());
                             getTopicBrokerAddr(name);
                         }
@@ -290,6 +291,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                             TopicName name = TopicName.get(topic);
                             lookupCache.invalidate(name);
                             this.pulsarTopicCache.remove(new ClientTopicName(topic));
+                            this.topicConfigTable.remove(RocketMQTopic.getPulsarOrigNoDomainTopic(topic));
                         }
                     } else {
                         log.error("Failed to get owned topic list for "

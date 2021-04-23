@@ -110,6 +110,9 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
     @Override
     public List<ByteBuffer> decodePulsarMessageResBuffer(List<Message> messages,
             Predicate predicate) {//Message in pulsar
+        if (messages == null || messages.isEmpty()) {
+            return Collections.emptyList();
+        }
         if (predicate != null) {
             return messages.stream().filter((Predicate<Message>) predicate)
                     .map(RopEntryFormatter::decodePulsarMessageResBuffer)

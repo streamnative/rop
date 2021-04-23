@@ -325,32 +325,18 @@ public class PullMessageProcessor implements NettyRequestProcessor {
                     this.brokerController.getBrokerStatsManager()
                             .incGroupGetNums(requestHeader.getConsumerGroup(), requestHeader.getTopic(),
                                     getMessageResult.getMessageCount());
-
                     this.brokerController.getBrokerStatsManager()
                             .incGroupGetSize(requestHeader.getConsumerGroup(), requestHeader.getTopic(),
                                     getMessageResult.getBufferTotalSize());
-
                     this.brokerController.getBrokerStatsManager().incBrokerGetNums(getMessageResult.getMessageCount());
 
-                    for (int i = 0; i < messagesBuffer.size(); i++) {
-                        try {
-                            channel.writeAndFlush(messagesBuffer.get(i)).addListener(new ChannelFutureListener() {
-                                @Override
-                                public void operationComplete(ChannelFuture future) throws Exception {
-                                    getMessageResult.release();
-                                    if (!future.isSuccess()) {
-                                        log.error("transfer many message by pagecache failed, {}",
-                                                channel.remoteAddress(), future.cause());
-                                    }
-                                }
-                            });
-                        } catch (Throwable e) {
-                            log.error("transfer many message by pagecache exception", e);
-                            getMessageResult.release();
-                        }
-
-                        response = null;
-                    }
+                    final long beginTimeMills = System.currentTimeMillis();
+                    final byte[] r = this.readGetMessageResult(getMessageResult, requestHeader.getConsumerGroup(),
+                            requestHeader.getTopic(), requestHeader.getQueueId());
+                    this.brokerController.getBrokerStatsManager().incGroupGetLatency(requestHeader.getConsumerGroup(),
+                            requestHeader.getTopic(), requestHeader.getQueueId(),
+                            (int) (System.currentTimeMillis() - beginTimeMills));
+                    response.setBody(r);
                     break;
                 case ResponseCode.PULL_NOT_FOUND:
 

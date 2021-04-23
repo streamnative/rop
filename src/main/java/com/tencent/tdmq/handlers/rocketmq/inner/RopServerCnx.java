@@ -356,7 +356,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             e.printStackTrace();
         }
 
-        List<Message> messageList = null;
+        List<Message> messageList = new ArrayList<>();
 
         try {
             for (int i = 0; i < maxMsgNums; i++) {

@@ -285,9 +285,8 @@ public class CommonUtils {
     }
 
     public static ByteBuffer decode(ByteBuffer byteBuffer) {
-        ByteBuffer slice = byteBuffer.slice();
         // 去除 tags 标记位的 8 个字节之后，将原先的 byteBuffer 返回
-        Buffer buffer = slice.position(byteBuffer.position() + 8);
-        return ((ByteBuffer) buffer).slice();
+        byteBuffer.getLong();
+        return byteBuffer.slice();
     }
 }

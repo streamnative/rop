@@ -143,10 +143,15 @@ public abstract class TopicConfigManager {
 
     protected void putPulsarTopic2Config(TopicName tdmqTopic, int partitionNum) {
         String tdmqTopicName = Joiner.on("/").join(tdmqTopic.getNamespace(), tdmqTopic.getLocalName());
-        TopicConfig topicConfig = new TopicConfig(tdmqTopicName);
-        topicConfig.setReadQueueNums(partitionNum);
-        topicConfig.setWriteQueueNums(partitionNum);
-        this.topicConfigTable.put(tdmqTopicName, topicConfig);
+        if (!this.topicConfigTable.containsKey(tdmqTopicName)) {
+            TopicConfig topicConfig = new TopicConfig(tdmqTopicName);
+            if (partitionNum > 0) {
+                topicConfig.setReadQueueNums(partitionNum);
+                topicConfig.setWriteQueueNums(partitionNum);
+            }
+            topicConfig.setPerm(7);
+            this.topicConfigTable.put(tdmqTopicName, topicConfig);
+        }
     }
 
     public boolean isSystemTopic(final String topic) {
