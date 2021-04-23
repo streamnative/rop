@@ -14,6 +14,7 @@
 
 package com.tencent.tdmq.handlers.rocketmq.inner.namesvr;
 
+import com.google.common.base.Joiner;
 import com.google.common.base.Splitter;
 import com.tencent.tdmq.handlers.rocketmq.RocketMQServiceConfiguration;
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
@@ -27,6 +28,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.pulsar.common.naming.TopicName;
 import org.apache.rocketmq.common.DataVersion;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.TopicConfig;
@@ -139,15 +141,13 @@ public abstract class TopicConfigManager {
 
     }
 
-/*    protected boolean putPulsarTopicConfig(String ) {
-        topicConfig.setReadQueueNums(queueNums);
-        topicConfig.setWriteQueueNums(queueNums);
-        int perm = defaultTopicConfig.getPerm();
-        perm &= ~PermName.PERM_INHERIT;
-        topicConfig.setPerm(perm);
-        topicConfig.setTopicSysFlag(topicSysFlag);
-        topicConfig.setTopicFilterType(defaultTopicConfig.getTopicFilterType());
-    }*/
+    protected void putPulsarTopic2Config(TopicName tdmqTopic, int partitionNum) {
+        String tdmqTopicName = Joiner.on("/").join(tdmqTopic.getNamespace(), tdmqTopic.getLocalName());
+        TopicConfig topicConfig = new TopicConfig(tdmqTopicName);
+        topicConfig.setReadQueueNums(partitionNum);
+        topicConfig.setWriteQueueNums(partitionNum);
+        this.topicConfigTable.put(tdmqTopicName, topicConfig);
+    }
 
     public boolean isSystemTopic(final String topic) {
         return this.systemTopicList.contains(RocketMQTopic.getPulsarMetaNoDomainTopic(topic));

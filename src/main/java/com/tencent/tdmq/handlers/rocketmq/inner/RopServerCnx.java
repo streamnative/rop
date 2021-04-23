@@ -135,11 +135,12 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         RocketMQTopic rmqTopic = new RocketMQTopic(messageInner.getTopic());
         int partitionId = messageInner.getQueueId();
         String pTopic = rmqTopic.getPartitionName(partitionId);
-        long producerId = buildPulsarProducerId(producerGroup, pTopic);
+        long producerId = buildPulsarProducerId(producerGroup, pTopic, this.remoteAddress.toString());
         try {
             if (!this.producers.containsKey(producerId)) {
-                log.info("putMessage create producer[id={}] successfully.", producerId);
-                Producer<byte[]> producer = this.service.pulsar().getClient().newProducer()
+                log.info("putMessage creatint producer[id={}] and channl=[{}].", producerId, ctx.channel());
+                Producer<byte[]> producer = this.service.pulsar().getClient()
+                        .newProducer()
                         .topic(pTopic)
                         .producerName(producerGroup + producerId)
                         .sendTimeout(SEND_TIMEOUT_IN_SEC, TimeUnit.SECONDS)
@@ -169,7 +170,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         RocketMQTopic rmqTopic = new RocketMQTopic(batchMessage.getTopic());
         int partitionId = batchMessage.getQueueId();
         String pTopic = rmqTopic.getPartitionName(partitionId);
-        long producerId = buildPulsarProducerId(producerGroup, pTopic);
+        long producerId = buildPulsarProducerId(producerGroup, pTopic, this.remoteAddress.toString());
         try {
             Producer putMsgProducer = this.producers.get(producerId);
 
@@ -334,12 +335,15 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             log.debug("The commit offset is: {} and the queue offset is:{}", commitOffset, queueOffset);
         }
 
+        RocketMQTopic rmqTopic = new RocketMQTopic(requestHeader.getTopic());
+        String pTopic = rmqTopic.getPartitionName(partitionId);
+
         // 通过offset来取出要开始消费的messageId的位置
         //MessageId messageId = MessageIdUtils.getMessageId(queueOffset);
         try {
             if (!this.readers.containsKey(readerId)) {
                 Reader<byte[]> reader = this.service.pulsar().getClient().newReader()
-                        .topic(topic)
+                        .topic(pTopic)
                         .receiverQueueSize(100)
                         .startMessageId(MessageId.earliest)
                         .readerName(consumerGroup + readerId)
@@ -357,7 +361,9 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         try {
             for (int i = 0; i < maxMsgNums; i++) {
                 Message message = this.readers.get(readerId).readNext(100, TimeUnit.MILLISECONDS);
-                messageList.add(message);
+                if (message != null){
+                    messageList.add(message);
+                }
             }
         } catch (Exception e) {
             log.warn("retrieve message error, group = [{}], topic = [{}].", consumerGroup, topic);

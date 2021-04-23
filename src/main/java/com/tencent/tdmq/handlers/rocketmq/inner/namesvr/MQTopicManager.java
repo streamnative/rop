@@ -24,6 +24,7 @@ import com.google.common.collect.Sets;
 import com.tencent.tdmq.handlers.rocketmq.RocketMQProtocolHandler;
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
 import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientTopicName;
+import com.tencent.tdmq.handlers.rocketmq.utils.RocketMQTopic;
 import com.tencent.tdmq.handlers.rocketmq.utils.TopicNameUtils;
 import java.net.InetSocketAddress;
 import java.util.HashMap;
@@ -190,6 +191,8 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                     }
                 });
             }
+
+            putPulsarTopic2Config(topicName, partitionedMetadata.partitions);
             lookupCache.put(topicName, partitionedTopicAddr);
         } catch (Exception e) {
             log.error("getTopicBroker info error for the topic[{}].", topicName, e);
@@ -241,7 +244,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                             TopicName name = TopicName.get(TopicName.get(topic).getPartitionedTopicName());
                             getTopicBrokerAddr(name);
                         }
-                        loadPersistentTopic(topics);
+                        //loadPersistentTopic(topics);
                     } else {
                         log.error("Failed to get owned topic list for "
                                         + "OffsetAndTopicListener when triggering on-loading bundle {}.",
@@ -298,8 +301,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
 
     @Override
     public boolean test(NamespaceBundle namespaceBundle) {
-        return namespaceBundle.getNamespaceObject().equals(rocketmqMetaNs)
-                || namespaceBundle.getNamespaceObject().equals(rocketmqTopicNs);
+        return true;
     }
 
     private void createSysResource() throws Exception {
@@ -317,7 +319,6 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
         createPulsarNamespaceIfNeeded(brokerService, cluster, "test1", "InstanceTest");
 
         this.topicConfigTable.values().stream().forEach(tc -> {
-            loadSysTopics(tc);
             createPulsarTopic(tc);
         });
     }
@@ -346,6 +347,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                             .createNonPartitionedTopic(fullTopicName + PARTITIONED_TOPIC_SUFFIX + i);
                 }
             }
+            loadSysTopics(tc);
         } catch (Exception e) {
             log.warn("Topic {} concurrent creating and cause e: ", fullTopicName, e);
             return fullTopicName;
