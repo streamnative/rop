@@ -3,7 +3,7 @@
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -54,7 +54,9 @@ public class CommonUtils {
      * @return rmqTopicName => [tenant|ns%topicName]
      */
     public static String rmqTopicName(String tdmqTopicName) {
-        if (Strings.isBlank(tdmqTopicName)) return Strings.EMPTY;
+        if (Strings.isBlank(tdmqTopicName)) {
+            return Strings.EMPTY;
+        }
         List<String> splits = Splitter.on('/').splitToList(tdmqTopicName);
         if (splits.size() >= 3) {
             return splits.get(0) + VERTICAL_LINE_CHAR + splits.get(1) + PERCENTAGE_CHAR + splits.get(2);
@@ -63,7 +65,9 @@ public class CommonUtils {
     }
 
     public static String tdmqTopicName(String rmqTopicName) {
-        if (Strings.isBlank(rmqTopicName)) return Strings.EMPTY;
+        if (Strings.isBlank(rmqTopicName)) {
+            return Strings.EMPTY;
+        }
         RocketMQTopic rmqTopic = new RocketMQTopic(rmqTopicName);
         return rmqTopic.getOrigNoDomainTopicName();
     }

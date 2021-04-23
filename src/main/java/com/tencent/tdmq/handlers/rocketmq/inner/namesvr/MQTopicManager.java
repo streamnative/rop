@@ -70,10 +70,10 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
             .initialCapacity(MAX_CACHE_SIZE).maximumSize(MAX_CACHE_SIZE)
             .expireAfterWrite(MAX_CACHE_TIME_IN_SEC, TimeUnit.SECONDS)
             .build();
+    private final int servicePort;
     @Getter
     private ConcurrentHashMap<ClientTopicName, ConcurrentMap<Integer, PersistentTopic>> pulsarTopicCache =
             new ConcurrentHashMap<>(MAX_CACHE_SIZE);
-    private final int servicePort;
     private PulsarService pulsarService;
     private BrokerService brokerService;
     private PulsarAdmin adminClient;
@@ -143,7 +143,6 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
         this.pulsarService = brokerController.getBrokerService().pulsar();
         this.brokerService = pulsarService.getBrokerService();
         this.adminClient = this.pulsarService.getAdminClient();
-
 
         createSysResource();
         this.pulsarService.getNamespaceService().addNamespaceBundleOwnershipListener(this);
@@ -254,16 +253,23 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
     public void loadPersistentTopic(List<String> topics) {
         topics.stream().forEach(topic -> {
             try {
-                Optional<Topic> optionalTopic = this.brokerService.getTopicReference(topic);
-                if (optionalTopic.isPresent()) {
-                    PersistentTopic persistentTopic = (PersistentTopic) optionalTopic.get();
-                    TopicName topicName = TopicName.get(topic);
-                    ClientTopicName clientTopicName = new ClientTopicName(topicName);
-                    if (!pulsarTopicCache.containsKey(clientTopicName)) {
-                        pulsarTopicCache.put(clientTopicName, new ConcurrentHashMap<>());
+                this.brokerService.getTopic(topic, false).whenComplete((t2, throwable) -> {
+                    if (throwable != null) {
+                        log.warn("getTopicIfExists error, topic=[{}].", topic);
+                        return;
                     }
-                    pulsarTopicCache.get(clientTopicName).put(topicName.getPartitionIndex(), persistentTopic);
-                }
+                    if (t2.isPresent()) {
+                        PersistentTopic persistentTopic = (PersistentTopic) t2.get();
+                        TopicName topicName = TopicName.get(topic);
+                        ClientTopicName clientTopicName = new ClientTopicName(topicName);
+                        if (!pulsarTopicCache.containsKey(clientTopicName)) {
+                            pulsarTopicCache.put(clientTopicName, new ConcurrentHashMap<>());
+                        }
+                        pulsarTopicCache.get(clientTopicName).put(topicName.getPartitionIndex(), persistentTopic);
+                    } else {
+                        log.warn("getTopicIfExists error, topic=[{}].", topic);
+                    }
+                });
             } catch (Exception e) {
                 log.warn("getTopicIfExists error, topic=[{}].", topic, e);
             }

@@ -3,7 +3,7 @@
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,8 +18,6 @@ import com.google.common.base.Preconditions;
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
 import com.tencent.tdmq.handlers.rocketmq.inner.namesvr.MQTopicManager;
 import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientGroupName;
-import com.tencent.tdmq.handlers.rocketmq.utils.CommonUtils;
-import com.tencent.tdmq.handlers.rocketmq.utils.RocketMQTopic;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import lombok.extern.slf4j.Slf4j;
@@ -50,23 +48,24 @@ public class SubscriptionGroupManager {
         this.subscriptionGroupTable.put(new ClientGroupName("SELF_TEST_C_GROUP"), subscriptionGroupConfig);
     }
 
-    public void start(){
+    public void start() {
         log.info("starting SubscriptionGroupManager service...");
         Preconditions.checkNotNull(brokerController);
         MQTopicManager topicConfigManager = this.brokerController.getTopicConfigManager();
         topicConfigManager.getPulsarTopicCache().forEach(((clientTopicName, persistentTopicMap) -> {
-                persistentTopicMap.values().stream().forEach((topic) -> {
-                    topic.getSubscriptions().forEach((grp, subscription) -> {
-                        SubscriptionGroupConfig config = new SubscriptionGroupConfig();
-                        config.setGroupName(grp);
-                        subscriptionGroupTable.put(new ClientGroupName(grp), config);
-                    });
+            persistentTopicMap.values().stream().forEach((topic) -> {
+                topic.getSubscriptions().forEach((grp, subscription) -> {
+                    SubscriptionGroupConfig config = new SubscriptionGroupConfig();
+                    config.setGroupName(grp);
+                    subscriptionGroupTable.put(new ClientGroupName(grp), config);
                 });
+            });
         }));
     }
 
     public void updateSubscriptionGroupConfig(SubscriptionGroupConfig config) {
-        SubscriptionGroupConfig old = this.subscriptionGroupTable.put(new ClientGroupName(config.getGroupName()), config);
+        SubscriptionGroupConfig old = this.subscriptionGroupTable
+                .put(new ClientGroupName(config.getGroupName()), config);
         if (old != null) {
             log.info("update subscription group config, old: {} new: {}", old, config);
         } else {

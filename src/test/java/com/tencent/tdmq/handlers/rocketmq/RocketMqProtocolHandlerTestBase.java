@@ -3,7 +3,7 @@
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -67,38 +67,118 @@ import org.mockito.Mockito;
 @Slf4j
 public abstract class RocketMqProtocolHandlerTestBase {
 
+    protected final String configClusterName = "test-rop";
     protected ServiceConfiguration conf;
     protected PulsarAdmin admin;
     protected URL brokerUrl;
     protected URL brokerUrlTls;
     protected URI lookupUrl;
     protected PulsarClient pulsarClient;
-
     @Getter
     protected int rocketmqBrokerPortTls = PortManager.nextFreePort();
-
     protected MockZooKeeper mockZooKeeper;
     protected NonClosableMockBookKeeper mockBookKeeper;
     protected boolean isTcpLookup = false;
-    protected final String configClusterName = "test-rop";
+    protected ZooKeeperClientFactory mockZooKeeperClientFactory = new ZooKeeperClientFactory() {
 
+        @Override
+        public CompletableFuture<ZooKeeper> create(String serverList, SessionType sessionType,
+                int zkSessionTimeoutMillis) {
+            // Always return the same instance
+            // (so that we don't loose the mock ZK content on broker restart
+            return CompletableFuture.completedFuture(mockZooKeeper);
+        }
+    };
     private SameThreadOrderedSafeExecutor sameThreadOrderedSafeExecutor;
     private ExecutorService bkExecutor;
-
     private int brokerCount = 1;
     @Getter
     private List<PulsarService> pulsarServiceList = new ArrayList<>();
     @Getter
-    private List<Integer > brokerPortList = new ArrayList<>();
+    private List<Integer> brokerPortList = new ArrayList<>();
     @Getter
     private List<Integer> brokerWebservicePortList = new ArrayList<>();
     @Getter
     private List<Integer> brokerWebServicePortTlsList = new ArrayList<>();
     @Getter
     private List<Integer> rocketmqBrokerPortList = new ArrayList<>();
+    private BookKeeperClientFactory mockBookKeeperClientFactory = new BookKeeperClientFactory() {
+
+        @Override
+        public BookKeeper create(ServiceConfiguration conf, ZooKeeper zkClient,
+                Optional<Class<? extends EnsemblePlacementPolicy>> ensemblePlacementPolicyClass,
+                Map<String, Object> properties) {
+            // Always return the same instance (so that we don't loose the mock BK content on broker restart
+            return mockBookKeeper;
+        }
+
+        @Override
+        public void close() {
+            // no-op
+        }
+
+        @Override
+        public BookKeeper create(ServiceConfiguration serviceConfiguration, ZooKeeper zooKeeper,
+                Optional<Class<? extends EnsemblePlacementPolicy>> optional,
+                Map<String, Object> map, StatsLogger statsLogger) throws IOException {
+            return mockBookKeeper;
+        }
+    };
 
     public RocketMqProtocolHandlerTestBase() {
         resetConfig();
+    }
+
+    public static MockZooKeeper createMockZooKeeper() throws Exception {
+        MockZooKeeper zk = MockZooKeeper.newInstance(MoreExecutors.newDirectExecutorService());
+        List<ACL> dummyAclList = new ArrayList<>(0);
+
+        ZkUtils.createFullPathOptimistic(zk, "/ledgers/available/192.168.1.1:" + 5000,
+                "".getBytes(ZookeeperClientFactoryImpl.ENCODING_SCHEME), dummyAclList, CreateMode.PERSISTENT);
+
+        zk.create(
+                "/ledgers/LAYOUT",
+                "1\nflat:1".getBytes(ZookeeperClientFactoryImpl.ENCODING_SCHEME), dummyAclList,
+                CreateMode.PERSISTENT);
+        return zk;
+    }
+
+    public static NonClosableMockBookKeeper createMockBookKeeper(ZooKeeper zookeeper,
+            ExecutorService executor) throws Exception {
+        return spy(new NonClosableMockBookKeeper(zookeeper, executor));
+    }
+
+    public static void retryStrategically(Predicate<Void> predicate, int retryCount, long intSleepTimeInMillis)
+            throws Exception {
+        for (int i = 0; i < retryCount; i++) {
+            if (predicate.test(null) || i == (retryCount - 1)) {
+                break;
+            }
+            Thread.sleep(intSleepTimeInMillis + (intSleepTimeInMillis * i));
+        }
+    }
+
+    public static void setFieldValue(Class clazz, Object classObj, String fieldName, Object fieldValue)
+            throws Exception {
+        Field field = clazz.getDeclaredField(fieldName);
+        field.setAccessible(true);
+        field.set(classObj, fieldValue);
+    }
+
+    public static String randExName() {
+        return randomName("ex-", 4);
+    }
+
+    public static String randQuName() {
+        return randomName("qu-", 4);
+    }
+
+    public static String randomName(String prefix, int numChars) {
+        StringBuilder sb = new StringBuilder(prefix);
+        for (int i = 0; i < numChars; i++) {
+            sb.append((char) (ThreadLocalRandom.current().nextInt(26) + 'a'));
+        }
+        return sb.toString();
     }
 
     protected void resetConfig() {
@@ -281,23 +361,17 @@ public abstract class RocketMqProtocolHandlerTestBase {
         doReturn(sameThreadOrderedSafeExecutor).when(pulsar).getOrderedExecutor();
     }
 
-    public static MockZooKeeper createMockZooKeeper() throws Exception {
-        MockZooKeeper zk = MockZooKeeper.newInstance(MoreExecutors.newDirectExecutorService());
-        List<ACL> dummyAclList = new ArrayList<>(0);
-
-        ZkUtils.createFullPathOptimistic(zk, "/ledgers/available/192.168.1.1:" + 5000,
-                "".getBytes(ZookeeperClientFactoryImpl.ENCODING_SCHEME), dummyAclList, CreateMode.PERSISTENT);
-
-        zk.create(
-                "/ledgers/LAYOUT",
-                "1\nflat:1".getBytes(ZookeeperClientFactoryImpl.ENCODING_SCHEME), dummyAclList,
-                CreateMode.PERSISTENT);
-        return zk;
+    public void checkPulsarServiceState() {
+        for (PulsarService pulsarService : pulsarServiceList) {
+            Mockito.when(pulsarService.getState()).thenReturn(PulsarService.State.Started);
+        }
     }
 
-    public static NonClosableMockBookKeeper createMockBookKeeper(ZooKeeper zookeeper,
-            ExecutorService executor) throws Exception {
-        return spy(new NonClosableMockBookKeeper(zookeeper, executor));
+    /**
+     * Set the starting broker count for test.
+     */
+    public void setBrokerCount(int brokerCount) {
+        this.brokerCount = brokerCount;
     }
 
     /**
@@ -322,86 +396,6 @@ public abstract class RocketMqProtocolHandlerTestBase {
         public void reallyShutdown() {
             super.shutdown();
         }
-    }
-
-    protected ZooKeeperClientFactory mockZooKeeperClientFactory = new ZooKeeperClientFactory() {
-
-        @Override
-        public CompletableFuture<ZooKeeper> create(String serverList, SessionType sessionType,
-                int zkSessionTimeoutMillis) {
-            // Always return the same instance
-            // (so that we don't loose the mock ZK content on broker restart
-            return CompletableFuture.completedFuture(mockZooKeeper);
-        }
-    };
-
-    private BookKeeperClientFactory mockBookKeeperClientFactory = new BookKeeperClientFactory() {
-
-        @Override
-        public BookKeeper create(ServiceConfiguration conf, ZooKeeper zkClient,
-                Optional<Class<? extends EnsemblePlacementPolicy>> ensemblePlacementPolicyClass,
-                Map<String, Object> properties) {
-            // Always return the same instance (so that we don't loose the mock BK content on broker restart
-            return mockBookKeeper;
-        }
-
-        @Override
-        public void close() {
-            // no-op
-        }
-
-        @Override
-        public BookKeeper create(ServiceConfiguration serviceConfiguration, ZooKeeper zooKeeper,
-                Optional<Class<? extends EnsemblePlacementPolicy>> optional,
-                Map<String, Object> map, StatsLogger statsLogger) throws IOException {
-            return mockBookKeeper;
-        }
-    };
-
-    public static void retryStrategically(Predicate<Void> predicate, int retryCount, long intSleepTimeInMillis)
-            throws Exception {
-        for (int i = 0; i < retryCount; i++) {
-            if (predicate.test(null) || i == (retryCount - 1)) {
-                break;
-            }
-            Thread.sleep(intSleepTimeInMillis + (intSleepTimeInMillis * i));
-        }
-    }
-
-    public static void setFieldValue(Class clazz, Object classObj, String fieldName, Object fieldValue)
-            throws Exception {
-        Field field = clazz.getDeclaredField(fieldName);
-        field.setAccessible(true);
-        field.set(classObj, fieldValue);
-    }
-
-    public void checkPulsarServiceState() {
-        for (PulsarService pulsarService : pulsarServiceList) {
-            Mockito.when(pulsarService.getState()).thenReturn(PulsarService.State.Started);
-        }
-    }
-
-    /**
-     * Set the starting broker count for test.
-     */
-    public void setBrokerCount(int brokerCount) {
-        this.brokerCount = brokerCount;
-    }
-
-    public static String randExName() {
-        return randomName("ex-", 4);
-    }
-
-    public static String randQuName() {
-        return randomName("qu-", 4);
-    }
-
-    public static String randomName(String prefix, int numChars) {
-        StringBuilder sb = new StringBuilder(prefix);
-        for (int i = 0; i < numChars; i++) {
-            sb.append((char) (ThreadLocalRandom.current().nextInt(26) + 'a'));
-        }
-        return sb.toString();
     }
 
 }
