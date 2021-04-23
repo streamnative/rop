@@ -3,7 +3,7 @@
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,15 +16,12 @@ package com.tencent.tdmq.handlers.rocketmq.inner;
 
 import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
-import com.tencent.tdmq.handlers.rocketmq.inner.consumer.ConsumerOffsetManager;
 import com.tencent.tdmq.handlers.rocketmq.inner.consumer.RopGetMessageResult;
 import com.tencent.tdmq.handlers.rocketmq.inner.format.RopEntryFormatter;
 import com.tencent.tdmq.handlers.rocketmq.inner.format.RopMessageFilter;
 import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientGroupAndTopicName;
-import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientGroupName;
 import com.tencent.tdmq.handlers.rocketmq.inner.pulsar.PulsarMessageStore;
 import com.tencent.tdmq.handlers.rocketmq.utils.CommonUtils;
-import com.tencent.tdmq.handlers.rocketmq.utils.MessageIdUtils;
 import com.tencent.tdmq.handlers.rocketmq.utils.RocketMQTopic;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
@@ -41,7 +38,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang.exception.ExceptionUtils;
 import org.apache.pulsar.broker.PulsarServerException;
 import org.apache.pulsar.broker.service.BrokerService;
-import org.apache.pulsar.client.api.Consumer;
 import org.apache.pulsar.client.api.Message;
 import org.apache.pulsar.client.api.MessageId;
 import org.apache.pulsar.client.api.Producer;
@@ -63,7 +59,6 @@ import org.apache.rocketmq.store.GetMessageStatus;
 import org.apache.rocketmq.store.MessageExtBrokerInner;
 import org.apache.rocketmq.store.PutMessageResult;
 import org.apache.rocketmq.store.PutMessageStatus;
-import org.apache.rocketmq.store.config.BrokerRole;
 
 @Slf4j
 @Getter
@@ -293,7 +288,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
 
         String consumerGroup = requestHeader.getConsumerGroup();
         String topic = requestHeader.getTopic();
-        int partitionID = requestHeader.getQueueId();
+        int partitionId = requestHeader.getQueueId();
         // 当前已经消费掉的消息的offset的位置
         long commitOffset = requestHeader.getCommitOffset();
         // queueOffset 是要拉取消息的起始位置
@@ -306,9 +301,11 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         }
 
         ClientGroupAndTopicName clientGroupName = new ClientGroupAndTopicName(consumerGroup, topic);
-        ConsumerOffsetManager offsetManager = new ConsumerOffsetManager(brokerController);
-        long minOffsetInQueue = offsetManager.getMinOffsetInQueue(clientGroupName, partitionID);
-        long maxOffsetInQueue = offsetManager.getMaxOffsetInQueue(clientGroupName, partitionID);
+
+        long minOffsetInQueue = this.brokerController.getConsumerOffsetManager()
+                .getMinOffsetInQueue(clientGroupName, partitionId);
+        long maxOffsetInQueue = this.brokerController.getConsumerOffsetManager()
+                .getMaxOffsetInQueue(clientGroupName, partitionId);
         long nextBeginOffset = queueOffset;
 
         GetMessageStatus status = GetMessageStatus.NO_MESSAGE_IN_QUEUE;
@@ -338,13 +335,13 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         }
 
         // 通过offset来取出要开始消费的messageId的位置
-        MessageId messageId = MessageIdUtils.getMessageId(queueOffset);
+        //MessageId messageId = MessageIdUtils.getMessageId(queueOffset);
         try {
             if (!this.readers.containsKey(readerId)) {
                 Reader<byte[]> reader = this.service.pulsar().getClient().newReader()
                         .topic(topic)
                         .receiverQueueSize(100)
-                        .startMessageId(messageId)
+                        .startMessageId(MessageId.earliest)
                         .readerName(consumerGroup + readerId)
                         .create();
                 this.readers.putIfAbsent(readerId, reader);
@@ -359,16 +356,16 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
 
         try {
             for (int i = 0; i < maxMsgNums; i++) {
-                Message message = this.readers.get(readerId).readNext();
+                Message message = this.readers.get(readerId).readNext(100, TimeUnit.MILLISECONDS);
                 messageList.add(message);
             }
-        } catch (PulsarClientException e) {
-            e.printStackTrace();
+        } catch (Exception e) {
+            log.warn("retrieve message error, group = [{}], topic = [{}].", consumerGroup, topic);
         }
         assert messageList != null;
         List<ByteBuffer> messagesBufferList = this.entryFormatter
                 .decodePulsarMessageResBuffer(messageList, messageFilter);
-        if (null != messagesBufferList){
+        if (null != messagesBufferList) {
             status = GetMessageStatus.FOUND;
         }
 
@@ -387,10 +384,6 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
 //            nextOffset = newOffset;
 //        }
         return nextOffset;
-    }
-
-    private long buildPulsarConsumerId(String... tags) {
-        return Math.abs(Joiner.on("/").join(tags).hashCode());
     }
 
     private long buildPulsarReaderId(String... tags) {

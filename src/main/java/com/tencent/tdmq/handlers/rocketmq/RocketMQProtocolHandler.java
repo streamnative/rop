@@ -92,7 +92,7 @@ public class RocketMQProtocolHandler implements ProtocolHandler {
     @Override
     public void start(BrokerService service) {
         brokerService = service;
-        rocketMQBroker.setBrokerService(brokerService);
+        rocketMQBroker.setBrokerService(service);
         log.info("Starting RocketmqProtocolHandler, listener: {}, rop version is: '{}'",
                 rocketmqConfig.getRocketmqListeners(), RopVersion.getVersion());
         log.info("Git Revision {}", RopVersion.getGitSha());

@@ -144,6 +144,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
         this.brokerService = pulsarService.getBrokerService();
         this.adminClient = this.pulsarService.getAdminClient();
 
+
         createSysResource();
         this.pulsarService.getNamespaceService().addNamespaceBundleOwnershipListener(this);
     }

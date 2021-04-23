@@ -160,7 +160,6 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             response.setRemark(String.format("the topic[%s] sending message is forbidden", newTopic));
             return response;
         }
-//TODO: requestHeader
         MessageExt msgExt = this.getServerCnxMsgStore(ctx, requestHeader.getGroup())
                 .lookMessageByMessageId(requestHeader.getOriginTopic(), requestHeader.getOriginMsgId());
         if (null == msgExt) {

@@ -57,6 +57,7 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
 
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
+            required = true,
             doc = "Comma-separated list of URIs we will listen on and the listener names.\n"
                     + "e.g. PLAINTEXT://localhost:9096.\n"
                     + "If hostname is not set, bind to the default interface."
@@ -98,16 +99,19 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
             doc = "pool size for processing callback requests..\n"
     )
     private int pullThreadPoolQueueCapacity = 100000;
+
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
             doc = "pool size for processing callback requests..\n"
     )
     private int replyThreadPoolQueueCapacity = 10000;
+
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
             doc = "pool size for processing callback requests..\n"
     )
     private int queryThreadPoolQueueCapacity = 20000;
+
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
             doc = "pool size for processing callback requests..\n"
@@ -259,6 +263,11 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
                     + "if exceed this value, this message will be discarded.\n"
     )
     private String msgTraceTopicName = "trace";
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
+            doc = "The maximum number of times the message was checked, "
+                    + "if exceed this value, this message will be discarded.\n"
+    )
     private boolean longPollingEnable = true;
     @FieldContext(
             category = CATEGORY_ROCKETMQ,

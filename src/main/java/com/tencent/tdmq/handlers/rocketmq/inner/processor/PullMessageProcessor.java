@@ -60,19 +60,18 @@ public class PullMessageProcessor implements NettyRequestProcessor {
 
     private final RocketMQBrokerController brokerController;
     private List<ConsumeMessageHook> consumeMessageHookList;
-    private PulsarMessageStore serverCnxMsgStore;
 
     public PullMessageProcessor(final RocketMQBrokerController brokerController) {
         this.brokerController = brokerController;
     }
 
-    protected PulsarMessageStore getServerCnxMsgStore(ChannelHandlerContext ctx, RemotingCommand request,
+    protected PulsarMessageStore getServerCnxMsgStore(Channel channel, RemotingCommand request,
             String groupName) {
         ConsumerGroupInfo consumerGroupInfo = this.brokerController.getConsumerManager()
                 .getConsumerGroupInfo(groupName);
 
         ConcurrentMap<Channel, ClientChannelInfo> channelInfoConcurrentMap = consumerGroupInfo.getChannelInfoTable();
-        RopClientChannelCnx channelCnx = (RopClientChannelCnx) channelInfoConcurrentMap.get(ctx.channel());
+        RopClientChannelCnx channelCnx = (RopClientChannelCnx) channelInfoConcurrentMap.get(channel);
         return channelCnx.getServerCnx();
     }
 
@@ -81,7 +80,6 @@ public class PullMessageProcessor implements NettyRequestProcessor {
             RemotingCommand request) throws RemotingCommandException {
         final PullMessageRequestHeader requestHeader =
                 (PullMessageRequestHeader) request.decodeCommandCustomHeader(PullMessageRequestHeader.class);
-        serverCnxMsgStore = this.getServerCnxMsgStore(ctx, request, requestHeader.getConsumerGroup());
         return this.processRequest(ctx.channel(), requestHeader, request, true);
     }
 
@@ -95,11 +93,9 @@ public class PullMessageProcessor implements NettyRequestProcessor {
             throws RemotingCommandException {
         RemotingCommand response = RemotingCommand.createResponseCommand(PullMessageResponseHeader.class);
         final PullMessageResponseHeader responseHeader = (PullMessageResponseHeader) response.readCustomHeader();
-
         response.setOpaque(request.getOpaque());
 
         log.info("receive PullMessage request command, {}", request);
-
         if (!PermName.isReadable(this.brokerController.getServerConfig().getBrokerPermission())) {
             response.setCode(ResponseCode.NO_PERMISSION);
             response.setRemark(String.format("the broker[" //+ this.brokerController.getBrokerConfig().getBrokerIP1()
@@ -210,8 +206,9 @@ public class PullMessageProcessor implements NettyRequestProcessor {
         }
 
         RopMessageFilter messageFilter = new RopMessageFilter(subscriptionData);
-
         // 从 message store 中获取接收消息的数据并处理
+        PulsarMessageStore serverCnxMsgStore = this
+                .getServerCnxMsgStore(channel, request, requestHeader.getConsumerGroup());
         final RopGetMessageResult ropGetMessageResult = serverCnxMsgStore
                 .getMessage(request, requestHeader, messageFilter);
         GetMessageResult getMessageResult = ropGetMessageResult.getGetMessageResult();
@@ -241,8 +238,6 @@ public class PullMessageProcessor implements NettyRequestProcessor {
                 case NO_MESSAGE_IN_QUEUE:
                     if (0 != requestHeader.getQueueOffset()) {
                         response.setCode(ResponseCode.PULL_OFFSET_MOVED);
-
-                        // XXX: warn and notify me
                         log.info(
                                 "the broker store no queue data, fix the request offset {} to {}, Topic: {} QueueId: {} Consumer Group: {}",
                                 requestHeader.getQueueOffset(),
@@ -369,7 +364,7 @@ public class PullMessageProcessor implements NettyRequestProcessor {
                         long offset = requestHeader.getQueueOffset();
                         int queueId = requestHeader.getQueueId();
                         PullRequest pullRequest = new PullRequest(request, channel, pollingTimeMills,
-                                this.serverCnxMsgStore.now(), offset, subscriptionData, null);
+                                System.currentTimeMillis(), offset, subscriptionData, null);
                         this.brokerController.getPullRequestHoldService()
                                 .suspendPullRequest(topic, queueId, pullRequest);
                         response = null;

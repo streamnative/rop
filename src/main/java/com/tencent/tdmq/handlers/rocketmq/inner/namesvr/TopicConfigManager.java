@@ -98,28 +98,6 @@ public abstract class TopicConfigManager {
             topicConfig.setWriteQueueNums(1);
             this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);
         }
- /*       {
-            if (this.brokerController.getServerConfig().isTraceTopicEnable()) {
-                String topic = RocketMQTopic
-                        .getPulsarMetaNoDomainTopic(this.brokerController.getServerConfig().getMsgTraceTopicName());
-                TopicConfig topicConfig = new TopicConfig(topic);
-                this.systemTopicList.add(topic);
-                topicConfig.setReadQueueNums(1);
-                topicConfig.setWriteQueueNums(1);
-                this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);
-            }
-        }
-        {
-            String topic =
-                    new RocketMQTopic(
-                            this.brokerController.getServerConfig().getClusterName() + "_" + MixAll.REPLY_TOPIC_POSTFIX)
-                            .getNoDomainTopicName();
-            TopicConfig topicConfig = new TopicConfig(topic);
-            this.systemTopicList.add(topic);
-            topicConfig.setReadQueueNums(1);
-            topicConfig.setWriteQueueNums(1);
-            this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);
-        }*/
         {
             String delayedLevelStr = config.getMessageDelayLevel();
             Splitter.on(" ").omitEmptyStrings().split(delayedLevelStr).forEach(lvl -> {
@@ -162,6 +140,16 @@ public abstract class TopicConfigManager {
 
     }
 
+/*    protected boolean putPulsarTopicConfig(String ) {
+        topicConfig.setReadQueueNums(queueNums);
+        topicConfig.setWriteQueueNums(queueNums);
+        int perm = defaultTopicConfig.getPerm();
+        perm &= ~PermName.PERM_INHERIT;
+        topicConfig.setPerm(perm);
+        topicConfig.setTopicSysFlag(topicSysFlag);
+        topicConfig.setTopicFilterType(defaultTopicConfig.getTopicFilterType());
+    }*/
+
     public boolean isSystemTopic(final String topic) {
         return this.systemTopicList.contains(RocketMQTopic.getPulsarMetaNoDomainTopic(topic));
     }
@@ -182,7 +170,6 @@ public abstract class TopicConfigManager {
             final String remoteAddress, final int clientDefaultTopicQueueNums, final int topicSysFlag) {
         TopicConfig topicConfig = null;
         String pulsarTopicName = RocketMQTopic.getPulsarOrigNoDomainTopic(topic);
-        boolean createNew = false;
 
         try {
             if (this.lockTopicConfigTable.tryLock(LOCK_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)) {
@@ -236,11 +223,7 @@ public abstract class TopicConfigManager {
                                 defaultTopic, topicConfig, remoteAddress);
 
                         this.topicConfigTable.put(pulsarTopicName, topicConfig);
-
                         this.dataVersion.nextVersion();
-
-                        createNew = true;
-
                         this.createPulsarPartitionedTopic(topicConfig);
                     }
                 } finally {
@@ -254,6 +237,7 @@ public abstract class TopicConfigManager {
         return topicConfig;
     }
 
+    //create real topic in pulsar
     protected abstract void createPulsarPartitionedTopic(TopicConfig topicConfig);
 
     public TopicConfig createTopicInSendMessageBackMethod(
@@ -266,8 +250,6 @@ public abstract class TopicConfigManager {
         if (topicConfig != null) {
             return topicConfig;
         }
-
-        boolean createNew = false;
 
         try {
             if (this.lockTopicConfigTable.tryLock(LOCK_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)) {
@@ -285,9 +267,8 @@ public abstract class TopicConfigManager {
 
                     log.info("create new topic {}", topicConfig);
                     this.topicConfigTable.put(pulsarTopicName, topicConfig);
-                    createNew = true;
                     this.dataVersion.nextVersion();
-                    //TODO: this.persist();
+                    this.createPulsarPartitionedTopic(topicConfig);
                 } finally {
                     this.lockTopicConfigTable.unlock();
                 }
@@ -322,7 +303,7 @@ public abstract class TopicConfigManager {
                     log.info("create new topic {}", topicConfig);
                     this.topicConfigTable.put(MixAll.TRANS_CHECK_MAX_TIME_TOPIC, topicConfig);
                     this.dataVersion.nextVersion();
-                    //TODO: this.persist();
+                    this.createPulsarPartitionedTopic(topicConfig);
                 } finally {
                     this.lockTopicConfigTable.unlock();
                 }
@@ -343,8 +324,6 @@ public abstract class TopicConfigManager {
         }
 
         this.dataVersion.nextVersion();
-
-        //TODO this.persist();
     }
 
     public void updateOrderTopicConfig(final KVTable orderKVTableFromNs) {
@@ -375,7 +354,6 @@ public abstract class TopicConfigManager {
 
             if (isChange) {
                 this.dataVersion.nextVersion();
-                //TODO this.persist();
             }
         }
     }
@@ -394,24 +372,9 @@ public abstract class TopicConfigManager {
         if (old != null) {
             log.info("delete topic config OK, topic: {}", old);
             this.dataVersion.nextVersion();
-            //TODO this.persist();
         } else {
             log.warn("delete topic config failed, topic: {} not exists", topic);
         }
-    }
-
-    public TopicConfigSerializeWrapper buildTopicConfigSerializeWrapper() {
-        TopicConfigSerializeWrapper topicConfigSerializeWrapper = new TopicConfigSerializeWrapper();
-        topicConfigSerializeWrapper.setTopicConfigTable(this.topicConfigTable);
-        topicConfigSerializeWrapper.setDataVersion(this.dataVersion);
-        return topicConfigSerializeWrapper;
-    }
-
-    public String encode(final boolean prettyFormat) {
-        TopicConfigSerializeWrapper topicConfigSerializeWrapper = new TopicConfigSerializeWrapper();
-        topicConfigSerializeWrapper.setTopicConfigTable(this.topicConfigTable);
-        topicConfigSerializeWrapper.setDataVersion(this.dataVersion);
-        return topicConfigSerializeWrapper.toJson(prettyFormat);
     }
 
     public DataVersion getDataVersion() {
