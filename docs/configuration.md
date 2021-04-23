@@ -4,8 +4,8 @@ The following table lists all RoP configurations.
 
 |Name|Description|Default|
 |---|---|---|
-|rocketmqTenant|Rocketmq on Pulsar Broker tenant|public
-|rocketmqMetadataTenant|The tenant used for storing Rocketmq metadata topics|public
+|rocketmqTenant|Rocketmq on Pulsar Broker tenant|rocketmq
+|rocketmqMetadataTenant|The tenant used for storing Rocketmq metadata topics|rocketmq
 |rocketmqNamespace|Rocketmq on Pulsar Broker namespace|default
 |rocketmqMetadataNamespace|The namespace used for storing rocket metadata topics|__rocketmq
 |rocketmqListeners|Comma-separated list of URIs we will listen on and the listener names.|rocketmq://127.0.0.1:9876

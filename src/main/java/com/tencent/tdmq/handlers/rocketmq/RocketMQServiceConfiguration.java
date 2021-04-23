@@ -32,14 +32,14 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
             required = true,
             doc = "Rocketmq on Pulsar Broker tenant"
     )
-    private String rocketmqTenant = "public";
+    private String rocketmqTenant = "rocketmq";
 
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
             required = true,
             doc = "The tenant used for storing Rocketmq metadata topics"
     )
-    private String rocketmqMetadataTenant = "public";
+    private String rocketmqMetadataTenant = "rocketmq";
 
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
