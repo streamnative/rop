@@ -20,6 +20,7 @@ import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientGroupName;
 import com.tencent.tdmq.handlers.rocketmq.utils.CommonUtils;
 import com.tencent.tdmq.handlers.rocketmq.utils.MessageIdUtils;
 import com.tencent.tdmq.handlers.rocketmq.utils.OffsetFinder;
+import com.tencent.tdmq.handlers.rocketmq.utils.RocketMQTopic;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import java.io.UnsupportedEncodingException;
@@ -128,9 +129,9 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
     public RemotingCommand processRequest(ChannelHandlerContext ctx,
             RemotingCommand request) throws RemotingCommandException {
         switch (request.getCode()) {
-            case RequestCode.UPDATE_AND_CREATE_TOPIC: // 需要 | 管控端
+            case RequestCode.UPDATE_AND_CREATE_TOPIC: // 需要 | 管控端接口 | 客户端已废弃
                 return this.updateAndCreateTopic(ctx, request);
-            case RequestCode.DELETE_TOPIC_IN_BROKER: // 需要 | 管控端
+            case RequestCode.DELETE_TOPIC_IN_BROKER: // 需要 | 管控端接口 | 客户端已废弃
                 return this.deleteTopic(ctx, request);
             case RequestCode.GET_ALL_TOPIC_CONFIG:
                 return this.getAllTopicConfig(ctx, request);
@@ -241,16 +242,6 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
             return response;
         }
 
-        try {
-            response.setCode(ResponseCode.SUCCESS);
-            response.setOpaque(request.getOpaque());
-            response.markResponseType();
-            response.setRemark(null);
-            ctx.writeAndFlush(response);
-        } catch (Exception e) {
-            log.error("Failed to produce a proper response", e);
-        }
-
         TopicConfig topicConfig = new TopicConfig(requestHeader.getTopic());
         topicConfig.setReadQueueNums(requestHeader.getReadQueueNums());
         topicConfig.setWriteQueueNums(requestHeader.getWriteQueueNums());
@@ -260,11 +251,14 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
 
         this.brokerController.getTopicConfigManager().updateTopicConfig(topicConfig);
 
-/*
-TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this.brokerController.getTopicConfigManager().getDataVersion());
-*/
+        this.brokerController.getTopicConfigManager().createOrUpdateTopic(topicConfig);
 
-        return null;
+        response.setCode(ResponseCode.SUCCESS);
+        response.setOpaque(request.getOpaque());
+        response.markResponseType();
+        response.setRemark(null);
+
+        return response;
     }
 
     private synchronized RemotingCommand deleteTopic(ChannelHandlerContext ctx,
@@ -276,8 +270,8 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
         log.info("deleteTopic called by {}", RemotingHelper.parseChannelRemoteAddr(ctx.channel()));
 
         this.brokerController.getTopicConfigManager().deleteTopicConfig(requestHeader.getTopic());
-/*TODO        this.brokerController.getMessageStore()
-                .cleanUnusedTopic(this.brokerController.getTopicConfigManager().getTopicConfigTable().keySet());*/
+
+        this.brokerController.getTopicConfigManager().deleteTopic(requestHeader.getTopic());
 
         response.setCode(ResponseCode.SUCCESS);
         response.setRemark(null);

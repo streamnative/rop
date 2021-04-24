@@ -362,4 +362,61 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
         }
     }
 
+    /**
+     * if pulsar topic not exist, create pulsar topic, else update pulsar topic partition
+     *
+     * @param tc topic config
+     */
+    public void createOrUpdateTopic(final TopicConfig tc) {
+        String cluster = config.getClusterName();
+        String fullTopicName = RocketMQTopic.getPulsarOrigNoDomainTopic(tc.getTopicName());
+        TopicName rmqTopic = TopicName.get(fullTopicName);
+        String tenant = rmqTopic.getTenant();
+        String ns = rmqTopic.getNamespacePortion();
+        tenant = Strings.isBlank(tenant) ? config.getRocketmqTenant() : tenant;
+
+        try {
+            createPulsarNamespaceIfNeeded(brokerService, cluster, tenant, ns);
+        } catch (Exception e) {
+            log.warn("createPulsarPartitionedTopic tenant=[{}] and namespace=[{}] error.", tenant, ns);
+        }
+
+        try {
+            PartitionedTopicMetadata topicMetadata = adminClient.topics().getPartitionedTopicMetadata(fullTopicName);
+            // 如果分区小于0，主题不存在，创建主题
+            if (topicMetadata.partitions <= 0) {
+                log.info("RocketMQ metadata topic {} doesn't exist. Creating it ...", fullTopicName);
+                adminClient.topics().createPartitionedTopic(
+                        fullTopicName,
+                        tc.getWriteQueueNums());
+                for (int i = 0; i < tc.getWriteQueueNums(); i++) {
+                    adminClient.topics().createNonPartitionedTopic(fullTopicName + PARTITIONED_TOPIC_SUFFIX + i);
+                }
+                loadSysTopics(tc);
+            } else if (topicMetadata.partitions < tc.getWriteQueueNums()) {
+                adminClient.topics().updatePartitionedTopic(fullTopicName, tc.getWriteQueueNums());
+                for (int i = topicMetadata.partitions; i < tc.getWriteQueueNums(); i++) {
+                    adminClient.topics().createNonPartitionedTopic(fullTopicName + PARTITIONED_TOPIC_SUFFIX + i);
+                }
+                loadSysTopics(tc);
+            }
+        } catch (Exception e) {
+            log.warn("Topic {} create or update partition failed", fullTopicName, e);
+        }
+    }
+
+    /**
+     * delete pulsar topic
+     *
+     * @param topic rop topic name
+     */
+    public void deleteTopic(final String topic) {
+        String pulsarTopicName = RocketMQTopic.getPulsarOrigNoDomainTopic(topic);
+        try {
+            adminClient.topics().deletePartitionedTopic(pulsarTopicName, true);
+        } catch (Exception e) {
+            log.warn("Topic {} create or update partition failed", pulsarTopicName, e);
+        }
+    }
+
 }
