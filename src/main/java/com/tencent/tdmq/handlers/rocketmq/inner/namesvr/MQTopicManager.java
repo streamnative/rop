@@ -292,9 +292,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
         //for test
         createPulsarNamespaceIfNeeded(brokerService, cluster, "test1", "InstanceTest");
 
-        this.topicConfigTable.values().stream().forEach(tc -> {
-            createPulsarTopic(tc);
-        });
+        this.topicConfigTable.values().forEach(this::createPulsarTopic);
     }
 
     private void loadSysTopics(TopicConfig tc) {

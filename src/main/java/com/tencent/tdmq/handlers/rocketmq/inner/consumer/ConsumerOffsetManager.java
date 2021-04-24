@@ -92,10 +92,7 @@ public class ConsumerOffsetManager {
 
     public Set<String> whichTopicByConsumer(final String group) {
         Set<String> topics = new HashSet<>();
-        Iterator<Entry<ClientGroupAndTopicName, ConcurrentMap<Integer, Long>>> it = this.offsetTable.entrySet()
-                .iterator();
-        while (it.hasNext()) {
-            Entry<ClientGroupAndTopicName, ConcurrentMap<Integer, Long>> next = it.next();
+        for (Entry<ClientGroupAndTopicName, ConcurrentMap<Integer, Long>> next : this.offsetTable.entrySet()) {
             String topicAtGroup = next.getKey().getClientTopicName().getRmqTopicName();
             topics.add(topicAtGroup);
         }
@@ -104,10 +101,7 @@ public class ConsumerOffsetManager {
 
     public Set<String> whichGroupByTopic(final String topic) {
         Set<String> groups = new HashSet<>();
-        Iterator<Entry<ClientGroupAndTopicName, ConcurrentMap<Integer, Long>>> it = this.offsetTable.entrySet()
-                .iterator();
-        while (it.hasNext()) {
-            Entry<ClientGroupAndTopicName, ConcurrentMap<Integer, Long>> next = it.next();
+        for (Entry<ClientGroupAndTopicName, ConcurrentMap<Integer, Long>> next : this.offsetTable.entrySet()) {
             ClientGroupName clientGroupName = next.getKey().getClientGroupName();
             groups.add(clientGroupName.getRmqGroupName());
         }
@@ -163,12 +157,8 @@ public class ConsumerOffsetManager {
         Set<ClientGroupAndTopicName> topicGroups = this.offsetTable.keySet();
         if (!UtilAll.isBlank(filterGroups)) {
             for (String group : filterGroups.split(",")) {
-                Iterator<ClientGroupAndTopicName> it = topicGroups.iterator();
-                while (it.hasNext()) {
-                    if (group.equals(it.next().getClientGroupName().getRmqGroupName())) {
-                        it.remove();
-                    }
-                }
+                topicGroups.removeIf(clientGroupAndTopicName -> group
+                        .equals(clientGroupAndTopicName.getClientGroupName().getRmqGroupName()));
             }
         }
 

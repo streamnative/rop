@@ -44,7 +44,7 @@ public class CommonUtils {
     public static final String VERTICAL_LINE_CHAR = "｜";
     public static final String SLASH_CHAR = "/";
     public static final String BACKSLASH_CHAR = "\\";
-    private static int MESSAGE_BYTEBUF_SIZE = 28;
+    private static final int MESSAGE_BYTEBUF_SIZE = 28;
     private static ThreadLocal<ByteBuffer> byteBufLocal = ThreadLocal
             .withInitial(() -> ByteBuffer.allocate(MESSAGE_BYTEBUF_SIZE));
 
@@ -106,26 +106,24 @@ public class CommonUtils {
     public static int calMsgLength(int sysFlag, int bodyLength, int topicLength, int propertiesLength) {
         int bornhostLength = (sysFlag & MessageSysFlag.BORNHOST_V6_FLAG) == 0 ? 8 : 20;
         int storehostAddressLength = (sysFlag & MessageSysFlag.STOREHOSTADDRESS_V6_FLAG) == 0 ? 8 : 20;
-        final int msgLen = 8 //tagsCode
-                + 4 //TOTALSIZE
-                + 4 //MAGICCODE
-                + 4 //BODYCRC
-                + 4 //QUEUEID
-                + 4 //FLAG
-                + 8 //QUEUEOFFSET
-                + 8 //PHYSICALOFFSET
-                + 4 //SYSFLAG
-                + 8 //BORNTIMESTAMP
-                + bornhostLength //BORNHOST
-                + 8 //STORETIMESTAMP
-                + storehostAddressLength //STOREHOSTADDRESS
-                + 4 //RECONSUMETIMES
-                + 8 //Prepared Transaction Offset
-                + 4 + (bodyLength > 0 ? bodyLength : 0) //BODY
-                + 1 + topicLength //TOPIC
-                + 2 + (propertiesLength > 0 ? propertiesLength : 0) //propertiesLength
-                + 0;
-        return msgLen;
+        return 8 +  //tagsCode
+                4 +  //TOTALSIZE
+                4 +  //MAGICCODE
+                4 +  //BODYCRC
+                4 +  //QUEUEID
+                4 +  //FLAG
+                8 +  //QUEUEOFFSET
+                8 +  //PHYSICALOFFSET
+                4 +  //SYSFLAG
+                8 +  //BORNTIMESTAMP
+                bornhostLength +  //BORNHOST
+                8 +  //STORETIMESTAMP
+                storehostAddressLength +  //STOREHOSTADDRESS
+                4 +  //RECONSUMETIMES
+                8 +  //Prepared Transaction Offset
+                4 + (bodyLength > 0 ? bodyLength : 0) +  //BODY
+                1 + topicLength +  //TOPIC
+                2 + (propertiesLength > 0 ? propertiesLength : 0);
     }
 
     public static MessageExtBrokerInner messageTimeup(MessageExt msgExt) {

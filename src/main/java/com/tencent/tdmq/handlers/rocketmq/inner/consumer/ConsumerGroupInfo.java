@@ -52,9 +52,7 @@ public class ConsumerGroupInfo {
     }
 
     public ClientChannelInfo findChannel(final String clientId) {
-        Iterator<Entry<Channel, ClientChannelInfo>> it = this.channelInfoTable.entrySet().iterator();
-        while (it.hasNext()) {
-            Entry<Channel, ClientChannelInfo> next = it.next();
+        for (Entry<Channel, ClientChannelInfo> next : this.channelInfoTable.entrySet()) {
             if (next.getValue().getClientId().equals(clientId)) {
                 return next.getValue();
             }
@@ -72,19 +70,14 @@ public class ConsumerGroupInfo {
     }
 
     public List<Channel> getAllChannel() {
-        List<Channel> result = new ArrayList<>();
 
-        result.addAll(this.channelInfoTable.keySet());
-
-        return result;
+        return new ArrayList<>(this.channelInfoTable.keySet());
     }
 
     public List<String> getAllClientId() {
         List<String> result = new ArrayList<>();
-        Iterator<Entry<Channel, ClientChannelInfo>> it = this.channelInfoTable.entrySet().iterator();
 
-        while (it.hasNext()) {
-            Entry<Channel, ClientChannelInfo> entry = it.next();
+        for (Entry<Channel, ClientChannelInfo> entry : this.channelInfoTable.entrySet()) {
             ClientChannelInfo clientChannelInfo = entry.getValue();
             result.add(clientChannelInfo.getClientId());
         }

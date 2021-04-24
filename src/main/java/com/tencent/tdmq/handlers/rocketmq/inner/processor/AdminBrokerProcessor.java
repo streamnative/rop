@@ -738,9 +738,8 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
         Map<Channel, ClientChannelInfo> channelInfoHashMap =
                 this.brokerController.getProducerManager().getGroupChannelTable().get(requestHeader.getProducerGroup());
         if (channelInfoHashMap != null) {
-            Iterator<Map.Entry<Channel, ClientChannelInfo>> it = channelInfoHashMap.entrySet().iterator();
-            while (it.hasNext()) {
-                ClientChannelInfo info = it.next().getValue();
+            for (Entry<Channel, ClientChannelInfo> channelClientChannelInfoEntry : channelInfoHashMap.entrySet()) {
+                ClientChannelInfo info = channelClientChannelInfoEntry.getValue();
                 Connection connection = new Connection();
                 connection.setClientId(info.getClientId());
                 connection.setLanguage(info.getLanguage());
@@ -921,10 +920,8 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
                 requestHeader.getTimestamp(), requestHeader.isForce());
         boolean isC = false;
         LanguageCode language = request.getLanguage();
-        switch (language) {
-            case CPP:
-                isC = true;
-                break;
+        if (language == LanguageCode.CPP) {
+            isC = true;
         }
         return this.brokerController.getBroker2Client().resetOffset(requestHeader.getTopic(), requestHeader.getGroup(),
                 requestHeader.getTimestamp(), requestHeader.isForce(), isC);

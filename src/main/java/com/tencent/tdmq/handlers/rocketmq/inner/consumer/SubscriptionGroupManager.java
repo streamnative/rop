@@ -53,7 +53,7 @@ public class SubscriptionGroupManager {
         Preconditions.checkNotNull(brokerController);
         MQTopicManager topicConfigManager = this.brokerController.getTopicConfigManager();
         topicConfigManager.getPulsarTopicCache().forEach(((clientTopicName, persistentTopicMap) -> {
-            persistentTopicMap.values().stream().forEach((topic) -> {
+            persistentTopicMap.values().forEach((topic) -> {
                 topic.getSubscriptions().forEach((grp, subscription) -> {
                     SubscriptionGroupConfig config = new SubscriptionGroupConfig();
                     config.setGroupName(grp);

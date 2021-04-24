@@ -54,7 +54,7 @@ public class DefaultTransactionalMessageCheckListener extends AbstractTransactio
                         msgExt.getTopic(), msgExt.getMsgId());
             }
         } catch (Exception e) {
-            log.warn("Put checked-too-many-time message to TRANS_CHECK_MAXTIME_TOPIC error. {}", e);
+            log.warn("Put checked-too-many-time message to TRANS_CHECK_MAXTIME_TOPIC error. {}", e.getMessage());
         }
 
     }

@@ -70,10 +70,10 @@ public class ConsumerManager {
     }
 
     public void doChannelCloseEvent(String remoteAddr, Channel channel) {
-        Iterator it = this.consumerTable.entrySet().iterator();
 
-        while (it.hasNext()) {
-            Entry<ClientGroupName, ConsumerGroupInfo> next = (Entry) it.next();
+        for (Entry<ClientGroupName, ConsumerGroupInfo> clientGroupNameConsumerGroupInfoEntry : this.consumerTable
+                .entrySet()) {
+            Entry<ClientGroupName, ConsumerGroupInfo> next = (Entry) clientGroupNameConsumerGroupInfoEntry;
             ConsumerGroupInfo info = next.getValue();
             boolean removed = info.doChannelCloseEvent(remoteAddr, channel);
             if (removed) {
@@ -89,7 +89,7 @@ public class ConsumerManager {
 
                 this.consumerIdsChangeListener
                         .handle(ConsumerGroupEvent.CHANGE, next.getKey().getRmqGroupName(),
-                                new Object[]{info.getAllChannel()});
+                                info.getAllChannel());
             }
         }
 
@@ -110,10 +110,10 @@ public class ConsumerManager {
         boolean r2 = consumerGroupInfo.updateSubscription(subList);
         if ((r1 || r2) && isNotifyConsumerIdsChangedEnable) {
             this.consumerIdsChangeListener
-                    .handle(ConsumerGroupEvent.CHANGE, group, new Object[]{consumerGroupInfo.getAllChannel()});
+                    .handle(ConsumerGroupEvent.CHANGE, group, consumerGroupInfo.getAllChannel());
         }
 
-        this.consumerIdsChangeListener.handle(ConsumerGroupEvent.REGISTER, group, new Object[]{subList});
+        this.consumerIdsChangeListener.handle(ConsumerGroupEvent.REGISTER, group, subList);
         return r1 || r2;
     }
 
@@ -128,13 +128,13 @@ public class ConsumerManager {
                 if (remove != null) {
                     log.info("unregister consumer ok, no any connection, and remove consumer group, {}",
                             clientGroupName);
-                    this.consumerIdsChangeListener.handle(ConsumerGroupEvent.UNREGISTER, group, new Object[0]);
+                    this.consumerIdsChangeListener.handle(ConsumerGroupEvent.UNREGISTER, group, 0);
                 }
             }
 
             if (isNotifyConsumerIdsChangedEnable) {
                 this.consumerIdsChangeListener
-                        .handle(ConsumerGroupEvent.CHANGE, group, new Object[]{consumerGroupInfo.getAllChannel()});
+                        .handle(ConsumerGroupEvent.CHANGE, group, consumerGroupInfo.getAllChannel());
             }
         }
 
@@ -173,11 +173,11 @@ public class ConsumerManager {
     }
 
     public HashSet<String> queryTopicConsumeByWho(String topic) {
-        HashSet<String> groups = new HashSet();
-        Iterator it = this.consumerTable.entrySet().iterator();
+        HashSet<String> groups = new HashSet<>();
 
-        while (it.hasNext()) {
-            Entry<ClientGroupName, ConsumerGroupInfo> entry = (Entry) it.next();
+        for (Entry<ClientGroupName, ConsumerGroupInfo> clientGroupNameConsumerGroupInfoEntry : this.consumerTable
+                .entrySet()) {
+            Entry<ClientGroupName, ConsumerGroupInfo> entry = (Entry) clientGroupNameConsumerGroupInfoEntry;
             ConcurrentMap<String, SubscriptionData> subscriptionTable = entry.getValue().getSubscriptionTable();
             if (subscriptionTable.containsKey(topic)) {
                 groups.add(entry.getKey().getRmqGroupName());
