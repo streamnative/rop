@@ -286,7 +286,7 @@ public class CommonUtils {
 
     public static ByteBuffer decode(ByteBuffer byteBuffer) {
         // 去除 tags 标记位的 8 个字节之后，将原先的 byteBuffer 返回
-        byteBuffer.getLong();
+        long tag = byteBuffer.getLong();
         return byteBuffer.slice();
     }
 }
