@@ -17,16 +17,34 @@ package com.tencent.tdmq.handlers.rocketmq.inner.consumer;
 import java.nio.ByteBuffer;
 import java.util.List;
 import lombok.Data;
-import org.apache.rocketmq.store.GetMessageResult;
+import org.apache.rocketmq.store.GetMessageStatus;
 
 @Data
 public class RopGetMessageResult {
 
-    private GetMessageResult getMessageResult;
-    private List<ByteBuffer> byteBufferList;
+    private List<ByteBuffer> messageBufferList;
+    private GetMessageStatus status;
+    private long nextBeginOffset;
+    private long minOffset;
+    private long maxOffset;
+    private int bufferTotalSize = 0;
+    private boolean suggestPullingFromSlave = false;
+    private int msgCount4Commercial = 0;
 
-    public RopGetMessageResult(GetMessageResult getMessageResult, List<ByteBuffer> byteBufferList) {
-        this.getMessageResult = getMessageResult;
-        this.byteBufferList = byteBufferList;
+    public int getMessageCount() {
+        if (messageBufferList != null) {
+            return messageBufferList.size();
+        }
+        return 0;
     }
+
+    public int getBufferTotalSize() {
+        if (messageBufferList != null) {
+            return messageBufferList.stream().reduce(0, (r, item) ->
+                            r += item.limit()
+                    , Integer::sum);
+        }
+        return 0;
+    }
+
 }

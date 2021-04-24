@@ -19,6 +19,7 @@ import com.tencent.tdmq.handlers.rocketmq.inner.consumer.ConsumerGroupInfo;
 import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientGroupName;
 import com.tencent.tdmq.handlers.rocketmq.utils.CommonUtils;
 import com.tencent.tdmq.handlers.rocketmq.utils.MessageIdUtils;
+import com.tencent.tdmq.handlers.rocketmq.utils.OffsetFinder;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import java.io.UnsupportedEncodingException;
@@ -33,8 +34,14 @@ import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.bookkeeper.mledger.AsyncCallbacks;
+import org.apache.bookkeeper.mledger.ManagedLedgerException;
+import org.apache.bookkeeper.mledger.Position;
+import org.apache.bookkeeper.mledger.impl.ManagedLedgerImpl;
 import org.apache.bookkeeper.mledger.impl.PositionImpl;
 import org.apache.pulsar.broker.service.Topic;
 import org.apache.pulsar.broker.service.persistent.PersistentTopic;
@@ -377,14 +384,61 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
         final SearchOffsetRequestHeader requestHeader =
                 (SearchOffsetRequestHeader) request.decodeCommandCustomHeader(SearchOffsetRequestHeader.class);
 
-        long offset = 0L;/*TODO:this.brokerController.getMessageStore()
-                .getOffsetInQueueByTime(requestHeader.getTopic(), requestHeader.getQueueId(),
-                        requestHeader.getTimestamp());*/
+        long timestamp = requestHeader.getTimestamp();
+        String pulsarTopicName = CommonUtils.tdmqGroupName(requestHeader.getTopic());
 
-        responseHeader.setOffset(offset);
+        CompletableFuture<Long> finalOffset = new CompletableFuture<>();
 
-        response.setCode(ResponseCode.SUCCESS);
-        response.setRemark(null);
+        try {
+            Optional<Topic> optionalTopic = this.brokerController.getBrokerService().getTopicIfExists(pulsarTopicName)
+                    .get();
+            if (optionalTopic.isPresent()) {
+                PersistentTopic persistentTopic = (PersistentTopic) optionalTopic.get();
+
+                // find with real wanted timestamp
+                OffsetFinder offsetFinder = new OffsetFinder((ManagedLedgerImpl) persistentTopic.getManagedLedger());
+
+                offsetFinder.findMessages(timestamp, new AsyncCallbacks.FindEntryCallback() {
+                    @Override
+                    public void findEntryComplete(Position position, Object ctx) {
+                        PositionImpl finalPosition;
+                        if (position == null) {
+                            finalOffset.complete(-1L);
+                        } else {
+                            finalPosition = (PositionImpl) position;
+                            long offset = MessageIdUtils
+                                    .getOffset(finalPosition.getLedgerId(), finalPosition.getEntryId());
+                            finalOffset.complete(offset);
+                        }
+                    }
+
+                    @Override
+                    public void findEntryFailed(ManagedLedgerException exception,
+                            Optional<Position> position, Object ctx) {
+                        log.warn("Unable to find position for topic {} time {}. Exception:", pulsarTopicName, timestamp,
+                                exception);
+                        finalOffset.complete(-1L);
+                    }
+                });
+            } else {
+                log.warn("SearchOffsetByTimestamp: topic [{}] not found.", pulsarTopicName);
+            }
+        } catch (Exception e) {
+            log.warn("SearchOffsetByTimestamp: get topic [{}] from broker error.", pulsarTopicName);
+        }
+
+        try {
+            long offset = finalOffset.get(5, TimeUnit.SECONDS);
+            if (offset >= 0) {
+                responseHeader.setOffset(offset);
+                response.setCode(ResponseCode.SUCCESS);
+                return response;
+            }
+        } catch (Exception e) {
+            log.warn("SearchOffsetByTimestamp: topic [{}] search offset timeout.", pulsarTopicName);
+        }
+
+        response.setCode(ResponseCode.SYSTEM_ERROR);
         return response;
     }
 
@@ -453,6 +507,8 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
         return response;
     }
 
+    // TODO: hanmz 2021/4/22 当前消息中没有存储时间的记录，改接口rocketmq标记为已废弃
+    @Deprecated
     private RemotingCommand getEarliestMsgStoretime(ChannelHandlerContext ctx,
             RemotingCommand request) throws RemotingCommandException {
         final RemotingCommand response = RemotingCommand
@@ -463,9 +519,7 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
                 (GetEarliestMsgStoretimeRequestHeader) request
                         .decodeCommandCustomHeader(GetEarliestMsgStoretimeRequestHeader.class);
 
-        long timestamp = 0L;/* TODO:
-                this.brokerController.getMessageStore()
-                        .getEarliestMessageTime(requestHeader.getTopic(), requestHeader.getQueueId());*/
+        long timestamp = 0L;
 
         responseHeader.setTimestamp(timestamp);
         response.setCode(ResponseCode.SUCCESS);

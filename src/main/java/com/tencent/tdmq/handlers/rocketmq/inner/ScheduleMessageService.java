@@ -260,7 +260,7 @@ public class ScheduleMessageService {
                                         sendBackProdcuer.put(pTopic, producer);
                                     }
                                 }
-                                producer.send(formatter.encode(msgInner, 1).get(0).array());
+                                producer.send(formatter.encode(msgInner, 1).get(0));
                                 delayedConsumer.acknowledge(message.getMessageId());
                             } catch (Exception ex) {
                                 log.warn("create delayedMessageSender error.", ex);
