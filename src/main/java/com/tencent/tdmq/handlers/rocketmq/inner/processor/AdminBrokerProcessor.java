@@ -128,9 +128,9 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
     public RemotingCommand processRequest(ChannelHandlerContext ctx,
             RemotingCommand request) throws RemotingCommandException {
         switch (request.getCode()) {
-            case RequestCode.UPDATE_AND_CREATE_TOPIC: // 需要| 管控端
+            case RequestCode.UPDATE_AND_CREATE_TOPIC: // 需要 | 管控端
                 return this.updateAndCreateTopic(ctx, request);
-            case RequestCode.DELETE_TOPIC_IN_BROKER:
+            case RequestCode.DELETE_TOPIC_IN_BROKER: // 需要 | 管控端
                 return this.deleteTopic(ctx, request);
             case RequestCode.GET_ALL_TOPIC_CONFIG:
                 return this.getAllTopicConfig(ctx, request);
@@ -138,31 +138,31 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
                 return this.updateBrokerConfig(ctx, request);
             case RequestCode.GET_BROKER_CONFIG:
                 return this.getBrokerConfig(ctx, request);
-            case RequestCode.SEARCH_OFFSET_BY_TIMESTAMP: // 需要
+            case RequestCode.SEARCH_OFFSET_BY_TIMESTAMP: // 需要 | 客户端需要
                 return this.searchOffsetByTimestamp(ctx, request);
-            case RequestCode.GET_MAX_OFFSET: // 需要
+            case RequestCode.GET_MAX_OFFSET: // 需要 | 管控端接口 | 客户端已废弃
                 return this.getMaxOffset(ctx, request);
-            case RequestCode.GET_MIN_OFFSET: // 需要
+            case RequestCode.GET_MIN_OFFSET: // 需要 | 客户端接口 | 客户端已废弃
                 return this.getMinOffset(ctx, request);
-            case RequestCode.GET_EARLIEST_MSG_STORETIME: // 需要
+            case RequestCode.GET_EARLIEST_MSG_STORETIME:
                 return this.getEarliestMsgStoretime(ctx, request);
             case RequestCode.GET_BROKER_RUNTIME_INFO:
                 return this.getBrokerRuntimeInfo(ctx, request);
-            case RequestCode.LOCK_BATCH_MQ: // 需要
+            case RequestCode.LOCK_BATCH_MQ: // 需要 | 客户端rebalance
                 return this.lockBatchMQ(ctx, request);
-            case RequestCode.UNLOCK_BATCH_MQ: // 需要
+            case RequestCode.UNLOCK_BATCH_MQ: // 需要 | 客户端rebalance
                 return this.unlockBatchMQ(ctx, request);
-            case RequestCode.UPDATE_AND_CREATE_SUBSCRIPTIONGROUP: // 管控端
+            case RequestCode.UPDATE_AND_CREATE_SUBSCRIPTIONGROUP: // 需要 | 管控端
                 return this.updateAndCreateSubscriptionGroup(ctx, request);
             case RequestCode.GET_ALL_SUBSCRIPTIONGROUP_CONFIG:
                 return this.getAllSubscriptionGroup(ctx, request);
-            case RequestCode.DELETE_SUBSCRIPTIONGROUP: // 管控端
+            case RequestCode.DELETE_SUBSCRIPTIONGROUP: // 管控端 | 管控端
                 return this.deleteSubscriptionGroup(ctx, request);
             case RequestCode.GET_TOPIC_STATS_INFO:
                 return this.getTopicStatsInfo(ctx, request);
-            case RequestCode.GET_CONSUMER_CONNECTION_LIST: // 需要
+            case RequestCode.GET_CONSUMER_CONNECTION_LIST: // 需要 | 管控端监控
                 return this.getConsumerConnectionList(ctx, request);
-            case RequestCode.GET_PRODUCER_CONNECTION_LIST: // 需要
+            case RequestCode.GET_PRODUCER_CONNECTION_LIST: // 需要 | 管控端监控
                 return this.getProducerConnectionList(ctx, request);
             case RequestCode.GET_CONSUME_STATS:
                 return this.getConsumeStats(ctx, request);
@@ -170,11 +170,11 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
                 return this.getAllConsumerOffset(ctx, request);
             case RequestCode.GET_ALL_DELAY_OFFSET:
                 return this.getAllDelayOffset(ctx, request);
-            case RequestCode.INVOKE_BROKER_TO_RESET_OFFSET: // 需要
+            case RequestCode.INVOKE_BROKER_TO_RESET_OFFSET: // 需要，调用broker接口重置客户端的offset，动态改变客户端的消息拉取位置
                 return this.resetOffset(ctx, request);
             case RequestCode.INVOKE_BROKER_TO_GET_CONSUMER_STATUS:
                 return this.getConsumerStatus(ctx, request);
-            case RequestCode.QUERY_TOPIC_CONSUME_BY_WHO: // 管控端
+            case RequestCode.QUERY_TOPIC_CONSUME_BY_WHO: // 需要 | 管控端监控 | 查询主题被哪些消费组消费
                 return this.queryTopicConsumeByWho(ctx, request);
             case RequestCode.QUERY_CONSUME_TIME_SPAN:
                 return this.queryConsumeTimeSpan(ctx, request);
@@ -184,7 +184,7 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
                 return this.cleanExpiredConsumeQueue();
             case RequestCode.CLEAN_UNUSED_TOPIC:
                 return this.cleanUnusedTopic();
-            case RequestCode.GET_CONSUMER_RUNNING_INFO: // 管控端
+            case RequestCode.GET_CONSUMER_RUNNING_INFO: // 管控端 | 管控端监控
                 return this.getConsumerRunningInfo(ctx, request);
             case RequestCode.QUERY_CORRECTION_OFFSET:
                 return this.queryCorrectionOffset(ctx, request);
@@ -911,10 +911,10 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
         return response;
     }
 
-    public RemotingCommand resetOffset(ChannelHandlerContext ctx,
-            RemotingCommand request) throws RemotingCommandException {
-        final ResetOffsetRequestHeader requestHeader =
-                (ResetOffsetRequestHeader) request.decodeCommandCustomHeader(ResetOffsetRequestHeader.class);
+    public RemotingCommand resetOffset(ChannelHandlerContext ctx, RemotingCommand request)
+            throws RemotingCommandException {
+        final ResetOffsetRequestHeader requestHeader = (ResetOffsetRequestHeader) request
+                .decodeCommandCustomHeader(ResetOffsetRequestHeader.class);
         log.info("[reset-offset] reset offset started by {}. topic={}, group={}, timestamp={}, isForce={}",
                 RemotingHelper.parseChannelRemoteAddr(ctx.channel()), requestHeader.getTopic(),
                 requestHeader.getGroup(),
