@@ -161,7 +161,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             return response;
         }
         MessageExt msgExt = this.getServerCnxMsgStore(ctx, requestHeader.getGroup())
-                .lookMessageByMessageId(requestHeader.getOriginTopic(), requestHeader.getOriginMsgId());
+                .lookMessageByMessageId(requestHeader.getOriginTopic(), requestHeader.getOffset());
         if (null == msgExt) {
             response.setCode(ResponseCode.SYSTEM_ERROR);
             response.setRemark("look message by offset failed, " + requestHeader.getOffset());

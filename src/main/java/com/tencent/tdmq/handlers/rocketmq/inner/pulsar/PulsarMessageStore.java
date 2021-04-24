@@ -34,6 +34,8 @@ public interface PulsarMessageStore {
 
     MessageExt lookMessageByMessageId(String topic, String msgId);
 
+    MessageExt lookMessageByMessageId(String topic, long offset);
+
     /**
      * Reset the subscription associated with this reader to a specific message publish time.
      *

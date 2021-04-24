@@ -32,6 +32,7 @@ import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.pulsar.client.api.Message;
 import org.apache.pulsar.client.impl.MessageIdImpl;
+import org.apache.pulsar.client.impl.TopicMessageImpl;
 import org.apache.pulsar.common.api.proto.PulsarApi.MessageIdData;
 import org.apache.pulsar.common.protocol.Commands;
 import org.apache.rocketmq.common.UtilAll;
@@ -53,12 +54,18 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
             .withInitial(() -> ByteBuffer.allocate(MAX_MESSAGE_SIZE));
 
     public static MessageExt decodePulsarMessage(Message message) {
-        return CommonUtils.decode(ByteBuffer.wrap(message.getData()),
-                (MessageIdImpl) message.getMessageId(), true, false);
+        if (message instanceof TopicMessageImpl) {
+            TopicMessageImpl topicMessage = (TopicMessageImpl) message;
+            return CommonUtils.decode(ByteBuffer.wrap(message.getData()),
+                    (MessageIdImpl) topicMessage.getInnerMessageId(), true, false);
+        } else {
+            return CommonUtils.decode(ByteBuffer.wrap(message.getData()),
+                    (MessageIdImpl) message.getMessageId(), true, false);
+        }
     }
 
     public static ByteBuffer decodePulsarMessageResBuffer(Message message) {
-        return CommonUtils.decode(ByteBuffer.wrap(message.getData()));
+        return CommonUtils.decode(message);
     }
 
     @Override
@@ -242,7 +249,7 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
             tempBuffer.limit(msgStoreItemMemory.position());
             result.add(tempBuffer);
         }
-        return result.stream().collect(ArrayList::new, (arr, item) ->{
+        return result.stream().collect(ArrayList::new, (arr, item) -> {
             byte[] msgBytes = new byte[item.limit()];
             item.get(msgBytes);
             arr.add(msgBytes);
