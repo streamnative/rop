@@ -59,7 +59,7 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
             category = CATEGORY_ROCKETMQ,
             required = true,
             doc = "Comma-separated list of URIs we will listen on and the listener names.\n"
-                    + "e.g. PLAINTEXT://localhost:9096.\n"
+                    + "e.g. rocketmq://localhost:9876.\n"
                     + "If hostname is not set, bind to the default interface."
     )
     private String rocketmqListeners = "rocketmq://127.0.0.1:9876";
@@ -72,64 +72,64 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
 
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
-            doc = "nets permits for oneway send.\n"
+            doc = "Number of permits for one-way requests.\n"
     )
     private int permitsOneway = 256;
 
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
-            doc = "nets permits for async send.\n"
+            doc = "Number of permits for asynchronous requests.\n"
     )
     private int permitsAsync = 64;
 
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
-            doc = "pool size for processing callback requests..\n"
+            doc = "pool size for processing callback requests.\n"
     )
     private int callbackThreadPoolsNum = 4;
 
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
-            doc = "pool size for processing callback requests..\n"
+            doc = "The capacity of send thread pool queue.\n"
     )
     private int sendThreadPoolQueueCapacity = 10000;
 
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
-            doc = "pool size for processing callback requests..\n"
+            doc = "The capacity of pull thread pool queue.\n"
     )
     private int pullThreadPoolQueueCapacity = 100000;
 
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
-            doc = "pool size for processing callback requests..\n"
+            doc = "The capacity of replay thread pool queue.\n"
     )
     private int replyThreadPoolQueueCapacity = 10000;
 
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
-            doc = "pool size for processing callback requests..\n"
+            doc = "The capacity query thread pool queue.\n"
     )
     private int queryThreadPoolQueueCapacity = 20000;
 
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
-            doc = "pool size for processing callback requests..\n"
+            doc = "The capacity of client manager thread pool queue.\n"
     )
     private int clientManagerThreadPoolQueueCapacity = 1000000;
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
-            doc = "pool size for processing callback requests..\n"
+            doc = "The capacity of consumer manager thread pool queue.\n"
     )
     private int consumerManagerThreadPoolQueueCapacity = 1000000;
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
-            doc = "pool size for processing callback requests..\n"
+            doc = "The capacity of heartbeat thread pool queue.\n"
     )
     private int heartbeatThreadPoolQueueCapacity = 50000;
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
-            doc = "pool size for processing callback requests..\n"
+            doc = "The capacity of end transaction pool queue.\n"
     )
     private int endTransactionPoolQueueCapacity = 100000;
 
@@ -154,69 +154,69 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
 
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
-            doc = "pool size for processing callback requests..\n"
+            doc = "Number of send message thread pool.\n"
     )
     private int sendMessageThreadPoolNums = 16 + Runtime.getRuntime().availableProcessors() * 2;
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
-            doc = "pool size for processing callback requests..\n"
+            doc = "Number of pull message thread pool.\n"
     )
     private int pullMessageThreadPoolNums = 16 + Runtime.getRuntime().availableProcessors() * 2;
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
-            doc = "pool size for processing callback requests..\n"
+            doc = "Number of query message thread pool.\n"
     )
     private int queryMessageThreadPoolNums = 8 + Runtime.getRuntime().availableProcessors();
 
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
-            doc = "pool size for processing callback requests..\n"
+            doc = "Number of admin broker thread pool.\n"
     )
     private int adminBrokerThreadPoolNums = 16;
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
-            doc = "pool size for processing callback requests..\n"
+            doc = "Number of client manager thread pool.\n"
     )
     private int clientManageThreadPoolNums = 32;
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
-            doc = "pool size for processing callback requests..\n"
+            doc = "Number of consumer manager thread pool.\n"
     )
     private int consumerManageThreadPoolNums = 32;
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
-            doc = "pool size for processing callback requests..\n"
+            doc = "Number of heartbeat thread pool.\n"
     )
     private int heartbeatThreadPoolNums = Math.min(32, Runtime.getRuntime().availableProcessors());
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
-            doc = "pool size for processing callback requests..\n"
+            doc = "Number of end transaction thread pool.\n"
     )
     private int endTransactionThreadPoolNums = 8 + Runtime.getRuntime().availableProcessors() * 2;
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
-            doc = "pool size for processing callback requests..\n"
+            doc = "The interval time of flush consumer offset.\n"
     )
     private int flushConsumerOffsetInterval = 1000 * 5;
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
-            doc = "pool size for processing callback requests..\n"
+            doc = "The interval time of flush consumer offset history.\n"
     )
     private int flushConsumerOffsetHistoryInterval = 1000 * 60;
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
-            doc = "pool size for processing callback requests..\n"
+            doc = "The name of broker.\n"
     )
     private String brokerName = "rocketmq-broker";
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
-            doc = "pool size for processing callback requests..\n"
+            doc = "The interval time of transaction check.\n"
     )
     private int transactionCheckInterval = 60 * 1000;
 
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
-            doc = "pool size for processing callback requests..\n"
+            doc = "The timeout of transaction.\n"
     )
     private long transactionTimeOut = 6 * 1000;
 
@@ -229,136 +229,115 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
 
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
-            doc = "The maximum number of times the message was checked, "
-                    + "if exceed this value, this message will be discarded.\n"
+            doc = "Whether enable auto create topic, the default is true.\n"
     )
     private boolean autoCreateTopicEnable = true;
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
-            doc = "The maximum number of times the message was checked, "
-                    + "if exceed this value, this message will be discarded.\n"
+            doc = "Number of default topics queue.\n"
     )
     private int defaultTopicQueueNums = 3;
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
-            doc = "The maximum number of times the message was checked, "
-                    + "if exceed this value, this message will be discarded.\n"
+            doc = "Whether enable cluster topic function, the default is true.\n"
     )
     private boolean clusterTopicEnable = true;
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
-            doc = "The maximum number of times the message was checked, "
-                    + "if exceed this value, this message will be discarded.\n"
+            doc = "Whether enable broker topic function, the default is true.\n"
     )
     private boolean brokerTopicEnable = true;
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
-            doc = "The maximum number of times the message was checked, "
-                    + "if exceed this value, this message will be discarded.\n"
+            doc = "Whether enable trace topic function, the default is true.\n"
     )
     private boolean traceTopicEnable = false;
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
-            doc = "The maximum number of times the message was checked, "
-                    + "if exceed this value, this message will be discarded.\n"
+            doc = "The name of message trace topic.\n"
     )
     private String msgTraceTopicName = "trace";
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
-            doc = "The maximum number of times the message was checked, "
-                    + "if exceed this value, this message will be discarded.\n"
+            doc = "Whether enable long polling function in consumer.\n"
     )
     private boolean longPollingEnable = true;
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
-            doc = "The maximum number of times the message was checked, "
-                    + "if exceed this value, this message will be discarded.\n"
+            doc = "The time of short polling.\n"
     )
     private long shortPollingTimeMills = 1000;
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
-            doc = "The maximum number of times the message was checked, "
-                    + "if exceed this value, this message will be discarded.\n"
+            doc = "The permission of broker.\n"
     )
     private int brokerPermission = (PermName.PERM_READ | PermName.PERM_WRITE);
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
-            doc = "The maximum number of times the message was checked, "
-                    + "if exceed this value, this message will be discarded.\n"
+            doc = "The count of commercial base.\n"
     )
     private int commercialBaseCount = 1;
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
-            doc = "The maximum number of times the message was checked, "
-                    + "if exceed this value, this message will be discarded.\n"
+            doc = "Whether enable notify consumer IDs change function.\n"
     )
     private boolean notifyConsumerIdsChangedEnable = true;
 
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
-            doc = "The maximum number of times the message was checked, "
-                    + "if exceed this value, this message will be discarded.\n"
+            doc = "Whether enable auto create subscription group function.\n"
     )
     private boolean autoCreateSubscriptionGroup = true;
 
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
-            doc = "The maximum number of times the message was checked, "
-                    + "if exceed this value, this message will be discarded.\n"
+            doc = "Whether enable transfer message by heap.\n"
     )
     private boolean transferMsgByHeap = true;
 
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
-            doc = "The maximum number of times the message was checked, "
-                    + "if exceed this value, this message will be discarded.\n"
+            doc = "Max number of default query.\n"
     )
     private int defaultQueryMaxNum = 10000;
 
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
-            doc = "The maximum number of times the message was checked, "
-                    + "if exceed this value, this message will be discarded.\n"
+            doc = "The time of server channel max idle time.\n"
     )
     private int serverChannelMaxIdleTimeSeconds = 120;
 
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
-            doc = "The maximum number of times the message was checked, "
-                    + "if exceed this value, this message will be discarded.\n"
+            doc = "The name of consumer offset.\n"
     )
     private String consumerOffsetsTopicName = "__consumer_offsets";
 
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
-            doc = "The maximum number of times the message was checked, "
-                    + "if exceed this value, this message will be discarded.\n"
+            doc = "The topic of RocketMQ system transfer half.\n"
     )
     private String rmqSysTransHalfTopic = MixAll.RMQ_SYS_TRANS_HALF_TOPIC;
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
-            doc = "The maximum number of times the message was checked, "
-                    + "if exceed this value, this message will be discarded.\n"
+            doc = "The topic of RocketMQ system transfer OP half.\n"
     )
     private String rmqSysTransOpHalfTopic = MixAll.RMQ_SYS_TRANS_OP_HALF_TOPIC;
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
-            doc = "The maximum number of times the message was checked, "
-                    + "if exceed this value, this message will be discarded.\n"
+            doc = "The topic of RocketMQ transfer check max time.\n"
     )
     private String rmqTransCheckMaxTimeTopic = MixAll.TRANS_CHECK_MAX_TIME_TOPIC;
 
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
-            doc = "The maximum number of times the message was checked, "
-                    + "if exceed this value, this message will be discarded.\n"
+            doc = "The name of RocketMQ schedule topic.\n"
     )
     private String rmqScheduleTopic = "SCHEDULE_TOPIC_XXXX";
 
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
-            doc = "The maximum number of times the message was checked, "
-                    + "if exceed this value, this message will be discarded.\n"
+            doc = "Number of RocketMQ schedule topic partition.\n"
     )
     private int rmqScheduleTopicPartitionNum = 5;
 

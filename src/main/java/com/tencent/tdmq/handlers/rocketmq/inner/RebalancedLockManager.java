@@ -258,10 +258,7 @@ public class RebalancedLockManager {
         }
 
         public boolean isExpired() {
-            boolean expired =
-                    (System.currentTimeMillis() - this.lastUpdateTimestamp) > REBALANCED_LOCK_MAX_LIVE_TIME;
-
-            return expired;
+            return (System.currentTimeMillis() - this.lastUpdateTimestamp) > REBALANCED_LOCK_MAX_LIVE_TIME;
         }
     }
 }

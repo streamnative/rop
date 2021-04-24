@@ -123,7 +123,7 @@ public class ScheduleMessageService {
                     .collect(ArrayList::new, (arr, level) -> {
                         arr.add(new DeliverDelayedMessageTimerTask(level));
                     }, ArrayList::addAll);
-            this.deliverDelayedMessageManager.stream()
+            this.deliverDelayedMessageManager
                     .forEach((i) -> this.timer.schedule(i, FIRST_DELAY_TIME, DELAY_FOR_A_WHILE));
             this.expirationReaper.start();
         }
@@ -132,9 +132,7 @@ public class ScheduleMessageService {
     public void shutdown() {
         if (this.started.compareAndSet(true, false)) {
             expirationReaper.shutdown();
-            deliverDelayedMessageManager.stream().forEach((i) -> {
-                i.close();
-            });
+            deliverDelayedMessageManager.forEach(DeliverDelayedMessageTimerTask::close);
             sendBackProdcuer.invalidateAll();
         }
     }

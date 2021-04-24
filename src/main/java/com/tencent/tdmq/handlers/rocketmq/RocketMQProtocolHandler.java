@@ -84,7 +84,7 @@ public class RocketMQProtocolHandler implements ProtocolHandler {
     @Override
     public String getProtocolDataToAdvertise() {
         if (log.isDebugEnabled()) {
-            log.debug("Get configured listeners", rocketmqConfig.getRocketmqListeners());
+            log.debug("Get configured listeners:{}", rocketmqConfig.getRocketmqListeners());
         }
         return rocketmqConfig.getRocketmqListeners();
     }
