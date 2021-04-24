@@ -23,15 +23,14 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bookkeeper.mledger.ManagedLedgerException;
 import org.apache.bookkeeper.mledger.impl.PositionImpl;
 import org.apache.pulsar.broker.service.Subscription;
-import org.apache.pulsar.broker.service.Topic;
 import org.apache.pulsar.broker.service.persistent.PersistentSubscription;
 import org.apache.pulsar.broker.service.persistent.PersistentTopic;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandSubscribe.InitialPosition;
@@ -234,25 +233,34 @@ public class ConsumerOffsetManager {
             return this.pulsarTopicCache.get(groupAndTopic).get(partitionId);
         } else {
             synchronized (this) {
+                CompletableFuture<PersistentTopic> feature = new CompletableFuture<>();
                 TopicName pulsarTopicName = TopicName.get(groupAndTopic.getClientTopicName().getPulsarTopicName());
+                this.brokerController.getBrokerService().getTopic(pulsarTopicName.toString(), false)
+                        .whenComplete((t2, throwable) -> {
+                            if (throwable != null) {
+                                log.warn("getPulsarPersistentTopic error, topic=[{}].", pulsarTopicName.toString());
+                                feature.complete(null);
+                                return;
+                            }
+                            if (t2.isPresent()) {
+                                PersistentTopic topic = (PersistentTopic) t2.get();
+                                if (!this.pulsarTopicCache.containsKey(groupAndTopic)) {
+                                    this.pulsarTopicCache.putIfAbsent(groupAndTopic, new ConcurrentHashMap<>());
+                                }
+                                this.pulsarTopicCache.get(groupAndTopic).putIfAbsent(partitionId, topic);
+                                feature.complete(topic);
+                            }
+                        });
+
                 try {
-                    Optional<Topic> optionalTopic = this.brokerController.getBrokerService()
-                            .getTopicIfExists(pulsarTopicName.toString()).get();
-                    if (optionalTopic.isPresent()) {
-                        PersistentTopic topic = (PersistentTopic) optionalTopic.get();
-                        if (!this.pulsarTopicCache.containsKey(groupAndTopic)) {
-                            this.pulsarTopicCache.putIfAbsent(groupAndTopic, new ConcurrentHashMap<>());
-                        }
-                        this.pulsarTopicCache.get(groupAndTopic).putIfAbsent(partitionId, topic);
-                        return topic;
-                    }
+                    return feature.get();
                 } catch (Exception e) {
-                    log.warn("getPulsarPersistentTopic error, topicAtGroup=[{}].", groupAndTopic, e);
+                    log.warn("getPulsarPersistentTopic error, topicName=[{}], partitionId=[{}].", groupAndTopic,
+                            partitionId);
+                    e.printStackTrace();
                 }
             }
         }
-        log.warn("getPulsarPersistentTopic error, topicName=[{}], partitionId=[{}].", groupAndTopic,
-                partitionId);
         return null;
     }
 

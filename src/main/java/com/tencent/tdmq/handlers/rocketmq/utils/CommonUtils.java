@@ -20,7 +20,6 @@ import static org.apache.rocketmq.common.message.MessageDecoder.CHARSET_UTF8;
 import com.google.common.base.Splitter;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Map;

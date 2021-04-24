@@ -30,7 +30,6 @@ import java.net.InetSocketAddress;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -44,7 +43,6 @@ import org.apache.pulsar.broker.PulsarServerException;
 import org.apache.pulsar.broker.PulsarService;
 import org.apache.pulsar.broker.namespace.NamespaceBundleOwnershipListener;
 import org.apache.pulsar.broker.service.BrokerService;
-import org.apache.pulsar.broker.service.Topic;
 import org.apache.pulsar.broker.service.persistent.PersistentTopic;
 import org.apache.pulsar.client.admin.PulsarAdmin;
 import org.apache.pulsar.client.admin.PulsarAdminException.ConflictException;
@@ -95,32 +93,6 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
         }
         return pulsarTopicCache.containsKey(clientTopicName) && pulsarTopicCache.get(clientTopicName)
                 .containsKey(partitionId);
-    }
-
-    public PersistentTopic getPulsarPersistentTopic(ClientTopicName clientTopicName, int partitionId) {
-        if (isPulsarTopicCached(clientTopicName, partitionId)) {
-            return this.pulsarTopicCache.get(clientTopicName).get(partitionId);
-        } else {
-            synchronized (pulsarTopicCache) {
-                TopicName pulsarTopicName = TopicName.get(clientTopicName.getPulsarTopicName());
-                try {
-                    Optional<Topic> optionalTopic = this.brokerController.getBrokerService()
-                            .getTopicIfExists(pulsarTopicName.toString()).get();
-                    if (optionalTopic.isPresent()) {
-                        PersistentTopic topic = (PersistentTopic) optionalTopic.get();
-                        if (!this.pulsarTopicCache.containsKey(clientTopicName)) {
-                            this.pulsarTopicCache.putIfAbsent(clientTopicName, new ConcurrentHashMap<>());
-                        }
-                        this.pulsarTopicCache.get(clientTopicName).putIfAbsent(partitionId, topic);
-                        return topic;
-                    }
-                } catch (Exception e) {
-                }
-            }
-        }
-        log.warn("getPulsarPersistentTopic error, topicName=[{}], partitionId=[{}].", clientTopicName,
-                partitionId);
-        return null;
     }
 
     @Override
@@ -245,7 +217,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                             TopicName name = TopicName.get(TopicName.get(topic).getPartitionedTopicName());
                             getTopicBrokerAddr(name);
                         }
-                        //loadPersistentTopic(topics);
+                        loadPersistentTopic(topics);
                     } else {
                         log.error("Failed to get owned topic list for "
                                         + "OffsetAndTopicListener when triggering on-loading bundle {}.",
