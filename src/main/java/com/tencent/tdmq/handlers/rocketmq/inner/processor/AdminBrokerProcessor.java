@@ -20,7 +20,6 @@ import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientGroupName;
 import com.tencent.tdmq.handlers.rocketmq.utils.CommonUtils;
 import com.tencent.tdmq.handlers.rocketmq.utils.MessageIdUtils;
 import com.tencent.tdmq.handlers.rocketmq.utils.OffsetFinder;
-import com.tencent.tdmq.handlers.rocketmq.utils.RocketMQTopic;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import java.io.UnsupportedEncodingException;
@@ -281,10 +280,9 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
 
     private RemotingCommand getAllTopicConfig(ChannelHandlerContext ctx, RemotingCommand request) {
         final RemotingCommand response = RemotingCommand.createResponseCommand(GetAllTopicConfigResponseHeader.class);
-        // final GetAllTopicConfigResponseHeader responseHeader =
-        // (GetAllTopicConfigResponseHeader) response.readCustomHeader();
 
-        String content = "";//TODO:this.brokerController.getTopicConfigManager().encode();
+        // TODO: hanmz 2021/4/24 TopicConfigManager add encode
+        String content = "" /*this.brokerController.getTopicConfigManager().encode()*/;
         if (content != null && content.length() > 0) {
             try {
                 response.setBody(content.getBytes(MixAll.DEFAULT_CHARSET));
@@ -589,7 +587,9 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
     private RemotingCommand getAllSubscriptionGroup(ChannelHandlerContext ctx,
             RemotingCommand request) throws RemotingCommandException {
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
-/* TODO:       String content = this.brokerController.getSubscriptionGroupManager().encode();
+
+        // TODO: hanmz 2021/4/24 SubscriptionGroupManager add encode
+        String content = "" /*this.brokerController.getSubscriptionGroupManager().encode()*/;
         if (content != null && content.length() > 0) {
             try {
                 response.setBody(content.getBytes(MixAll.DEFAULT_CHARSET));
@@ -608,7 +608,7 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
         }
 
         response.setCode(ResponseCode.SUCCESS);
-        response.setRemark(null);*/
+        response.setRemark(null);
 
         return response;
     }
