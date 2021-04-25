@@ -16,14 +16,17 @@ package com.tencent.tdmq.handlers.rocketmq.inner.pulsar;
 
 import com.tencent.tdmq.handlers.rocketmq.inner.RopServerCnx;
 import io.netty.channel.ChannelPromise;
+import io.netty.util.concurrent.Future;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bookkeeper.mledger.Entry;
+import org.apache.pulsar.broker.service.Consumer;
 import org.apache.pulsar.broker.service.EntryBatchIndexesAcks;
 import org.apache.pulsar.broker.service.EntryBatchSizes;
 import org.apache.pulsar.broker.service.PulsarCommandSender;
 import org.apache.pulsar.broker.service.RedeliveryTracker;
+import org.apache.pulsar.broker.service.SendMessageCallBack;
 import org.apache.pulsar.broker.service.Subscription;
 import org.apache.pulsar.common.api.proto.PulsarApi;
 import org.apache.pulsar.common.protocol.schema.SchemaVersion;
@@ -162,6 +165,27 @@ public class RopPulsarCommandSender implements PulsarCommandSender {
     public ChannelPromise sendMessagesToConsumer(long consumerId, String topicName, Subscription subscription,
             int partitionIdx, List<Entry> entries, EntryBatchSizes batchSizes, EntryBatchIndexesAcks batchIndexesAcks,
             RedeliveryTracker redeliveryTracker) {
+        return null;
+    }
+
+    /**
+     *  这个方法需要留着，2.7.1.1 版本 重栽了这个方法用户 tag bug fix
+     * @param l
+     * @param s
+     * @param subscription
+     * @param i
+     * @param list
+     * @param entryBatchSizes
+     * @param entryBatchIndexesAcks
+     * @param redeliveryTracker
+     * @param sendMessageCallBack
+     * @param consumer
+     * @return
+     */
+    public Future<Void> sendMessagesToConsumer(long l, String s, Subscription subscription, int i,
+            List<Entry> list, EntryBatchSizes entryBatchSizes,
+            EntryBatchIndexesAcks entryBatchIndexesAcks, RedeliveryTracker redeliveryTracker,
+            SendMessageCallBack sendMessageCallBack, Consumer consumer) {
         return null;
     }
 }

@@ -3,7 +3,7 @@
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -84,7 +84,7 @@ public class RocketMQProtocolHandler implements ProtocolHandler {
     @Override
     public String getProtocolDataToAdvertise() {
         if (log.isDebugEnabled()) {
-            log.debug("Get configured listeners", rocketmqConfig.getRocketmqListeners());
+            log.debug("Get configured listeners:{}", rocketmqConfig.getRocketmqListeners());
         }
         return rocketmqConfig.getRocketmqListeners();
     }
@@ -92,14 +92,14 @@ public class RocketMQProtocolHandler implements ProtocolHandler {
     @Override
     public void start(BrokerService service) {
         brokerService = service;
-        rocketMQBroker.setBrokerService(brokerService);
-        log.info("Starting RocketmqProtocolHandler, listener: {}, rop version is: '{}'",
-                rocketmqConfig.getRocketmqListeners(), RopVersion.getVersion());
-        log.info("Git Revision {}", RopVersion.getGitSha());
-        log.info("Built by {} on {} at {}",
-                RopVersion.getBuildUser(),
-                RopVersion.getBuildHost(),
-                RopVersion.getBuildTime());
+        rocketMQBroker.setBrokerService(service);
+//        log.info("Starting RocketmqProtocolHandler, listener: {}, rop version is: '{}'",
+//                rocketmqConfig.getRocketmqListeners(), RopVersion.getVersion());
+//        log.info("Git Revision {}", RopVersion.getGitSha());
+//        log.info("Built by {} on {} at {}",
+//                RopVersion.getBuildUser(),
+//                RopVersion.getBuildHost(),
+//                RopVersion.getBuildTime());
         try {
             rocketMQBroker.start();
         } catch (Exception e) {

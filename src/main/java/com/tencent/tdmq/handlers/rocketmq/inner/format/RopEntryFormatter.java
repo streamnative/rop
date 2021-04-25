@@ -61,6 +61,10 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
         return CommonUtils.decode(ByteBuffer.wrap(message.getData()));
     }
 
+    public static ByteBuffer decodePulsarMessageResBuffer(byte[] payload) {
+        return CommonUtils.decode(ByteBuffer.wrap(payload));
+    }
+
     @Override
     public List<ByteBuffer> encode(MessageExt record, int numMessages) throws RopEncodeException {
         Preconditions.checkNotNull(record);

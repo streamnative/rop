@@ -14,11 +14,42 @@
 
 package com.tencent.tdmq.handlers.rocketmq.inner.processor;
 
+import com.github.benmanes.caffeine.cache.AsyncLoadingCache;
+import com.github.benmanes.caffeine.cache.Caffeine;
+import com.github.benmanes.caffeine.cache.RemovalCause;
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
+import com.tencent.tdmq.handlers.rocketmq.inner.format.RopEntryFormatter;
+import com.tencent.tdmq.handlers.rocketmq.utils.MessageIdUtils;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.FileRegion;
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
+import org.apache.bookkeeper.mledger.AsyncCallbacks;
+import org.apache.bookkeeper.mledger.AsyncCallbacks.OpenLedgerCallback;
+import org.apache.bookkeeper.mledger.Entry;
+import org.apache.bookkeeper.mledger.ManagedLedger;
+import org.apache.bookkeeper.mledger.ManagedLedgerException;
+import org.apache.bookkeeper.mledger.impl.ManagedLedgerImpl;
+import org.apache.bookkeeper.mledger.impl.PositionImpl;
+import org.apache.commons.lang3.tuple.Pair;
+import org.apache.pulsar.broker.PulsarServerException;
+import org.apache.pulsar.broker.web.RestException;
+import org.apache.pulsar.client.admin.PulsarAdmin;
+import org.apache.pulsar.client.admin.PulsarAdminException;
+import org.apache.pulsar.client.api.Message;
+import org.apache.pulsar.client.api.MessageId;
+import org.apache.pulsar.client.impl.MessageIdImpl;
+import org.apache.pulsar.common.naming.TopicName;
 import org.apache.rocketmq.broker.pagecache.OneMessageTransfer;
 import org.apache.rocketmq.broker.pagecache.QueryMessageTransfer;
 import org.apache.rocketmq.common.MixAll;
@@ -35,6 +66,7 @@ import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.store.QueryMessageResult;
 import org.apache.rocketmq.store.SelectMappedBufferResult;
+import org.apache.zookeeper.data.Stat;
 
 public class QueryMessageProcessor implements NettyRequestProcessor {
 
@@ -42,8 +74,30 @@ public class QueryMessageProcessor implements NettyRequestProcessor {
 
     private final RocketMQBrokerController brokerController;
 
+    protected final AsyncLoadingCache<String, ManagedLedger> ledgerCache;
+
+    private final RopEntryFormatter entryFormatter = new RopEntryFormatter();
+
+    private final String QUERY_MESSAGE_LEDGER_NAME = "queryMessageProcessor_ledger";
+
     public QueryMessageProcessor(final RocketMQBrokerController brokerController) {
         this.brokerController = brokerController;
+        this.ledgerCache = Caffeine.newBuilder()
+                .recordStats()
+                .removalListener((String key, ManagedLedger value, RemovalCause removalCause) -> {
+                    if (value != null) {
+                        try {
+                            value.close();
+                        } catch (InterruptedException e) {
+                            e.printStackTrace();
+                        } catch (ManagedLedgerException e) {
+                            e.printStackTrace();
+                        }
+                    }
+                })
+                .buildAsync((key, executor1) -> {
+                    return getManageLedger(key);
+                });
     }
 
     @Override
@@ -113,53 +167,99 @@ public class QueryMessageProcessor implements NettyRequestProcessor {
                 log.error("", e);
                 queryMessageResult.release();
             }
-
             return null;
         }
-
         response.setCode(ResponseCode.QUERY_NOT_FOUND);
         response.setRemark("can not find message, maybe time range not correct");
         return response;
     }
 
-    public RemotingCommand viewMessageById(ChannelHandlerContext ctx, RemotingCommand request)
+    public RemotingCommand viewMessageById(ChannelHandlerContext channelHandlerContext, RemotingCommand request)
             throws RemotingCommandException {
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
         final ViewMessageRequestHeader requestHeader =
                 (ViewMessageRequestHeader) request.decodeCommandCustomHeader(ViewMessageRequestHeader.class);
-
         response.setOpaque(request.getOpaque());
-
-        final SelectMappedBufferResult selectMappedBufferResult = null
-                /*TODO this.brokerController.getMessageStore().selectOneMessageByOffset(requestHeader.getOffset())*/;
-        if (selectMappedBufferResult != null) {
-            response.setCode(ResponseCode.SUCCESS);
-            response.setRemark(null);
-
-            try {
-                FileRegion fileRegion =
-                        new OneMessageTransfer(response.encodeHeader(selectMappedBufferResult.getSize()),
-                                selectMappedBufferResult);
-                ctx.channel().writeAndFlush(fileRegion).addListener(new ChannelFutureListener() {
+        MessageIdImpl messageId = MessageIdUtils.getMessageId(requestHeader.getOffset());
+        log.debug("viewMessageById {}, {} ,{}",request.getOpaque(),
+                messageId.getLedgerId(), messageId.getEntryId());
+        /*TODO this.brokerController.getMessageStore().selectOneMessageByOffset(requestHeader.getOffset())*/;
+        try {
+            CompletableFuture future = new CompletableFuture();
+            ManagedLedgerImpl  managedLedger = (ManagedLedgerImpl)ledgerCache.get(QUERY_MESSAGE_LEDGER_NAME).get(10,
+                    TimeUnit.SECONDS);
+            if (managedLedger != null) {
+                // 通过offset来取出要开始消费的messageId的位置
+                managedLedger.asyncReadEntry(new PositionImpl(messageId.getLedgerId(),
+                        messageId.getEntryId()), new AsyncCallbacks.ReadEntryCallback() {
                     @Override
-                    public void operationComplete(ChannelFuture future) throws Exception {
-                        selectMappedBufferResult.release();
-                        if (!future.isSuccess()) {
-                            log.error("Transfer one message from page cache failed, ", future.cause());
+                    public void readEntryFailed(ManagedLedgerException exception, Object ctx) {
+                        future.completeExceptionally(exception);
+                    }
+                    @Override
+                    public void readEntryComplete(Entry entry, Object ctx) {
+                        try {
+                            ByteBuffer byteBuffer = entryFormatter
+                                        .decodePulsarMessageResBuffer(entry.getData());
+                            channelHandlerContext.channel().writeAndFlush(byteBuffer).addListener(new ChannelFutureListener() {
+                                @Override
+                                public void operationComplete(ChannelFuture oCfuture) throws Exception {
+                                    if (!oCfuture.isSuccess()) {
+                                        log.error("Transfer one message from page cache failed, ", oCfuture.cause());
+                                        future.complete(new Exception(oCfuture.cause()));
+                                    } else {
+                                        future.complete(null);
+                                    }
+                                }
+                            });
+                        } catch (Throwable e) {
+                            log.error("", e);
+                            future.completeExceptionally(new Exception(String.valueOf(ResponseCode.SYSTEM_ERROR)));
+                        } finally {
+                            if (entry != null) {
+                                entry.release();
+                            }
                         }
                     }
-                });
-            } catch (Throwable e) {
-                log.error("", e);
-                selectMappedBufferResult.release();
+                }, null);
             }
-
-            return null;
-        } else {
+            future.thenAccept((v)->{
+                response.setCode(ResponseCode.SUCCESS);
+                response.setRemark(null);
+            }).exceptionally((ex)->{
+                log.error("query or send message by id from bookie has exception e = {}",ex);
+                response.setCode(ResponseCode.SYSTEM_ERROR);
+                if (ex instanceof ManagedLedgerException) {
+                    response.setRemark("Read message error by ManagedLedger, " + requestHeader.getOffset());
+                } else {
+                    response.setRemark("Send message to client error, " + requestHeader.getOffset());
+                }
+                return null;
+            }).get(30,TimeUnit.SECONDS);
+        } catch (InterruptedException | ExecutionException | TimeoutException e) {
+            log.error("query message by id has exception e = {}",e);
             response.setCode(ResponseCode.SYSTEM_ERROR);
-            response.setRemark("can not find message by the offset, " + requestHeader.getOffset());
+            response.setRemark("can not find message by the offset or query time out, " + requestHeader.getOffset());
         }
-
         return response;
+    }
+
+    private CompletableFuture<ManagedLedger> getManageLedger(String ledgerName) {
+
+        CompletableFuture<ManagedLedger> mdFuture = new CompletableFuture<>();
+
+        ManagedLedger managedLedger = null;
+        try {
+            managedLedger =
+                    brokerController.getBrokerService().getManagedLedgerFactory().open(ledgerName);
+            mdFuture.complete(managedLedger);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+            mdFuture.completeExceptionally(e);
+        } catch (ManagedLedgerException e) {
+            e.printStackTrace();
+            mdFuture.completeExceptionally(e);
+        }
+        return mdFuture;
     }
 }
