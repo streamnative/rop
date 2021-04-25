@@ -65,7 +65,8 @@ public class Broker2Client {
         try {
             this.brokerController.getRemotingServer().invokeOneway(channel, request, 10);
         } catch (Exception e) {
-            log.error("Check transaction failed because invoke producer exception. group={}, msgId={}, exception={}", group,
+            log.error("Check transaction failed because invoke producer exception. group={}, msgId={}, exception={}",
+                    group,
                     messageExt.getMsgId(), e.getMessage());
         }
     }

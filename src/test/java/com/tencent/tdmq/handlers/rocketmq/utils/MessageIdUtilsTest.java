@@ -1,6 +1,7 @@
 package com.tencent.tdmq.handlers.rocketmq.utils;
 
-import static com.tencent.tdmq.handlers.rocketmq.utils.MessageIdUtils.*;
+import static com.tencent.tdmq.handlers.rocketmq.utils.MessageIdUtils.getMessageId;
+import static com.tencent.tdmq.handlers.rocketmq.utils.MessageIdUtils.getOffset;
 import static org.junit.Assert.assertEquals;
 
 import org.apache.pulsar.client.impl.MessageIdImpl;

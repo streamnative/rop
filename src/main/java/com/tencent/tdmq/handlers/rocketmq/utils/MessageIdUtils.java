@@ -33,7 +33,8 @@ public class MessageIdUtils {
         checkArgument(ledgerId >= 0, "Expected ledgerId >= 0, but get " + ledgerId);
         //checkArgument(entryId >= 0, "Expected entryId >= 0, but get " + entryId);
 
-        long offset = (ledgerId << (ENTRY_BITS + PARTITION_BITS) | (entryId & ((1 << ENTRY_BITS)-1) << PARTITION_BITS));
+        long offset = (ledgerId << (ENTRY_BITS + PARTITION_BITS) | (entryId
+                & ((1 << ENTRY_BITS) - 1) << PARTITION_BITS));
         return offset;
     }
 
@@ -44,7 +45,9 @@ public class MessageIdUtils {
         checkArgument(partitionId < (1 << PARTITION_BITS),
                 "Expected batchIndex only take " + PARTITION_BITS + " bits, but it is " + partitionId);
 
-        long offset = (ledgerId << (ENTRY_BITS + PARTITION_BITS) | (entryId & ((1 << ENTRY_BITS)-1) << PARTITION_BITS)) + partitionId;
+        long offset =
+                (ledgerId << (ENTRY_BITS + PARTITION_BITS) | (entryId & ((1 << ENTRY_BITS) - 1) << PARTITION_BITS))
+                        + partitionId;
         return offset;
     }
 
@@ -53,7 +56,7 @@ public class MessageIdUtils {
         checkArgument(offset > 0, "Expected Offset > 0, but get " + offset);
 
         long ledgerId = offset >>> (ENTRY_BITS + PARTITION_BITS);
-        long entryId = (short)((offset >>> PARTITION_BITS) & ((1 << ENTRY_BITS) - 1));
+        long entryId = (short) ((offset >>> PARTITION_BITS) & ((1 << ENTRY_BITS) - 1));
         //int partitionId = (int) (offset & 0x2FF);
 
         return new MessageIdImpl(ledgerId, entryId, -1);
@@ -63,7 +66,7 @@ public class MessageIdUtils {
         // De-multiplex ledgerId and entryId from offset
         checkArgument(offset >= 0, "Expected Offset >= 0, but get " + offset);
         long ledgerId = offset >>> (ENTRY_BITS + PARTITION_BITS);
-        long entryId = (short)((offset >>> PARTITION_BITS) & ((1 << ENTRY_BITS) - 1));
+        long entryId = (short) ((offset >>> PARTITION_BITS) & ((1 << ENTRY_BITS) - 1));
 
         return new PositionImpl(ledgerId, entryId);
     }

@@ -52,7 +52,6 @@ import org.apache.rocketmq.remoting.exception.RemotingCommandException;
 import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
 import org.apache.rocketmq.remoting.netty.RequestTask;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
-import org.apache.rocketmq.store.GetMessageResult;
 import org.apache.rocketmq.store.stats.BrokerStatsManager;
 
 @Slf4j
@@ -69,6 +68,11 @@ public class PullMessageProcessor implements NettyRequestProcessor {
             String groupName) {
         ConsumerGroupInfo consumerGroupInfo = this.brokerController.getConsumerManager()
                 .getConsumerGroupInfo(groupName);
+
+        if (null == consumerGroupInfo) {
+            log.warn("No consumerGroupInfo object available");
+            return null;
+        }
 
         ConcurrentMap<Channel, ClientChannelInfo> channelInfoConcurrentMap = consumerGroupInfo.getChannelInfoTable();
         RopClientChannelCnx channelCnx = (RopClientChannelCnx) channelInfoConcurrentMap.get(channel);
@@ -209,6 +213,14 @@ public class PullMessageProcessor implements NettyRequestProcessor {
         // 从 message store 中获取接收消息的数据并处理
         PulsarMessageStore serverCnxMsgStore = this
                 .getServerCnxMsgStore(channel, request, requestHeader.getConsumerGroup());
+
+        // 如果获取 serverCnxMsgStore 对象失败，则进入重试阶段，等待 heartbeat 请求注册上来
+        if (null == serverCnxMsgStore) {
+            response.setCode(ResponseCode.PULL_RETRY_IMMEDIATELY);
+            response.setRemark("store getMessage return null");
+            return response;
+        }
+
         final RopGetMessageResult ropGetMessageResult = serverCnxMsgStore
                 .getMessage(request, requestHeader, messageFilter);
         if (ropGetMessageResult != null) {
@@ -258,7 +270,8 @@ public class PullMessageProcessor implements NettyRequestProcessor {
                     response.setCode(ResponseCode.PULL_OFFSET_MOVED);
                     // XXX: warn and notify me
                     log.info("the request offset: {} over flow badly, broker max offset: {}, consumer: {}",
-                            requestHeader.getQueueOffset(), ropGetMessageResult.getMaxOffset(), channel.remoteAddress());
+                            requestHeader.getQueueOffset(), ropGetMessageResult.getMaxOffset(),
+                            channel.remoteAddress());
                     break;
                 case OFFSET_OVERFLOW_ONE:
                     response.setCode(ResponseCode.PULL_NOT_FOUND);
@@ -326,7 +339,8 @@ public class PullMessageProcessor implements NettyRequestProcessor {
                     this.brokerController.getBrokerStatsManager()
                             .incGroupGetSize(requestHeader.getConsumerGroup(), requestHeader.getTopic(),
                                     ropGetMessageResult.getBufferTotalSize());
-                    this.brokerController.getBrokerStatsManager().incBrokerGetNums(ropGetMessageResult.getMessageCount());
+                    this.brokerController.getBrokerStatsManager()
+                            .incBrokerGetNums(ropGetMessageResult.getMessageCount());
 
                     final long beginTimeMills = System.currentTimeMillis();
                     final byte[] r = this.readGetMessageResult(ropGetMessageResult, requestHeader.getConsumerGroup(),
@@ -391,7 +405,8 @@ public class PullMessageProcessor implements NettyRequestProcessor {
         }
     }
 
-    private byte[] readGetMessageResult(final RopGetMessageResult getMessageResult, final String group, final String topic,
+    private byte[] readGetMessageResult(final RopGetMessageResult getMessageResult, final String group,
+            final String topic,
             final int queueId) {
         final ByteBuffer byteBuffer = ByteBuffer.allocate(getMessageResult.getBufferTotalSize());
 

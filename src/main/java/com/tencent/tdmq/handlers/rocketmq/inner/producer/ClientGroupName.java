@@ -43,7 +43,9 @@ public class ClientGroupName {
                 tdmpGroupName.getNamespacePortion() == RocketMQTopic.defaultNamespace)) {
             this.rmqGroupName = tdmpGroupName.getLocalName();
         } else {
-            this.rmqGroupName = tdmpGroupName.getTenant() + "|" + tdmpGroupName.getNamespacePortion() + "%" + tdmpGroupName.getLocalName();
+            this.rmqGroupName =
+                    tdmpGroupName.getTenant() + "|" + tdmpGroupName.getNamespacePortion() + "%" + tdmpGroupName
+                            .getLocalName();
         }
     }
 }

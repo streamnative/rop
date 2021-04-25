@@ -19,26 +19,35 @@ import org.apache.bookkeeper.mledger.impl.PositionImpl;
 import org.apache.pulsar.client.impl.MessageImpl;
 
 @Slf4j
-public class OffsetFinder implements AsyncCallbacks.FindEntryCallback{
-    private final ManagedLedgerImpl managedLedger;
-    private long timestamp = 0;
+public class OffsetFinder implements AsyncCallbacks.FindEntryCallback {
 
     private static final int FALSE = 0;
     private static final int TRUE = 1;
-    @SuppressWarnings("unused")
-    private volatile int messageFindInProgress = FALSE;
     private static final AtomicIntegerFieldUpdater<OffsetFinder> messageFindInProgressUpdater =
             AtomicIntegerFieldUpdater.newUpdater(OffsetFinder.class, "messageFindInProgress");
+    private final ManagedLedgerImpl managedLedger;
+    private long timestamp = 0;
+    @SuppressWarnings("unused")
+    private volatile int messageFindInProgress = FALSE;
 
     public OffsetFinder(ManagedLedgerImpl managedLedger) {
         this.managedLedger = managedLedger;
+    }
+
+    public static PositionImpl getFirstValidPosition(ManagedLedgerImpl managedLedger) {
+        PositionImpl firstPosition = managedLedger.getFirstPosition();
+        if (firstPosition == null) {
+            return null;
+        } else {
+            return managedLedger.getNextValidPosition(firstPosition);
+        }
     }
 
     public void findMessages(final long timestamp, AsyncCallbacks.FindEntryCallback callback) {
         this.timestamp = timestamp;
         if (messageFindInProgressUpdater.compareAndSet(this, FALSE, TRUE)) {
             if (log.isDebugEnabled()) {
-                log.debug("[{}] Starting message position find at timestamp {}",  timestamp);
+                log.debug("[{}] Starting message position find at timestamp {}", timestamp);
             }
 
             asyncFindNewestMatching(ManagedCursor.FindPositionConstraint.SearchAllAvailableEntries, entry -> {
@@ -47,7 +56,7 @@ public class OffsetFinder implements AsyncCallbacks.FindEntryCallback{
                     msg = MessageImpl.deserialize(entry.getDataBuffer());
                     return msg.getPublishTime() <= timestamp;
                 } catch (Exception e) {
-                    log.error("[{}][{}] Error deserializing message for message position find",  e);
+                    log.error("[{}][{}] Error deserializing message for message position find", e);
                 } finally {
                     entry.release();
                     if (msg != null) {
@@ -112,14 +121,5 @@ public class OffsetFinder implements AsyncCallbacks.FindEntryCallback{
 
         OpFindNewestEntry op = new OpFindNewestEntry(managedLedger, startPosition, condition, max, callback, ctx);
         op.find();
-    }
-
-    public static PositionImpl getFirstValidPosition(ManagedLedgerImpl managedLedger) {
-        PositionImpl firstPosition = managedLedger.getFirstPosition();
-        if (firstPosition == null) {
-            return null;
-        } else {
-            return managedLedger.getNextValidPosition(firstPosition);
-        }
     }
 }

@@ -16,9 +16,7 @@ package com.tencent.tdmq.handlers.rocketmq.inner.consumer;
 
 import com.google.common.base.Preconditions;
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
-import com.tencent.tdmq.handlers.rocketmq.inner.namesvr.MQTopicManager;
 import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientGroupName;
-import com.tencent.tdmq.handlers.rocketmq.utils.RocketMQTopic;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import lombok.extern.slf4j.Slf4j;

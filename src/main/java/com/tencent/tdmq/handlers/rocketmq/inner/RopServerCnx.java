@@ -155,11 +155,13 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
 
                 int totalQueueNum = this.brokerController.getServerConfig().getRmqScheduleTopicPartitionNum();
                 partitionId = partitionId % totalQueueNum;
-                pTopic = this.brokerController.getDelayedMessageService().getDelayedTopicName(messageInner.getDelayTimeLevel());
+                pTopic = this.brokerController.getDelayedMessageService()
+                        .getDelayedTopicName(messageInner.getDelayTimeLevel());
                 pTopic = pTopic + "-partition-" + partitionId;
 
                 MessageAccessor.putProperty(messageInner, MessageConst.PROPERTY_REAL_TOPIC, messageInner.getTopic());
-                MessageAccessor.putProperty(messageInner, MessageConst.PROPERTY_REAL_QUEUE_ID, String.valueOf(messageInner.getQueueId()));
+                MessageAccessor.putProperty(messageInner, MessageConst.PROPERTY_REAL_QUEUE_ID,
+                        String.valueOf(messageInner.getQueueId()));
                 messageInner.setPropertiesString(MessageDecoder.messageProperties2String(messageInner.getProperties()));
                 messageInner.setTopic(pTopic);
                 messageInner.setQueueId(partitionId);
