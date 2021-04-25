@@ -133,7 +133,7 @@ public class ConsumerManageProcessor implements NettyRequestProcessor {
             response.setRemark(null);
         } else {
             long minOffset = this.brokerController.getConsumerOffsetManager()
-                    .getMaxOffsetInQueue(new ClientGroupAndTopicName(requestHeader.getConsumerGroup(),
+                    .getMinOffsetInQueue(new ClientGroupAndTopicName(requestHeader.getConsumerGroup(),
                                     requestHeader.getTopic()),
                             requestHeader.getQueueId());
             if (minOffset <= 0) {

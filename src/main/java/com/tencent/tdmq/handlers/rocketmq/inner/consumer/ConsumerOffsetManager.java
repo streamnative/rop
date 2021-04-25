@@ -28,6 +28,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.TimeUnit;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bookkeeper.mledger.ManagedLedgerException;
@@ -242,7 +243,7 @@ public class ConsumerOffsetManager {
 
     public PersistentTopic getPulsarPersistentTopic(ClientGroupAndTopicName groupAndTopic, int partitionId) {
         if (isPulsarTopicCached(groupAndTopic, partitionId)) {
-            return this.pulsarTopicCache.get(groupAndTopic).get(partitionId);
+            return this.pulsarTopicCache.get(groupAndTopic.getClientTopicName()).get(partitionId);
         } else {
             synchronized (this) {
                 CompletableFuture<PersistentTopic> feature = new CompletableFuture<>();
@@ -257,7 +258,6 @@ public class ConsumerOffsetManager {
                             if (t2.isPresent()) {
                                 PersistentTopic topic = (PersistentTopic) t2.get();
                                 if (!this.pulsarTopicCache.containsKey(groupAndTopic)) {
-
                                     this.pulsarTopicCache
                                             .putIfAbsent(groupAndTopic.getClientTopicName(), new ConcurrentHashMap<>());
                                 }
@@ -265,14 +265,6 @@ public class ConsumerOffsetManager {
                                 feature.complete(topic);
                             }
                         });
-
-                try {
-                    return feature.get();
-                } catch (Exception e) {
-                    log.warn("getPulsarPersistentTopic error, topicName=[{}], partitionId=[{}].", groupAndTopic,
-                            partitionId);
-                    e.printStackTrace();
-                }
             }
         }
         return null;
@@ -308,7 +300,8 @@ public class ConsumerOffsetManager {
         if (groupAndTopicName == null) {
             return false;
         }
-        return pulsarTopicCache.containsKey(groupAndTopicName) && pulsarTopicCache.get(groupAndTopicName)
+        ClientTopicName clientTopicName = groupAndTopicName.getClientTopicName();
+        return pulsarTopicCache.containsKey(clientTopicName) && pulsarTopicCache.get(clientTopicName)
                 .containsKey(partitionId);
     }
 
