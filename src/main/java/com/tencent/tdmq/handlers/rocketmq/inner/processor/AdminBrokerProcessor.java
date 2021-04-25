@@ -16,6 +16,7 @@ package com.tencent.tdmq.handlers.rocketmq.inner.processor;
 
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
 import com.tencent.tdmq.handlers.rocketmq.inner.consumer.ConsumerGroupInfo;
+import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientGroupAndTopicName;
 import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientGroupName;
 import com.tencent.tdmq.handlers.rocketmq.utils.CommonUtils;
 import com.tencent.tdmq.handlers.rocketmq.utils.MessageIdUtils;
@@ -800,7 +801,10 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
 
                 OffsetWrapper offsetWrapper = new OffsetWrapper();
 
-                long brokerOffset = 0L;/*TODO this.brokerController.getMessageStore().getMaxOffsetInQueue(topic, i);*/
+                ClientGroupAndTopicName clientGroupName =
+                        new ClientGroupAndTopicName(requestHeader.getConsumerGroup(), topic);
+                long brokerOffset =
+                        this.brokerController.getConsumerOffsetManager().getMaxOffsetInQueue(clientGroupName, i);
                 if (brokerOffset < 0) {
                     brokerOffset = 0;
                 }
@@ -818,6 +822,7 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
 
                 long timeOffset = consumerOffset - 1;
                 if (timeOffset >= 0) {
+                    // TODO: 2021/4/25 获取指定offset位点的存储时间（当前消费位置时间）
                     long lastTimestamp = 0L/*this.brokerController.getMessageStore()
                             .getMessageStoreTimeStamp(topic, i, timeOffset)*/;
                     if (lastTimestamp > 0) {
