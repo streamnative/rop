@@ -19,6 +19,7 @@ import static org.apache.rocketmq.common.constant.PermName.PERM_READ;
 import static org.apache.rocketmq.common.constant.PermName.PERM_WRITE;
 import static org.apache.rocketmq.common.protocol.RequestCode.GET_ROUTEINTO_BY_TOPIC;
 
+import com.google.common.base.Joiner;
 import com.google.common.collect.Maps;
 import com.tencent.tdmq.handlers.rocketmq.RocketMQServiceConfiguration;
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
@@ -87,7 +88,7 @@ public class NameserverProcessor implements NettyRequestProcessor {
             case GET_ROUTEINTO_BY_TOPIC:
                 // TODO return this.getRouteInfoByTopic(ctx, request);
                 return handleTopicMetadata(ctx, request);
-            case RequestCode.GET_BROKER_CLUSTER_INFO:
+            case RequestCode.GET_BROKER_CLUSTER_INFO:  // 需要 | 管控端需要
                 return this.getBrokerClusterInfo(ctx, request);
             case RequestCode.WIPE_WRITE_PERM_OF_BROKER:
             case RequestCode.GET_ALL_TOPIC_LIST_FROM_NAMESERVER:
@@ -134,14 +135,16 @@ public class NameserverProcessor implements NettyRequestProcessor {
         /*
          * 如果主题名和clusterName相同，返回集群中任意一个节点到客户端。这里为了兼容客户端创建主题操作
          */
-        if (clusterName.equals(requestHeader.getTopic())) {
+        if (clusterName.equals(requestHeader.getTopic()) || "TBW102".equals(requestHeader.getTopic())) {
             try {
                 PulsarAdmin adminClient = brokerController.getBrokerService().pulsar().getAdminClient();
                 List<String> brokers = adminClient.brokers().getActiveBrokers(clusterName);
                 String randomBroker = brokers.get(new Random().nextInt(brokers.size()));
+                String rmqBrokerAddress =
+                        parseBrokerAddress(randomBroker, brokerController.getRemotingServer().getPort());
                 BrokerData brokerData = new BrokerData();
                 HashMap<Long, String> brokerAddrs = Maps.newHashMap();
-                brokerAddrs.put(0L, randomBroker);
+                brokerAddrs.put(0L, rmqBrokerAddress);
                 brokerData.setBrokerAddrs(brokerAddrs);
                 brokerDatas.add(brokerData);
                 byte[] content = topicRouteData.encode();
@@ -230,17 +233,20 @@ public class NameserverProcessor implements NettyRequestProcessor {
         try {
             PulsarAdmin adminClient = brokerController.getBrokerService().pulsar().getAdminClient();
             List<String> brokers = adminClient.brokers().getActiveBrokers(clusterName);
+            // 随机获取一个broker节点
             String randomBroker = brokers.get(new Random().nextInt(brokers.size()));
+            // 组装成rmq broker节点地址
+            String rmqBrokerAddress = parseBrokerAddress(randomBroker, brokerController.getRemotingServer().getPort());
 
             HashMap<String, BrokerData> brokerAddrTable = Maps.newHashMap();
             HashMap<Long, String> brokerAddrs = Maps.newHashMap();
-            brokerAddrs.put(0L, randomBroker);
-            brokerAddrTable.put(randomBroker, new BrokerData(clusterName, randomBroker, brokerAddrs));
+            brokerAddrs.put(0L, rmqBrokerAddress);
+            brokerAddrTable.put(rmqBrokerAddress, new BrokerData(clusterName, rmqBrokerAddress, brokerAddrs));
 
             ClusterInfo clusterInfoSerializeWrapper = new ClusterInfo();
             clusterInfoSerializeWrapper.setBrokerAddrTable(brokerAddrTable);
             HashMap<String, Set<String>> clusterAddrTable = Maps.newHashMap();
-            clusterAddrTable.put(clusterName, Sets.newHashSet(randomBroker));
+            clusterAddrTable.put(clusterName, Sets.newHashSet(rmqBrokerAddress));
             clusterInfoSerializeWrapper.setClusterAddrTable(clusterAddrTable);
 
             response.setBody(clusterInfoSerializeWrapper.encode());

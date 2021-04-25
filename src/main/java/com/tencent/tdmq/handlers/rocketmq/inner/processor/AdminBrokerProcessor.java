@@ -46,6 +46,8 @@ import org.apache.bookkeeper.mledger.impl.ManagedLedgerImpl;
 import org.apache.bookkeeper.mledger.impl.PositionImpl;
 import org.apache.pulsar.broker.service.Topic;
 import org.apache.pulsar.broker.service.persistent.PersistentTopic;
+import org.apache.pulsar.client.api.Message;
+import org.apache.pulsar.client.api.Reader;
 import org.apache.rocketmq.broker.client.ClientChannelInfo;
 import org.apache.rocketmq.broker.topic.TopicValidator;
 import org.apache.rocketmq.broker.transaction.queue.TransactionalMessageUtil;
@@ -165,7 +167,7 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
                 return this.getConsumerConnectionList(ctx, request);
             case RequestCode.GET_PRODUCER_CONNECTION_LIST: // 需要 | 管控端监控
                 return this.getProducerConnectionList(ctx, request);
-            case RequestCode.GET_CONSUME_STATS:
+            case RequestCode.GET_CONSUME_STATS: // 需要 | 管控端监控
                 return this.getConsumeStats(ctx, request);
             case RequestCode.GET_ALL_CONSUMER_OFFSET:
                 return this.getAllConsumerOffset(ctx, request);
@@ -823,8 +825,19 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
                 long timeOffset = consumerOffset - 1;
                 if (timeOffset >= 0) {
                     // TODO: 2021/4/25 获取指定offset位点的存储时间（当前消费位置时间）
-                    long lastTimestamp = 0L/*this.brokerController.getMessageStore()
-                            .getMessageStoreTimeStamp(topic, i, timeOffset)*/;
+                    long lastTimestamp = 0L;
+                    try(Reader<byte[]> reader = this.brokerController.getBrokerService().pulsar().getClient().newReader()
+                            .topic(clientGroupName.getClientTopicName().getPulsarTopicName())
+                            .receiverQueueSize(100)
+                            .startMessageId(org.apache.pulsar.client.api.MessageId.earliest)
+                            .readerName(clientGroupName.getClientGroupName().getPulsarGroupName())
+                            .create()) {
+                        Message message = reader.readNext(1000, TimeUnit.MILLISECONDS);
+                        lastTimestamp = message.getPublishTime();
+                    } catch (Exception e) {
+                        log.warn("Retrieve message error, topic = [{}].", topic);
+                    }
+
                     if (lastTimestamp > 0) {
                         offsetWrapper.setLastTimestamp(lastTimestamp);
                     }
