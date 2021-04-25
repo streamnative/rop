@@ -21,6 +21,7 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
 import org.apache.pulsar.common.naming.TopicName;
+import org.apache.rocketmq.common.protocol.NamespaceUtil;
 
 @Data
 @EqualsAndHashCode
@@ -38,13 +39,14 @@ public class ClientTopicName {
     public ClientTopicName(TopicName tdmpTopicName) {
         TopicName tempTopic = TopicName.get(tdmpTopicName.getPartitionedTopicName());
         this.pulsarTopicName = Joiner.on("/")
-                .join(tempTopic.getTenant(), tempTopic.getNamespace(), tempTopic.getLocalName());
+                .join(tempTopic.getTenant(), tempTopic.getNamespacePortion(), tempTopic.getLocalName());
         if (tdmpTopicName.getTenant() == RocketMQTopic.metaTenant
-                && (tdmpTopicName.getNamespace() == RocketMQTopic.metaNamespace ||
-                tdmpTopicName.getNamespace() == RocketMQTopic.defaultNamespace)) {
+                && (tdmpTopicName.getNamespacePortion() == RocketMQTopic.metaNamespace ||
+                tdmpTopicName.getNamespacePortion() == RocketMQTopic.defaultNamespace)) {
             this.rmqTopicName = tempTopic.getLocalName();
         } else {
-            this.rmqTopicName = tempTopic.getTenant() + "|" + tempTopic.getNamespace() + "%" + tempTopic.getLocalName();
+            String rmqNamespace = tempTopic.getTenant() + "|" + tempTopic.getNamespacePortion();
+            this.rmqTopicName = NamespaceUtil.wrapNamespace(rmqNamespace, tempTopic.getLocalName());
         }
     }
 

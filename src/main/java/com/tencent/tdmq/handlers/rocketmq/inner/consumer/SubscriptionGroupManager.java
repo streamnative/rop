@@ -16,11 +16,11 @@ package com.tencent.tdmq.handlers.rocketmq.inner.consumer;
 
 import com.google.common.base.Preconditions;
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
-import com.tencent.tdmq.handlers.rocketmq.inner.namesvr.MQTopicManager;
 import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientGroupName;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.pulsar.common.naming.TopicName;
 import org.apache.rocketmq.common.DataVersion;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.subscription.SubscriptionGroupConfig;
@@ -51,13 +51,14 @@ public class SubscriptionGroupManager {
     public void start() {
         log.info("starting SubscriptionGroupManager service...");
         Preconditions.checkNotNull(brokerController);
-        MQTopicManager topicConfigManager = this.brokerController.getTopicConfigManager();
-        topicConfigManager.getPulsarTopicCache().forEach(((clientTopicName, persistentTopicMap) -> {
+        ConsumerOffsetManager consumerOffsetManager = this.brokerController.getConsumerOffsetManager();
+        consumerOffsetManager.getPulsarTopicCache().forEach(((clientTopicName, persistentTopicMap) -> {
             persistentTopicMap.values().forEach((topic) -> {
                 topic.getSubscriptions().forEach((grp, subscription) -> {
                     SubscriptionGroupConfig config = new SubscriptionGroupConfig();
-                    config.setGroupName(grp);
-                    subscriptionGroupTable.put(new ClientGroupName(grp), config);
+                    ClientGroupName clientGroupName = new ClientGroupName(TopicName.get(grp));
+                    config.setGroupName(clientGroupName.getRmqGroupName());
+                    subscriptionGroupTable.put(clientGroupName, config);
                 });
             });
         }));

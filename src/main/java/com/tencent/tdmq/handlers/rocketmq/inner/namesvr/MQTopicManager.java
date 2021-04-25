@@ -32,8 +32,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 import lombok.Getter;
@@ -66,13 +64,9 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
     @Getter
     private final Cache<TopicName, Map<Integer, InetSocketAddress>> lookupCache = CacheBuilder
             .newBuilder()
-            .initialCapacity(MAX_CACHE_SIZE).maximumSize(MAX_CACHE_SIZE)
-            .expireAfterWrite(MAX_CACHE_TIME_IN_SEC, TimeUnit.SECONDS)
+            .initialCapacity(MAX_CACHE_SIZE)
             .build();
     private final int servicePort;
-    @Getter
-    private ConcurrentHashMap<ClientTopicName, ConcurrentMap<Integer, PersistentTopic>> pulsarTopicCache =
-            new ConcurrentHashMap<>(MAX_CACHE_SIZE);
     private PulsarService pulsarService;
     private BrokerService brokerService;
     private PulsarAdmin adminClient;
@@ -85,14 +79,6 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
         this.rocketmqMetaNs = NamespaceName
                 .get(config.getRocketmqMetadataTenant(), config.getRocketmqMetadataNamespace());
         this.rocketmqTopicNs = NamespaceName.get(config.getRocketmqTenant(), config.getRocketmqNamespace());
-    }
-
-    private boolean isPulsarTopicCached(ClientTopicName clientTopicName, int partitionId) {
-        if (clientTopicName == null) {
-            return false;
-        }
-        return pulsarTopicCache.containsKey(clientTopicName) && pulsarTopicCache.get(clientTopicName)
-                .containsKey(partitionId);
     }
 
     @Override
@@ -123,7 +109,6 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
 
     public void shutdown() {
         this.lookupCache.cleanUp();
-        this.pulsarTopicCache.clear();
     }
 
     // call pulsarClient.lookup.getBroker to get and own a topic.
@@ -238,10 +223,8 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                         PersistentTopic persistentTopic = (PersistentTopic) t2.get();
                         TopicName topicName = TopicName.get(topic);
                         ClientTopicName clientTopicName = new ClientTopicName(topicName);
-                        if (!pulsarTopicCache.containsKey(clientTopicName)) {
-                            pulsarTopicCache.put(clientTopicName, new ConcurrentHashMap<>());
-                        }
-                        pulsarTopicCache.get(clientTopicName).put(topicName.getPartitionIndex(), persistentTopic);
+                        this.brokerController.getConsumerOffsetManager()
+                                .putPulsarTopic(clientTopicName, topicName.getPartitionIndex(), persistentTopic);
                     } else {
                         log.warn("getTopicIfExists error, topic=[{}].", topic);
                     }
@@ -260,10 +243,18 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                         log.info("get owned topic list when unLoad bundle {}, topic size {} ", bundle,
                                 topics.size());
                         for (String topic : topics) {
-                            TopicName name = TopicName.get(topic);
-                            lookupCache.invalidate(name);
-                            this.pulsarTopicCache.remove(new ClientTopicName(topic));
-                            this.topicConfigTable.remove(RocketMQTopic.getPulsarOrigNoDomainTopic(topic));
+                            TopicName partitionedTopic = TopicName.get(topic);
+                            TopicName name = TopicName.get(partitionedTopic.getPartitionedTopicName());
+                            Map<Integer, InetSocketAddress> lookupBrokerCache = lookupCache.getIfPresent(name);
+                            if (lookupBrokerCache != null) {
+                                lookupBrokerCache.remove(partitionedTopic.getPartitionIndex());
+                            }
+                            if (lookupBrokerCache == null || lookupBrokerCache.isEmpty()) {
+                                this.topicConfigTable.remove(RocketMQTopic.getPulsarOrigNoDomainTopic(topic));
+                            }
+                            ClientTopicName clientTopicName = new ClientTopicName(name);
+                            this.brokerController.getConsumerOffsetManager()
+                                    .removePulsarTopic(clientTopicName, partitionedTopic.getPartitionIndex());
                         }
                     } else {
                         log.error("Failed to get owned topic list for "
@@ -298,9 +289,20 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
     private void loadSysTopics(TopicConfig tc) {
         String fullTopicName = tc.getTopicName();
         try {
+            log.info("pulsar lookup the topic of name = [{}].", fullTopicName);
             adminClient.lookups().lookupTopicAsync(fullTopicName);
         } catch (Exception e) {
             log.warn("load system topic [{}] error.", fullTopicName, e);
+        }
+    }
+
+    // tenant/ns/topicname
+    public void lookupTopics(String tdmpTopicName) {
+        try {
+            log.info("pulsar lookup the topic of name = [{}].", tdmpTopicName);
+            adminClient.lookups().lookupTopicAsync(tdmpTopicName);
+        } catch (Exception e) {
+            log.warn("load system topic [{}] error.", tdmpTopicName, e);
         }
     }
 

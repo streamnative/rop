@@ -131,7 +131,6 @@ public class NameserverProcessor implements NettyRequestProcessor {
         topicRouteData.setQueueDatas(queueDatas);
 
         String clusterName = config.getClusterName();
-
         /*
          * 如果主题名和clusterName相同，返回集群中任意一个节点到客户端。这里为了兼容客户端创建主题操作
          */
@@ -162,6 +161,7 @@ public class NameserverProcessor implements NettyRequestProcessor {
         String requestTopic = requestHeader.getTopic();
         if (Strings.isNotBlank(requestTopic)) {
             RocketMQTopic mqTopic = new RocketMQTopic(requestTopic);
+            mqTopicManager.lookupTopics(mqTopic.getOrigNoDomainTopicName());
             Map<Integer, InetSocketAddress> topicBrokerAddr = mqTopicManager
                     .getTopicBrokerAddr(mqTopic.getPulsarTopicName());
             int partitionNum = topicBrokerAddr.size();

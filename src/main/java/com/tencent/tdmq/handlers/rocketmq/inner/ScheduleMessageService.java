@@ -114,6 +114,13 @@ public class ScheduleMessageService {
         return rocketMQTopic.getPulsarFullName();
     }
 
+    public String getDelayedTopicConsumerName(int timeDelayedLevel) {
+        String delayedTopicName = ScheduleMessageService.this.scheduleTopicPrefix + CommonUtils.UNDERSCORE_CHAR
+                + delayLevelArray[timeDelayedLevel - 1];
+        RocketMQTopic rocketMQTopic = RocketMQTopic.getRocketMQMetaTopic(delayedTopicName);
+        return rocketMQTopic.getOrigNoDomainTopicName() + CommonUtils.UNDERSCORE_CHAR + "consumer";
+    }
+
     public long computeDeliverTimestamp(final long delayLevel, final long storeTimestamp) {
         Long time = this.delayLevelTable.get(delayLevel);
         if (time != null) {
@@ -195,7 +202,7 @@ public class ScheduleMessageService {
                         .receiverQueueSize(MAX_FETCH_MESSAGE_NUM)
                         .subscriptionMode(SubscriptionMode.Durable)
                         .subscriptionType(SubscriptionType.Shared)
-                        .subscriptionName(this.delayTopic + CommonUtils.UNDERSCORE_CHAR + "consumer")
+                        .subscriptionName(getDelayedTopicConsumerName((int) delayLevel))
                         .topic(this.delayTopic)
                         .subscriptionInitialPosition(SubscriptionInitialPosition.Earliest)
                         .subscribe();
@@ -298,9 +305,7 @@ public class ScheduleMessageService {
 
             msgInner.setWaitStoreMsgOK(false);
             MessageAccessor.clearProperty(msgInner, MessageConst.PROPERTY_DELAY_TIME_LEVEL);
-
             msgInner.setTopic(msgInner.getProperty(MessageConst.PROPERTY_REAL_TOPIC));
-
             String queueIdStr = msgInner.getProperty(MessageConst.PROPERTY_REAL_QUEUE_ID);
             int queueId = Integer.parseInt(queueIdStr);
             msgInner.setQueueId(queueId);

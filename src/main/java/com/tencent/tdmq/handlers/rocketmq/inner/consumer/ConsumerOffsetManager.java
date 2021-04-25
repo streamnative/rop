@@ -17,7 +17,9 @@ package com.tencent.tdmq.handlers.rocketmq.inner.consumer;
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
 import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientGroupAndTopicName;
 import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientGroupName;
+import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientTopicName;
 import com.tencent.tdmq.handlers.rocketmq.utils.MessageIdUtils;
+import com.tencent.tdmq.handlers.rocketmq.utils.RocketMQTopic;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -27,10 +29,11 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.bookkeeper.mledger.ManagedCursor;
 import org.apache.bookkeeper.mledger.ManagedLedgerException;
 import org.apache.bookkeeper.mledger.impl.PositionImpl;
-import org.apache.pulsar.broker.service.Subscription;
 import org.apache.pulsar.broker.service.persistent.PersistentSubscription;
 import org.apache.pulsar.broker.service.persistent.PersistentTopic;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandSubscribe.InitialPosition;
@@ -49,12 +52,50 @@ public class ConsumerOffsetManager {
      **/
     private ConcurrentMap<ClientGroupAndTopicName, ConcurrentMap<Integer, Long>> offsetTable =
             new ConcurrentHashMap<>(512);
-
-    private ConcurrentHashMap<ClientGroupAndTopicName, ConcurrentMap<Integer, PersistentTopic>> pulsarTopicCache =
+    @Getter
+    private ConcurrentHashMap<ClientTopicName, ConcurrentMap<Integer, PersistentTopic>> pulsarTopicCache =
             new ConcurrentHashMap<>(512);
 
     public ConsumerOffsetManager(RocketMQBrokerController brokerController) {
         this.brokerController = brokerController;
+    }
+
+    public void putPulsarTopic(ClientTopicName clientTopicName, int partitionId, PersistentTopic pulsarTopic) {
+        if (pulsarTopic == null) {
+            return;
+        }
+        if (!pulsarTopicCache.containsKey(clientTopicName)) {
+            pulsarTopicCache.putIfAbsent(clientTopicName, new ConcurrentHashMap<>());
+        }
+        pulsarTopicCache.get(clientTopicName).putIfAbsent(partitionId, pulsarTopic);
+
+        pulsarTopic.getSubscriptions().forEach((grp, grpInfo) -> {
+            if(!isSystemGroup(grp)) {
+                ManagedCursor cursor = grpInfo.getCursor();
+                PositionImpl readPosition = (PositionImpl) cursor.getReadPosition();
+                ClientGroupName clientGroupName = new ClientGroupName(TopicName.get(grp));
+                ClientGroupAndTopicName groupAtTopic = new ClientGroupAndTopicName(clientGroupName, clientTopicName);
+                ConcurrentMap<Integer, Long> partitionOffset = offsetTable.get(groupAtTopic);
+                if (partitionOffset == null) {
+                    offsetTable.putIfAbsent(groupAtTopic, new ConcurrentHashMap<>());
+                }
+                offsetTable.get(groupAtTopic).putIfAbsent(partitionId,
+                        MessageIdUtils.getOffset(readPosition.getLedgerId(), readPosition.getEntryId()));
+            }
+        });
+    }
+
+    public void removePulsarTopic(ClientTopicName clientTopicName, int partitionId) {
+        if (pulsarTopicCache.containsKey(clientTopicName)) {
+            pulsarTopicCache.get(clientTopicName).remove(partitionId);
+            if (pulsarTopicCache.get(clientTopicName).isEmpty()) {
+                pulsarTopicCache.remove(clientTopicName);
+            }
+        }
+    }
+
+    public void removePulsarTopic(ClientTopicName clientTopicName) {
+        pulsarTopicCache.remove(clientTopicName);
     }
 
     public void scanUnsubscribedTopic() {
@@ -220,7 +261,7 @@ public class ConsumerOffsetManager {
 
     public PersistentTopic getPulsarPersistentTopic(ClientGroupAndTopicName groupAndTopic, int partitionId) {
         if (isPulsarTopicCached(groupAndTopic, partitionId)) {
-            return this.pulsarTopicCache.get(groupAndTopic).get(partitionId);
+            return this.pulsarTopicCache.get(groupAndTopic.getClientTopicName()).get(partitionId);
         } else {
             synchronized (this) {
                 CompletableFuture<PersistentTopic> feature = new CompletableFuture<>();
@@ -235,44 +276,44 @@ public class ConsumerOffsetManager {
                             if (t2.isPresent()) {
                                 PersistentTopic topic = (PersistentTopic) t2.get();
                                 if (!this.pulsarTopicCache.containsKey(groupAndTopic)) {
-                                    this.pulsarTopicCache.putIfAbsent(groupAndTopic, new ConcurrentHashMap<>());
+                                    this.pulsarTopicCache
+                                            .putIfAbsent(groupAndTopic.getClientTopicName(), new ConcurrentHashMap<>());
                                 }
                                 this.pulsarTopicCache.get(groupAndTopic).putIfAbsent(partitionId, topic);
                                 feature.complete(topic);
                             }
                         });
-
-                try {
-                    return feature.get();
-                } catch (Exception e) {
-                    log.warn("getPulsarPersistentTopic error, topicName=[{}], partitionId=[{}].", groupAndTopic,
-                            partitionId);
-                    e.printStackTrace();
-                }
             }
         }
         return null;
+    }
+
+    private boolean isSystemGroup(String groupName) {
+        return groupName.startsWith(RocketMQTopic.metaTenant + "/" + RocketMQTopic.metaNamespace) ||
+                groupName.startsWith(RocketMQTopic.defaultTenant + "/" + RocketMQTopic.defaultNamespace);
     }
 
     public synchronized void persist() {
         offsetTable.forEach((groupAndTopic, offsetMap) -> {
             String pulsarTopic = groupAndTopic.getClientTopicName().getPulsarTopicName();
             String pulsarGroup = groupAndTopic.getClientGroupName().getPulsarGroupName();
-            offsetMap.forEach((partitionId, offset) -> {
-                PersistentTopic persistentTopic = getPulsarPersistentTopic(groupAndTopic, partitionId);
-                if (persistentTopic != null) {
-                    PersistentSubscription subscription = persistentTopic.getSubscription(pulsarGroup);
-                    if (subscription == null) {
-                        try {
-                            Subscription sub = persistentTopic
-                                    .createSubscription(pulsarGroup, InitialPosition.Latest, false).get();
-                            sub.resetCursor(MessageIdUtils.getPosition(offset));
-                        } catch (Exception e) {
-                            log.warn("persist topic[{}] offset[{}] error.", groupAndTopic, offset);
+            if (!isSystemGroup(pulsarGroup)) {
+                offsetMap.forEach((partitionId, offset) -> {
+                    PersistentTopic persistentTopic = getPulsarPersistentTopic(groupAndTopic, partitionId);
+                    if (persistentTopic != null) {
+                        PersistentSubscription subscription = persistentTopic.getSubscription(pulsarGroup);
+                        if (subscription == null) {
+                            try {
+                                subscription = (PersistentSubscription) persistentTopic
+                                        .createSubscription(pulsarGroup, InitialPosition.Latest, false).get();
+                            } catch (Exception e) {
+                                log.warn("persist topic[{}] offset[{}] error.", groupAndTopic, offset);
+                            }
                         }
+                        subscription.resetCursor(MessageIdUtils.getPosition(offset));
                     }
-                }
-            });
+                });
+            }
         });
     }
 
@@ -284,7 +325,8 @@ public class ConsumerOffsetManager {
         if (groupAndTopicName == null) {
             return false;
         }
-        return pulsarTopicCache.containsKey(groupAndTopicName) && pulsarTopicCache.get(groupAndTopicName)
+        ClientTopicName clientTopicName = groupAndTopicName.getClientTopicName();
+        return pulsarTopicCache.containsKey(clientTopicName) && pulsarTopicCache.get(clientTopicName)
                 .containsKey(partitionId);
     }
 

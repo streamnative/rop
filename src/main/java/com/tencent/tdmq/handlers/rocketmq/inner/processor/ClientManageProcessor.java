@@ -103,6 +103,13 @@ public class ClientManageProcessor implements NettyRequestProcessor {
                     isNotifyConsumerIdsChangedEnable
             );
 
+            if (log.isDebugEnabled()) {
+                log.debug("register consumer successfully and groupName: {}, consumerType: {}, "
+                                + "messageModel: {}, consumerFromWhere:{}",
+                        data.getGroupName(), data.getConsumeType(),
+                        data.getMessageModel(), data.getConsumeFromWhere());
+            }
+
             if (changed) {
                 log.info("registerConsumer info changed {} {}",
                         data.toString(),

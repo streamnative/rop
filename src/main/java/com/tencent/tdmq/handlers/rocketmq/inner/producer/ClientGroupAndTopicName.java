@@ -31,4 +31,10 @@ public class ClientGroupAndTopicName {
         this.clientGroupName = new ClientGroupName(rmqGroupName);
         this.clientTopicName = new ClientTopicName(rmqTopicName);
     }
+
+    public ClientGroupAndTopicName(ClientGroupName clientGroupName,
+            ClientTopicName clientTopicName) {
+        this.clientGroupName = clientGroupName;
+        this.clientTopicName = clientTopicName;
+    }
 }

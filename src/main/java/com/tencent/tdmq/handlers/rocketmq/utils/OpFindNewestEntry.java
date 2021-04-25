@@ -3,7 +3,7 @@
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -11,6 +11,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package com.tencent.tdmq.handlers.rocketmq.utils;
 
 import com.google.common.base.Predicate;
@@ -30,24 +31,19 @@ import org.apache.bookkeeper.mledger.impl.PositionImpl;
  * only different is here we passed in ManagedLedgerImpl directly.
  */
 class OpFindNewestEntry implements ReadEntryCallback {
+
     private final ManagedLedgerImpl managedLedger;
     private final PositionImpl startPosition;
     private final FindEntryCallback callback;
     private final Predicate<Entry> condition;
     private final Object ctx;
-
-    enum State {
-        checkFirst, checkLast, searching
-    }
-
     PositionImpl searchPosition;
     long min;
     long max;
     Position lastMatchedPosition = null;
     State state;
-
     public OpFindNewestEntry(ManagedLedgerImpl managedLedger, PositionImpl startPosition, Predicate<Entry> condition,
-                             long numberOfEntries, FindEntryCallback callback, Object ctx) {
+            long numberOfEntries, FindEntryCallback callback, Object ctx) {
         this.managedLedger = managedLedger;
         this.startPosition = startPosition;
         this.callback = callback;
@@ -123,5 +119,9 @@ class OpFindNewestEntry implements ReadEntryCallback {
 
     private long mid() {
         return min + Math.max((max - min) / 2, 1);
+    }
+
+    enum State {
+        checkFirst, checkLast, searching
     }
 }
