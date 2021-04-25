@@ -53,7 +53,7 @@ public class MessageIdUtils {
 
     public static final MessageIdImpl getMessageId(long offset) {
         // De-multiplex ledgerId and entryId from offset
-        checkArgument(offset > 0, "Expected Offset > 0, but get " + offset);
+        //checkArgument(offset > 0, "Expected Offset > 0, but get " + offset);
 
         long ledgerId = offset >>> (ENTRY_BITS + PARTITION_BITS);
         long entryId = (short) ((offset >>> PARTITION_BITS) & ((1 << ENTRY_BITS) - 1));
@@ -64,7 +64,7 @@ public class MessageIdUtils {
 
     public static final PositionImpl getPosition(long offset) {
         // De-multiplex ledgerId and entryId from offset
-        checkArgument(offset >= 0, "Expected Offset >= 0, but get " + offset);
+        //checkArgument(offset >= 0, "Expected Offset >= 0, but get " + offset);
         long ledgerId = offset >>> (ENTRY_BITS + PARTITION_BITS);
         long entryId = (short) ((offset >>> PARTITION_BITS) & ((1 << ENTRY_BITS) - 1));
 

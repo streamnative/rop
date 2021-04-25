@@ -228,13 +228,6 @@ public class PullMessageProcessor implements NettyRequestProcessor {
             responseHeader.setNextBeginOffset(ropGetMessageResult.getNextBeginOffset());
             responseHeader.setMinOffset(ropGetMessageResult.getMinOffset());
             responseHeader.setMaxOffset(ropGetMessageResult.getMaxOffset());
-
-            if (ropGetMessageResult.isSuggestPullingFromSlave()) {
-                responseHeader.setSuggestWhichBrokerId(subscriptionGroupConfig.getWhichBrokerWhenConsumeSlowly());
-            } else {
-                responseHeader.setSuggestWhichBrokerId(MixAll.MASTER_ID);
-            }
-
             responseHeader.setSuggestWhichBrokerId(MixAll.MASTER_ID);
 
             switch (ropGetMessageResult.getStatus()) {
@@ -309,7 +302,6 @@ public class PullMessageProcessor implements NettyRequestProcessor {
                         break;
                     case ResponseCode.PULL_NOT_FOUND:
                         if (!brokerAllowSuspend) {
-
                             context.setCommercialRcvStats(BrokerStatsManager.StatsType.RCV_EPOLLS);
                             context.setCommercialRcvTimes(1);
                             context.setCommercialOwner(owner);

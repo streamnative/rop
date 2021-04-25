@@ -296,6 +296,16 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
         }
     }
 
+    // tenant/ns/topicname
+    public void lookupTopics(String tdmpTopicName) {
+        try {
+            log.info("pulsar lookup the topic of name = [{}].", tdmpTopicName);
+            adminClient.lookups().lookupTopicAsync(tdmpTopicName);
+        } catch (Exception e) {
+            log.warn("load system topic [{}] error.", tdmpTopicName, e);
+        }
+    }
+
     private String createPulsarTopic(TopicConfig tc) {
         String fullTopicName = tc.getTopicName();
         try {

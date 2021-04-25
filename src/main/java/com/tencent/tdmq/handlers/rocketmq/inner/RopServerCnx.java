@@ -383,7 +383,6 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         }
 
         ClientGroupAndTopicName clientGroupName = new ClientGroupAndTopicName(consumerGroup, topic);
-
         long minOffsetInQueue = this.brokerController.getConsumerOffsetManager()
                 .getMinOffsetInQueue(clientGroupName, partitionId);
         long maxOffsetInQueue = this.brokerController.getConsumerOffsetManager()
@@ -393,55 +392,47 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         GetMessageStatus status = GetMessageStatus.NO_MESSAGE_IN_QUEUE;
         if (minOffsetInQueue == 0) {
             status = GetMessageStatus.NO_MESSAGE_IN_QUEUE;
-            nextBeginOffset = nextOffsetCorrection(queueOffset, 0);
+            nextBeginOffset = queueOffset;
         } else if (queueOffset < minOffsetInQueue) {
             status = GetMessageStatus.OFFSET_TOO_SMALL;
-            nextBeginOffset = nextOffsetCorrection(queueOffset, minOffsetInQueue);
-        } else if (queueOffset == maxOffsetInQueue) {
+            nextBeginOffset = minOffsetInQueue;
+        } else if (queueOffset >= maxOffsetInQueue) {
             status = GetMessageStatus.OFFSET_OVERFLOW_ONE;
-            nextBeginOffset = nextOffsetCorrection(queueOffset, queueOffset);
-        } else if (queueOffset > maxOffsetInQueue) {
-            status = GetMessageStatus.OFFSET_OVERFLOW_BADLY;
-            if (0 == minOffsetInQueue) {
-                nextBeginOffset = nextOffsetCorrection(queueOffset, minOffsetInQueue);
-            } else {
-                nextBeginOffset = nextOffsetCorrection(queueOffset, minOffsetInQueue);
-            }
+            nextBeginOffset = maxOffsetInQueue;
         }
 
         String ctxId = this.ctx.channel().id().asLongText();
-
         long readerId = buildPulsarReaderId(consumerGroup, topic, ctxId);
-        if (log.isDebugEnabled()) {
-            log.debug("The commit offset is: {} and the queue offset is:{}", commitOffset, queueOffset);
-        }
-
         RocketMQTopic rmqTopic = new RocketMQTopic(requestHeader.getTopic());
         String pTopic = rmqTopic.getPartitionName(partitionId);
-
         // 通过offset来取出要开始消费的messageId的位置
-        //MessageId messageId = MessageIdUtils.getMessageId(queueOffset);
         try {
-            if (!this.readers.containsKey(readerId)) {
+            if (!this.readers.containsKey(readerId)
+                    || !this.readers.get(readerId).isConnected()) {
                 Reader<byte[]> reader = this.service.pulsar().getClient().newReader()
                         .topic(pTopic)
                         .receiverQueueSize(100)
-                        .startMessageId(MessageId.earliest)
+                        .startMessageId(MessageId.latest)
                         .readerName(consumerGroup + readerId)
                         .create();
-                this.readers.putIfAbsent(readerId, reader);
+                Reader oldReader = this.readers.put(readerId, reader);
+                if (oldReader != null) {
+                    oldReader.closeAsync();
+                }
             }
         } catch (PulsarServerException | PulsarClientException e) {
-            log.error("create new reader error: {}", e.getMessage());
+            log.error("create new reader[{}] error: {}", consumerGroup, e);
             getResult.setStatus(GetMessageStatus.NO_MATCHED_MESSAGE);
             e.printStackTrace();
         }
 
         List<Message> messageList = new ArrayList<>();
-
         try {
-            for (int i = 0; i < maxMsgNums; i++) {
-                Message message = this.readers.get(readerId).readNext(100, TimeUnit.MILLISECONDS);
+            Reader reader = this.readers.get(readerId);
+            MessageId messageId = MessageIdUtils.getMessageId(nextBeginOffset);
+            reader.seek(messageId);
+            for (int i = 0; reader.hasMessageAvailable() && i < maxMsgNums; i++) {
+                Message message = reader.readNext(100, TimeUnit.MILLISECONDS);
                 if (message != null) {
                     messageList.add(message);
                 }
@@ -449,12 +440,14 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         } catch (Exception e) {
             log.warn("retrieve message error, group = [{}], topic = [{}].", consumerGroup, topic);
         }
-        assert messageList != null;
+
         List<ByteBuffer> messagesBufferList = this.entryFormatter
                 .decodePulsarMessageResBuffer(messageList, messageFilter);
-        if (null != messagesBufferList) {
+        if (null != messagesBufferList && !messagesBufferList.isEmpty()) {
             status = GetMessageStatus.FOUND;
             getResult.setMessageBufferList(messagesBufferList);
+        } else {
+            status = GetMessageStatus.OFFSET_FOUND_NULL;
         }
 
         getResult.setMaxOffset(maxOffsetInQueue);
