@@ -368,7 +368,6 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
     public RopGetMessageResult getMessage(RemotingCommand request, PullMessageRequestHeader requestHeader,
             RopMessageFilter messageFilter) {
         RopGetMessageResult getResult = new RopGetMessageResult();
-
         String consumerGroup = requestHeader.getConsumerGroup();
         String topic = requestHeader.getTopic();
         int partitionId = requestHeader.getQueueId();

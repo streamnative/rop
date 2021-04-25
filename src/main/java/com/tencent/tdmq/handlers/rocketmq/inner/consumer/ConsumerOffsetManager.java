@@ -19,6 +19,7 @@ import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientGroupAndTopicName
 import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientGroupName;
 import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientTopicName;
 import com.tencent.tdmq.handlers.rocketmq.utils.MessageIdUtils;
+import com.tencent.tdmq.handlers.rocketmq.utils.RocketMQTopic;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -30,9 +31,9 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.bookkeeper.mledger.ManagedCursor;
 import org.apache.bookkeeper.mledger.ManagedLedgerException;
 import org.apache.bookkeeper.mledger.impl.PositionImpl;
-import org.apache.pulsar.broker.service.Subscription;
 import org.apache.pulsar.broker.service.persistent.PersistentSubscription;
 import org.apache.pulsar.broker.service.persistent.PersistentTopic;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandSubscribe.InitialPosition;
@@ -60,10 +61,28 @@ public class ConsumerOffsetManager {
     }
 
     public void putPulsarTopic(ClientTopicName clientTopicName, int partitionId, PersistentTopic pulsarTopic) {
+        if (pulsarTopic == null) {
+            return;
+        }
         if (!pulsarTopicCache.containsKey(clientTopicName)) {
             pulsarTopicCache.putIfAbsent(clientTopicName, new ConcurrentHashMap<>());
         }
         pulsarTopicCache.get(clientTopicName).putIfAbsent(partitionId, pulsarTopic);
+
+        pulsarTopic.getSubscriptions().forEach((grp, grpInfo) -> {
+            if(!isSystemGroup(grp)) {
+                ManagedCursor cursor = grpInfo.getCursor();
+                PositionImpl readPosition = (PositionImpl) cursor.getReadPosition();
+                ClientGroupName clientGroupName = new ClientGroupName(TopicName.get(grp));
+                ClientGroupAndTopicName groupAtTopic = new ClientGroupAndTopicName(clientGroupName, clientTopicName);
+                ConcurrentMap<Integer, Long> partitionOffset = offsetTable.get(groupAtTopic);
+                if (partitionOffset == null) {
+                    offsetTable.putIfAbsent(groupAtTopic, new ConcurrentHashMap<>());
+                }
+                offsetTable.get(groupAtTopic).putIfAbsent(partitionId,
+                        MessageIdUtils.getOffset(readPosition.getLedgerId(), readPosition.getEntryId()));
+            }
+        });
     }
 
     public void removePulsarTopic(ClientTopicName clientTopicName, int partitionId) {
@@ -269,25 +288,32 @@ public class ConsumerOffsetManager {
         return null;
     }
 
+    private boolean isSystemGroup(String groupName) {
+        return groupName.startsWith(RocketMQTopic.metaTenant + "/" + RocketMQTopic.metaNamespace) ||
+                groupName.startsWith(RocketMQTopic.defaultTenant + "/" + RocketMQTopic.defaultNamespace);
+    }
+
     public synchronized void persist() {
         offsetTable.forEach((groupAndTopic, offsetMap) -> {
             String pulsarTopic = groupAndTopic.getClientTopicName().getPulsarTopicName();
             String pulsarGroup = groupAndTopic.getClientGroupName().getPulsarGroupName();
-            offsetMap.forEach((partitionId, offset) -> {
-                PersistentTopic persistentTopic = getPulsarPersistentTopic(groupAndTopic, partitionId);
-                if (persistentTopic != null) {
-                    PersistentSubscription subscription = persistentTopic.getSubscription(pulsarGroup);
-                    if (subscription == null) {
-                        try {
-                            Subscription sub = persistentTopic
-                                    .createSubscription(pulsarGroup, InitialPosition.Latest, false).get();
-                            sub.resetCursor(MessageIdUtils.getPosition(offset));
-                        } catch (Exception e) {
-                            log.warn("persist topic[{}] offset[{}] error.", groupAndTopic, offset);
+            if (!isSystemGroup(pulsarGroup)) {
+                offsetMap.forEach((partitionId, offset) -> {
+                    PersistentTopic persistentTopic = getPulsarPersistentTopic(groupAndTopic, partitionId);
+                    if (persistentTopic != null) {
+                        PersistentSubscription subscription = persistentTopic.getSubscription(pulsarGroup);
+                        if (subscription == null) {
+                            try {
+                                subscription = (PersistentSubscription) persistentTopic
+                                        .createSubscription(pulsarGroup, InitialPosition.Latest, false).get();
+                            } catch (Exception e) {
+                                log.warn("persist topic[{}] offset[{}] error.", groupAndTopic, offset);
+                            }
                         }
+                        subscription.resetCursor(MessageIdUtils.getPosition(offset));
                     }
-                }
-            });
+                });
+            }
         });
     }
 
