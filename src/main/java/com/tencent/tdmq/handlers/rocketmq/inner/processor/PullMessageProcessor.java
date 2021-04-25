@@ -3,7 +3,7 @@
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -60,19 +60,18 @@ public class PullMessageProcessor implements NettyRequestProcessor {
 
     private final RocketMQBrokerController brokerController;
     private List<ConsumeMessageHook> consumeMessageHookList;
-    private PulsarMessageStore serverCnxMsgStore;
 
     public PullMessageProcessor(final RocketMQBrokerController brokerController) {
         this.brokerController = brokerController;
     }
 
-    protected PulsarMessageStore getServerCnxMsgStore(ChannelHandlerContext ctx, RemotingCommand request,
+    protected PulsarMessageStore getServerCnxMsgStore(Channel channel, RemotingCommand request,
             String groupName) {
         ConsumerGroupInfo consumerGroupInfo = this.brokerController.getConsumerManager()
                 .getConsumerGroupInfo(groupName);
 
         ConcurrentMap<Channel, ClientChannelInfo> channelInfoConcurrentMap = consumerGroupInfo.getChannelInfoTable();
-        RopClientChannelCnx channelCnx = (RopClientChannelCnx) channelInfoConcurrentMap.get(ctx.channel());
+        RopClientChannelCnx channelCnx = (RopClientChannelCnx) channelInfoConcurrentMap.get(channel);
         return channelCnx.getServerCnx();
     }
 
@@ -81,7 +80,6 @@ public class PullMessageProcessor implements NettyRequestProcessor {
             RemotingCommand request) throws RemotingCommandException {
         final PullMessageRequestHeader requestHeader =
                 (PullMessageRequestHeader) request.decodeCommandCustomHeader(PullMessageRequestHeader.class);
-        serverCnxMsgStore = this.getServerCnxMsgStore(ctx, request, requestHeader.getConsumerGroup());
         return this.processRequest(ctx.channel(), requestHeader, request, true);
     }
 
@@ -95,11 +93,9 @@ public class PullMessageProcessor implements NettyRequestProcessor {
             throws RemotingCommandException {
         RemotingCommand response = RemotingCommand.createResponseCommand(PullMessageResponseHeader.class);
         final PullMessageResponseHeader responseHeader = (PullMessageResponseHeader) response.readCustomHeader();
-
         response.setOpaque(request.getOpaque());
 
         log.info("receive PullMessage request command, {}", request);
-
         if (!PermName.isReadable(this.brokerController.getServerConfig().getBrokerPermission())) {
             response.setCode(ResponseCode.NO_PERMISSION);
             response.setRemark(String.format("the broker[" //+ this.brokerController.getBrokerConfig().getBrokerIP1()
@@ -210,19 +206,18 @@ public class PullMessageProcessor implements NettyRequestProcessor {
         }
 
         RopMessageFilter messageFilter = new RopMessageFilter(subscriptionData);
-
         // 从 message store 中获取接收消息的数据并处理
+        PulsarMessageStore serverCnxMsgStore = this
+                .getServerCnxMsgStore(channel, request, requestHeader.getConsumerGroup());
         final RopGetMessageResult ropGetMessageResult = serverCnxMsgStore
                 .getMessage(request, requestHeader, messageFilter);
-        GetMessageResult getMessageResult = ropGetMessageResult.getGetMessageResult();
-        List<ByteBuffer> messagesBuffer = ropGetMessageResult.getByteBufferList();
-        if (getMessageResult != null) {
-            response.setRemark(getMessageResult.getStatus().name());
-            responseHeader.setNextBeginOffset(getMessageResult.getNextBeginOffset());
-            responseHeader.setMinOffset(getMessageResult.getMinOffset());
-            responseHeader.setMaxOffset(getMessageResult.getMaxOffset());
+        if (ropGetMessageResult != null) {
+            response.setRemark(ropGetMessageResult.getStatus().name());
+            responseHeader.setNextBeginOffset(ropGetMessageResult.getNextBeginOffset());
+            responseHeader.setMinOffset(ropGetMessageResult.getMinOffset());
+            responseHeader.setMaxOffset(ropGetMessageResult.getMaxOffset());
 
-            if (getMessageResult.isSuggestPullingFromSlave()) {
+            if (ropGetMessageResult.isSuggestPullingFromSlave()) {
                 responseHeader.setSuggestWhichBrokerId(subscriptionGroupConfig.getWhichBrokerWhenConsumeSlowly());
             } else {
                 responseHeader.setSuggestWhichBrokerId(MixAll.MASTER_ID);
@@ -230,7 +225,7 @@ public class PullMessageProcessor implements NettyRequestProcessor {
 
             responseHeader.setSuggestWhichBrokerId(MixAll.MASTER_ID);
 
-            switch (getMessageResult.getStatus()) {
+            switch (ropGetMessageResult.getStatus()) {
                 case FOUND:
                     response.setCode(ResponseCode.SUCCESS);
                     break;
@@ -241,12 +236,10 @@ public class PullMessageProcessor implements NettyRequestProcessor {
                 case NO_MESSAGE_IN_QUEUE:
                     if (0 != requestHeader.getQueueOffset()) {
                         response.setCode(ResponseCode.PULL_OFFSET_MOVED);
-
-                        // XXX: warn and notify me
                         log.info(
                                 "the broker store no queue data, fix the request offset {} to {}, Topic: {} QueueId: {} Consumer Group: {}",
                                 requestHeader.getQueueOffset(),
-                                getMessageResult.getNextBeginOffset(),
+                                ropGetMessageResult.getNextBeginOffset(),
                                 requestHeader.getTopic(),
                                 requestHeader.getQueueId(),
                                 requestHeader.getConsumerGroup()
@@ -265,7 +258,7 @@ public class PullMessageProcessor implements NettyRequestProcessor {
                     response.setCode(ResponseCode.PULL_OFFSET_MOVED);
                     // XXX: warn and notify me
                     log.info("the request offset: {} over flow badly, broker max offset: {}, consumer: {}",
-                            requestHeader.getQueueOffset(), getMessageResult.getMaxOffset(), channel.remoteAddress());
+                            requestHeader.getQueueOffset(), ropGetMessageResult.getMaxOffset(), channel.remoteAddress());
                     break;
                 case OFFSET_OVERFLOW_ONE:
                     response.setCode(ResponseCode.PULL_NOT_FOUND);
@@ -275,7 +268,7 @@ public class PullMessageProcessor implements NettyRequestProcessor {
                     log.info(
                             "the request offset too small. group={}, topic={}, requestOffset={}, brokerMinOffset={}, clientIp={}",
                             requestHeader.getConsumerGroup(), requestHeader.getTopic(), requestHeader.getQueueOffset(),
-                            getMessageResult.getMinOffset(), channel.remoteAddress());
+                            ropGetMessageResult.getMinOffset(), channel.remoteAddress());
                     break;
                 default:
                     assert false;
@@ -293,11 +286,11 @@ public class PullMessageProcessor implements NettyRequestProcessor {
                 switch (response.getCode()) {
                     case ResponseCode.SUCCESS:
                         int commercialBaseCount = brokerController.getServerConfig().getCommercialBaseCount();
-                        int incValue = getMessageResult.getMsgCount4Commercial() * commercialBaseCount;
+                        int incValue = ropGetMessageResult.getMsgCount4Commercial() * commercialBaseCount;
 
                         context.setCommercialRcvStats(BrokerStatsManager.StatsType.RCV_SUCCESS);
                         context.setCommercialRcvTimes(incValue);
-                        context.setCommercialRcvSize(getMessageResult.getBufferTotalSize());
+                        context.setCommercialRcvSize(ropGetMessageResult.getBufferTotalSize());
                         context.setCommercialOwner(owner);
 
                         break;
@@ -329,33 +322,19 @@ public class PullMessageProcessor implements NettyRequestProcessor {
 
                     this.brokerController.getBrokerStatsManager()
                             .incGroupGetNums(requestHeader.getConsumerGroup(), requestHeader.getTopic(),
-                                    getMessageResult.getMessageCount());
-
+                                    ropGetMessageResult.getMessageCount());
                     this.brokerController.getBrokerStatsManager()
                             .incGroupGetSize(requestHeader.getConsumerGroup(), requestHeader.getTopic(),
-                                    getMessageResult.getBufferTotalSize());
+                                    ropGetMessageResult.getBufferTotalSize());
+                    this.brokerController.getBrokerStatsManager().incBrokerGetNums(ropGetMessageResult.getMessageCount());
 
-                    this.brokerController.getBrokerStatsManager().incBrokerGetNums(getMessageResult.getMessageCount());
-
-                    for (int i = 0; i < messagesBuffer.size(); i++) {
-                        try {
-                            channel.writeAndFlush(messagesBuffer.get(i)).addListener(new ChannelFutureListener() {
-                                @Override
-                                public void operationComplete(ChannelFuture future) throws Exception {
-                                    getMessageResult.release();
-                                    if (!future.isSuccess()) {
-                                        log.error("transfer many message by pagecache failed, {}",
-                                                channel.remoteAddress(), future.cause());
-                                    }
-                                }
-                            });
-                        } catch (Throwable e) {
-                            log.error("transfer many message by pagecache exception", e);
-                            getMessageResult.release();
-                        }
-
-                        response = null;
-                    }
+                    final long beginTimeMills = System.currentTimeMillis();
+                    final byte[] r = this.readGetMessageResult(ropGetMessageResult, requestHeader.getConsumerGroup(),
+                            requestHeader.getTopic(), requestHeader.getQueueId());
+                    this.brokerController.getBrokerStatsManager().incGroupGetLatency(requestHeader.getConsumerGroup(),
+                            requestHeader.getTopic(), requestHeader.getQueueId(),
+                            (int) (System.currentTimeMillis() - beginTimeMills));
+                    response.setBody(r);
                     break;
                 case ResponseCode.PULL_NOT_FOUND:
 
@@ -369,7 +348,7 @@ public class PullMessageProcessor implements NettyRequestProcessor {
                         long offset = requestHeader.getQueueOffset();
                         int queueId = requestHeader.getQueueId();
                         PullRequest pullRequest = new PullRequest(request, channel, pollingTimeMills,
-                                this.serverCnxMsgStore.now(), offset, subscriptionData, null);
+                                System.currentTimeMillis(), offset, subscriptionData, null);
                         this.brokerController.getPullRequestHoldService()
                                 .suspendPullRequest(topic, queueId, pullRequest);
                         response = null;
@@ -394,7 +373,7 @@ public class PullMessageProcessor implements NettyRequestProcessor {
             response.setCode(ResponseCode.SYSTEM_ERROR);
             response.setRemark("store getMessage return null");
         }
-        return null;
+        return response;
     }
 
     public boolean hasConsumeMessageHook() {
@@ -412,7 +391,7 @@ public class PullMessageProcessor implements NettyRequestProcessor {
         }
     }
 
-    private byte[] readGetMessageResult(final GetMessageResult getMessageResult, final String group, final String topic,
+    private byte[] readGetMessageResult(final RopGetMessageResult getMessageResult, final String group, final String topic,
             final int queueId) {
         final ByteBuffer byteBuffer = ByteBuffer.allocate(getMessageResult.getBufferTotalSize());
 
@@ -439,7 +418,6 @@ public class PullMessageProcessor implements NettyRequestProcessor {
                 storeTimestamp = bb.getLong(msgStoreTimePos);
             }
         } finally {
-            getMessageResult.release();
         }
 
         // TODO: brokerController.getMessageStore() 需要实现 MessageStore 的逻辑

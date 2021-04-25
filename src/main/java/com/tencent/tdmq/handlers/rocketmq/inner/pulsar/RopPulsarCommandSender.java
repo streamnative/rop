@@ -1,191 +1,167 @@
-/**
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
-package com.tencent.tdmq.handlers.rocketmq.inner.pulsar;
-
-import com.tencent.tdmq.handlers.rocketmq.inner.RopServerCnx;
-import io.netty.channel.ChannelPromise;
-import io.netty.util.concurrent.Future;
-import java.util.List;
-import java.util.concurrent.CompletableFuture;
-import lombok.extern.slf4j.Slf4j;
-import org.apache.bookkeeper.mledger.Entry;
-import org.apache.pulsar.broker.service.Consumer;
-import org.apache.pulsar.broker.service.EntryBatchIndexesAcks;
-import org.apache.pulsar.broker.service.EntryBatchSizes;
-import org.apache.pulsar.broker.service.PulsarCommandSender;
-import org.apache.pulsar.broker.service.RedeliveryTracker;
-import org.apache.pulsar.broker.service.SendMessageCallBack;
-import org.apache.pulsar.broker.service.Subscription;
-import org.apache.pulsar.common.api.proto.PulsarApi;
-import org.apache.pulsar.common.protocol.schema.SchemaVersion;
-import org.apache.pulsar.common.schema.SchemaInfo;
-import org.apache.pulsar.common.util.collections.ConcurrentLongHashMap;
-import org.apache.rocketmq.common.SystemClock;
-import org.apache.rocketmq.store.AppendMessageResult;
-import org.apache.rocketmq.store.AppendMessageStatus;
-import org.apache.rocketmq.store.PutMessageResult;
-import org.apache.rocketmq.store.PutMessageStatus;
-
-@Slf4j
-public class RopPulsarCommandSender implements PulsarCommandSender {
-
-    private final RopServerCnx cnx;
-    private final ConcurrentLongHashMap<CompletableFuture<PutMessageResult>> producerResultMap;
-    private final SystemClock systemClock = new SystemClock();
-
-    public RopPulsarCommandSender(RopServerCnx cnx) {
-        this.cnx = cnx;
-        producerResultMap = new ConcurrentLongHashMap<>(1024);
-    }
-
-    public void put(long seqId, CompletableFuture<PutMessageResult> putMessageFuture) {
-        CompletableFuture<PutMessageResult> oldResult = producerResultMap.put(seqId, putMessageFuture);
-        if (oldResult != null) {
-            log.warn("exists duplicated message sequenceId[{}].", seqId);
-            PutMessageStatus status = PutMessageStatus.UNKNOWN_ERROR;
-            AppendMessageResult temp = new AppendMessageResult(AppendMessageStatus.UNKNOWN_ERROR);
-            PutMessageResult result = new PutMessageResult(status, temp);
-            oldResult.complete(result);
-        }
-    }
-
-    @Override
-    public void sendPartitionMetadataResponse(PulsarApi.ServerError error, String errorMsg, long requestId) {
-    }
-
-    @Override
-    public void sendPartitionMetadataResponse(int partitions, long requestId) {
-    }
-
-    @Override
-    public void sendSuccessResponse(long requestId) {
-
-    }
-
-    @Override
-    public void sendErrorResponse(long requestId, PulsarApi.ServerError error, String message) {
-    }
-
-    @Override
-    public void sendProducerSuccessResponse(long requestId, String producerName, SchemaVersion schemaVersion) {
-    }
-
-    @Override
-    public void sendProducerSuccessResponse(long requestId, String producerName, long lastSequenceId,
-            SchemaVersion schemaVersion) {
-    }
-
-    @Override
-    public void sendSendReceiptResponse(long producerId, long sequenceId, long highestId, long ledgerId,
-            long entryId) {
-        CompletableFuture<PutMessageResult> resultFuture = this.producerResultMap.remove(sequenceId);
-        if (resultFuture != null) {
-            PutMessageStatus status = PutMessageStatus.PUT_OK;
-            AppendMessageResult temp = new AppendMessageResult(AppendMessageStatus.PUT_OK, highestId, 0,
-                    null, systemClock.now(), ledgerId, entryId);
-            PutMessageResult result = new PutMessageResult(status, temp);
-            resultFuture.complete(result);
-        }
-    }
-
-    @Override
-    public void sendSendError(long producerId, long sequenceId, PulsarApi.ServerError error, String errorMsg) {
-        CompletableFuture<PutMessageResult> resultFuture = this.producerResultMap.remove(sequenceId);
-        if (resultFuture != null) {
-            PutMessageStatus status = PutMessageStatus.UNKNOWN_ERROR;
-            AppendMessageResult temp = new AppendMessageResult(AppendMessageStatus.UNKNOWN_ERROR);
-            PutMessageResult result = new PutMessageResult(status, temp);
-            resultFuture.complete(result);
-        }
-    }
-
-    @Override
-    public void sendGetTopicsOfNamespaceResponse(List<String> topics, long requestId) {
-    }
-
-    @Override
-    public void sendGetSchemaResponse(long requestId, SchemaInfo schema, SchemaVersion version) {
-    }
-
-    @Override
-    public void sendGetSchemaErrorResponse(long requestId, PulsarApi.ServerError error, String errorMessage) {
-    }
-
-    @Override
-    public void sendGetOrCreateSchemaResponse(long requestId, SchemaVersion schemaVersion) {
-    }
-
-    @Override
-    public void sendGetOrCreateSchemaErrorResponse(long requestId, PulsarApi.ServerError error, String errorMessage) {
-    }
-
-    @Override
-    public void sendConnectedResponse(int clientProtocolVersion, int maxMessageSize) {
-    }
-
-    @Override
-    public void sendLookupResponse(String brokerServiceUrl, String brokerServiceUrlTls, boolean authoritative,
-            PulsarApi.CommandLookupTopicResponse.LookupType response, long requestId, boolean proxyThroughServiceUrl) {
-    }
-
-    @Override
-    public void sendLookupResponse(PulsarApi.ServerError error, String errorMsg, long requestId) {
-    }
-
-    @Override
-    public void sendActiveConsumerChange(long consumerId, boolean isActive) {
-    }
-
-    @Override
-    public void sendSuccess(long requestId) {
-    }
-
-    @Override
-    public void sendError(long requestId, PulsarApi.ServerError error, String message) {
-    }
-
-    @Override
-    public void sendReachedEndOfTopic(long consumerId) {
-
-    }
-
-    @Override
-    public ChannelPromise sendMessagesToConsumer(long consumerId, String topicName, Subscription subscription,
-            int partitionIdx, List<Entry> entries, EntryBatchSizes batchSizes, EntryBatchIndexesAcks batchIndexesAcks,
-            RedeliveryTracker redeliveryTracker) {
-        return null;
-    }
-
-    /**
-     *  这个方法需要留着，2.7.1.1 版本 重栽了这个方法用户 tag bug fix
-     * @param l
-     * @param s
-     * @param subscription
-     * @param i
-     * @param list
-     * @param entryBatchSizes
-     * @param entryBatchIndexesAcks
-     * @param redeliveryTracker
-     * @param sendMessageCallBack
-     * @param consumer
-     * @return
-     */
-    public Future<Void> sendMessagesToConsumer(long l, String s, Subscription subscription, int i,
-            List<Entry> list, EntryBatchSizes entryBatchSizes,
-            EntryBatchIndexesAcks entryBatchIndexesAcks, RedeliveryTracker redeliveryTracker,
-            SendMessageCallBack sendMessageCallBack, Consumer consumer) {
-        return null;
-    }
-}
+///**
+// * Licensed under the Apache License, Version 2.0 (the "License");
+// * you may not use this file except in compliance with the License.
+// * You may obtain a copy of the License at
+// *
+// *     http://www.apache.org/licenses/LICENSE-2.0
+// *
+// * Unless required by applicable law or agreed to in writing, software
+// * distributed under the License is distributed on an "AS IS" BASIS,
+// * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// * See the License for the specific language governing permissions and
+// * limitations under the License.
+// */
+//
+//package com.tencent.tdmq.handlers.rocketmq.inner.pulsar;
+//
+//import com.tencent.tdmq.handlers.rocketmq.inner.RopServerCnx;
+//import io.netty.channel.ChannelPromise;
+//import java.util.List;
+//import java.util.concurrent.CompletableFuture;
+//import lombok.extern.slf4j.Slf4j;
+//import org.apache.bookkeeper.mledger.Entry;
+//import org.apache.pulsar.broker.service.EntryBatchIndexesAcks;
+//import org.apache.pulsar.broker.service.EntryBatchSizes;
+//import org.apache.pulsar.broker.service.PulsarCommandSender;
+//import org.apache.pulsar.broker.service.RedeliveryTracker;
+//import org.apache.pulsar.broker.service.Subscription;
+//import org.apache.pulsar.common.api.proto.PulsarApi;
+//import org.apache.pulsar.common.protocol.schema.SchemaVersion;
+//import org.apache.pulsar.common.schema.SchemaInfo;
+//import org.apache.pulsar.common.util.collections.ConcurrentLongHashMap;
+//import org.apache.rocketmq.common.SystemClock;
+//import org.apache.rocketmq.store.AppendMessageResult;
+//import org.apache.rocketmq.store.AppendMessageStatus;
+//import org.apache.rocketmq.store.PutMessageResult;
+//import org.apache.rocketmq.store.PutMessageStatus;
+//
+//@Slf4j
+//public class RopPulsarCommandSender implements PulsarCommandSender {
+//
+//    private final RopServerCnx cnx;
+//    private final ConcurrentLongHashMap<CompletableFuture<PutMessageResult>> producerResultMap;
+//    private final SystemClock systemClock = new SystemClock();
+//
+//    public RopPulsarCommandSender(RopServerCnx cnx) {
+//        this.cnx = cnx;
+//        producerResultMap = new ConcurrentLongHashMap<>(1024);
+//    }
+//
+//    public void put(long seqId, CompletableFuture<PutMessageResult> putMessageFuture) {
+//        CompletableFuture<PutMessageResult> oldResult = producerResultMap.put(seqId, putMessageFuture);
+//        if (oldResult != null) {
+//            log.warn("exists duplicated message sequenceId[{}].", seqId);
+//            PutMessageStatus status = PutMessageStatus.UNKNOWN_ERROR;
+//            AppendMessageResult temp = new AppendMessageResult(AppendMessageStatus.UNKNOWN_ERROR);
+//            PutMessageResult result = new PutMessageResult(status, temp);
+//            oldResult.complete(result);
+//        }
+//    }
+//
+//    @Override
+//    public void sendPartitionMetadataResponse(PulsarApi.ServerError error, String errorMsg, long requestId) {
+//    }
+//
+//    @Override
+//    public void sendPartitionMetadataResponse(int partitions, long requestId) {
+//    }
+//
+//    @Override
+//    public void sendSuccessResponse(long requestId) {
+//
+//    }
+//
+//    @Override
+//    public void sendErrorResponse(long requestId, PulsarApi.ServerError error, String message) {
+//    }
+//
+//    @Override
+//    public void sendProducerSuccessResponse(long requestId, String producerName, SchemaVersion schemaVersion) {
+//    }
+//
+//    @Override
+//    public void sendProducerSuccessResponse(long requestId, String producerName, long lastSequenceId,
+//            SchemaVersion schemaVersion) {
+//    }
+//
+//    @Override
+//    public void sendSendReceiptResponse(long producerId, long sequenceId, long highestId, long ledgerId,
+//            long entryId) {
+//        CompletableFuture<PutMessageResult> resultFuture = this.producerResultMap.remove(sequenceId);
+//        if (resultFuture != null) {
+//            PutMessageStatus status = PutMessageStatus.PUT_OK;
+//            AppendMessageResult temp = new AppendMessageResult(AppendMessageStatus.PUT_OK, highestId, 0,
+//                    null, systemClock.now(), ledgerId, entryId);
+//            PutMessageResult result = new PutMessageResult(status, temp);
+//            resultFuture.complete(result);
+//        }
+//    }
+//
+//    @Override
+//    public void sendSendError(long producerId, long sequenceId, PulsarApi.ServerError error, String errorMsg) {
+//        CompletableFuture<PutMessageResult> resultFuture = this.producerResultMap.remove(sequenceId);
+//        if (resultFuture != null) {
+//            PutMessageStatus status = PutMessageStatus.UNKNOWN_ERROR;
+//            AppendMessageResult temp = new AppendMessageResult(AppendMessageStatus.UNKNOWN_ERROR);
+//            PutMessageResult result = new PutMessageResult(status, temp);
+//            resultFuture.complete(result);
+//        }
+//    }
+//
+//    @Override
+//    public void sendGetTopicsOfNamespaceResponse(List<String> topics, long requestId) {
+//    }
+//
+//    @Override
+//    public void sendGetSchemaResponse(long requestId, SchemaInfo schema, SchemaVersion version) {
+//    }
+//
+//    @Override
+//    public void sendGetSchemaErrorResponse(long requestId, PulsarApi.ServerError error, String errorMessage) {
+//    }
+//
+//    @Override
+//    public void sendGetOrCreateSchemaResponse(long requestId, SchemaVersion schemaVersion) {
+//    }
+//
+//    @Override
+//    public void sendGetOrCreateSchemaErrorResponse(long requestId, PulsarApi.ServerError error, String errorMessage) {
+//    }
+//
+//    @Override
+//    public void sendConnectedResponse(int clientProtocolVersion, int maxMessageSize) {
+//    }
+//
+//    @Override
+//    public void sendLookupResponse(String brokerServiceUrl, String brokerServiceUrlTls, boolean authoritative,
+//            PulsarApi.CommandLookupTopicResponse.LookupType response, long requestId, boolean proxyThroughServiceUrl) {
+//    }
+//
+//    @Override
+//    public void sendLookupResponse(PulsarApi.ServerError error, String errorMsg, long requestId) {
+//    }
+//
+//    @Override
+//    public void sendActiveConsumerChange(long consumerId, boolean isActive) {
+//    }
+//
+//    @Override
+//    public void sendSuccess(long requestId) {
+//    }
+//
+//    @Override
+//    public void sendError(long requestId, PulsarApi.ServerError error, String message) {
+//    }
+//
+//    @Override
+//    public void sendReachedEndOfTopic(long consumerId) {
+//
+//    }
+//
+//    @Override
+//    public ChannelPromise sendMessagesToConsumer(long consumerId, String topicName, Subscription subscription,
+//            int partitionIdx, List<Entry> entries, EntryBatchSizes batchSizes, EntryBatchIndexesAcks batchIndexesAcks,
+//            RedeliveryTracker redeliveryTracker) {
+//        return null;
+//    }
+//}

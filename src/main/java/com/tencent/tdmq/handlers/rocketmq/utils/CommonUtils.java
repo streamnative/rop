@@ -3,7 +3,7 @@
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,14 +18,17 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.apache.rocketmq.common.message.MessageDecoder.CHARSET_UTF8;
 
 import com.google.common.base.Splitter;
+import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.nio.Buffer;
+import java.net.SocketAddress;
+import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.logging.log4j.util.Strings;
+import org.apache.pulsar.client.api.Message;
 import org.apache.pulsar.client.impl.MessageIdImpl;
 import org.apache.pulsar.common.util.Murmur3_32Hash;
 import org.apache.rocketmq.common.TopicFilterType;
@@ -34,6 +37,7 @@ import org.apache.rocketmq.common.message.MessageAccessor;
 import org.apache.rocketmq.common.message.MessageConst;
 import org.apache.rocketmq.common.message.MessageDecoder;
 import org.apache.rocketmq.common.message.MessageExt;
+import org.apache.rocketmq.common.message.MessageId;
 import org.apache.rocketmq.common.sysflag.MessageSysFlag;
 import org.apache.rocketmq.store.MessageExtBrokerInner;
 
@@ -45,7 +49,7 @@ public class CommonUtils {
     public static final String VERTICAL_LINE_CHAR = "｜";
     public static final String SLASH_CHAR = "/";
     public static final String BACKSLASH_CHAR = "\\";
-    private static int MESSAGE_BYTEBUF_SIZE = 28;
+    private static final int MESSAGE_BYTEBUF_SIZE = 28;
     private static ThreadLocal<ByteBuffer> byteBufLocal = ThreadLocal
             .withInitial(() -> ByteBuffer.allocate(MESSAGE_BYTEBUF_SIZE));
 
@@ -54,7 +58,9 @@ public class CommonUtils {
      * @return rmqTopicName => [tenant|ns%topicName]
      */
     public static String rmqTopicName(String tdmqTopicName) {
-        if (Strings.isBlank(tdmqTopicName)) return Strings.EMPTY;
+        if (Strings.isBlank(tdmqTopicName)) {
+            return Strings.EMPTY;
+        }
         List<String> splits = Splitter.on('/').splitToList(tdmqTopicName);
         if (splits.size() >= 3) {
             return splits.get(0) + VERTICAL_LINE_CHAR + splits.get(1) + PERCENTAGE_CHAR + splits.get(2);
@@ -63,7 +69,9 @@ public class CommonUtils {
     }
 
     public static String tdmqTopicName(String rmqTopicName) {
-        if (Strings.isBlank(rmqTopicName)) return Strings.EMPTY;
+        if (Strings.isBlank(rmqTopicName)) {
+            return Strings.EMPTY;
+        }
         RocketMQTopic rmqTopic = new RocketMQTopic(rmqTopicName);
         return rmqTopic.getOrigNoDomainTopicName();
     }
@@ -80,49 +88,67 @@ public class CommonUtils {
         return Murmur3_32Hash.getInstance().makeHash((address.getHostString() + address.getPort()).getBytes(UTF_8));
     }
 
-    public static String createMessageId(final long ledgerId, final long entryId, final long partitionId,
-            final int batchNum) {
-        ByteBuffer input = byteBufLocal.get();
-        input.clear();
-        input.putLong(ledgerId);
-        input.putLong(entryId);
-        input.putLong(partitionId);
-        input.putInt(batchNum);
+    public static String createMessageId(final ByteBuffer input, final ByteBuffer addr, final long offset) {
+        input.flip();
+        int msgIDLength = addr.limit() == 8 ? 16 : 28;
+        input.limit(msgIDLength);
+
+        input.put(addr);
+        input.putLong(offset);
+
         return UtilAll.bytes2string(input.array());
     }
 
-    public static MessageIdImpl decodeMessageId(final String msgId) {
-        byte[] data = UtilAll.string2bytes(msgId);
-        ByteBuffer bb = ByteBuffer.wrap(data);
-        long ledgerId = bb.getLong();
-        long entryId = bb.getLong();
-        long partitionId = bb.getLong();
-        return new MessageIdImpl(ledgerId, entryId, (int) partitionId);
+    public static String createMessageId(SocketAddress socketAddress, long transactionIdhashCode) {
+        InetSocketAddress inetSocketAddress = (InetSocketAddress) socketAddress;
+        int msgIDLength = inetSocketAddress.getAddress() instanceof Inet4Address ? 16 : 28;
+        ByteBuffer byteBuffer = ByteBuffer.allocate(msgIDLength);
+        byteBuffer.put(inetSocketAddress.getAddress().getAddress());
+        byteBuffer.putInt(inetSocketAddress.getPort());
+        byteBuffer.putLong(transactionIdhashCode);
+        byteBuffer.flip();
+        return UtilAll.bytes2string(byteBuffer.array());
+    }
+
+    public static MessageIdImpl decodeMessageId(final String msgId) throws UnknownHostException {
+        SocketAddress address;
+        long offset;
+        int ipLength = msgId.length() == 32 ? 4 * 2 : 16 * 2;
+
+        byte[] ip = UtilAll.string2bytes(msgId.substring(0, ipLength));
+        byte[] port = UtilAll.string2bytes(msgId.substring(ipLength, ipLength + 8));
+        ByteBuffer bb = ByteBuffer.wrap(port);
+        int portInt = bb.getInt(0);
+        address = new InetSocketAddress(InetAddress.getByAddress(ip), portInt);
+        // offset
+        byte[] data = UtilAll.string2bytes(msgId.substring(ipLength + 8, ipLength + 8 + 16));
+        bb = ByteBuffer.wrap(data);
+        offset = bb.getLong(0);
+
+        return MessageIdUtils.getMessageId(offset);
     }
 
     public static int calMsgLength(int sysFlag, int bodyLength, int topicLength, int propertiesLength) {
         int bornhostLength = (sysFlag & MessageSysFlag.BORNHOST_V6_FLAG) == 0 ? 8 : 20;
         int storehostAddressLength = (sysFlag & MessageSysFlag.STOREHOSTADDRESS_V6_FLAG) == 0 ? 8 : 20;
-        final int msgLen = 8 //tagsCode
-                + 4 //TOTALSIZE
-                + 4 //MAGICCODE
-                + 4 //BODYCRC
-                + 4 //QUEUEID
-                + 4 //FLAG
-                + 8 //QUEUEOFFSET
-                + 8 //PHYSICALOFFSET
-                + 4 //SYSFLAG
-                + 8 //BORNTIMESTAMP
-                + bornhostLength //BORNHOST
-                + 8 //STORETIMESTAMP
-                + storehostAddressLength //STOREHOSTADDRESS
-                + 4 //RECONSUMETIMES
-                + 8 //Prepared Transaction Offset
-                + 4 + (bodyLength > 0 ? bodyLength : 0) //BODY
-                + 1 + topicLength //TOPIC
-                + 2 + (propertiesLength > 0 ? propertiesLength : 0) //propertiesLength
-                + 0;
-        return msgLen;
+        return 8 +  //tagsCode
+                4 +  //TOTALSIZE
+                4 +  //MAGICCODE
+                4 +  //BODYCRC
+                4 +  //QUEUEID
+                4 +  //FLAG
+                8 +  //QUEUEOFFSET
+                8 +  //PHYSICALOFFSET
+                4 +  //SYSFLAG
+                8 +  //BORNTIMESTAMP
+                bornhostLength +  //BORNHOST
+                8 +  //STORETIMESTAMP
+                storehostAddressLength +  //STOREHOSTADDRESS
+                4 +  //RECONSUMETIMES
+                8 +  //Prepared Transaction Offset
+                4 + (bodyLength > 0 ? bodyLength : 0) +  //BODY
+                1 + topicLength +  //TOPIC
+                2 + (propertiesLength > 0 ? propertiesLength : 0);
     }
 
     public static MessageExtBrokerInner messageTimeup(MessageExt msgExt) {
@@ -267,8 +293,10 @@ public class CommonUtils {
             }
 
             if (messageId != null) {
-                String msgId = createMessageId(messageId.getLedgerId(), messageId.getEntryId(),
-                        queueId, -1);
+                int msgIDLength = storehostIPLength + 4 + 8;
+                ByteBuffer byteBufferMsgId = ByteBuffer.allocate(msgIDLength);
+                String msgId = createMessageId(byteBufferMsgId, msgExt.getStoreHostBytes(),
+                        MessageIdUtils.getOffset(messageId.getLedgerId(), messageId.getEntryId()));
                 msgExt.setMsgId(msgId);
             }
 
@@ -280,10 +308,13 @@ public class CommonUtils {
         return null;
     }
 
-    public static ByteBuffer decode(ByteBuffer byteBuffer) {
-        ByteBuffer slice = byteBuffer.slice();
+    public static ByteBuffer decode(Message message) {
         // 去除 tags 标记位的 8 个字节之后，将原先的 byteBuffer 返回
-        Buffer buffer = slice.position(byteBuffer.position() + 8);
-        return ((ByteBuffer) buffer).slice();
+        ByteBuffer wrap = ByteBuffer.wrap(message.getData());
+        MessageIdImpl messageId = (MessageIdImpl) message.getMessageId();
+        Long pysicalOffset = MessageIdUtils.getOffset(messageId.getLedgerId(), messageId.getEntryId());
+        wrap.putLong(8 + 4 + 4 + 4 + 4 + 4 + 8, pysicalOffset);
+        long tag = wrap.getLong();
+        return wrap.slice();
     }
 }

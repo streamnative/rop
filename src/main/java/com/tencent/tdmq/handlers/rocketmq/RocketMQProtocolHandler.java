@@ -93,13 +93,13 @@ public class RocketMQProtocolHandler implements ProtocolHandler {
     public void start(BrokerService service) {
         brokerService = service;
         rocketMQBroker.setBrokerService(service);
-//        log.info("Starting RocketmqProtocolHandler, listener: {}, rop version is: '{}'",
-//                rocketmqConfig.getRocketmqListeners(), RopVersion.getVersion());
-//        log.info("Git Revision {}", RopVersion.getGitSha());
-//        log.info("Built by {} on {} at {}",
-//                RopVersion.getBuildUser(),
-//                RopVersion.getBuildHost(),
-//                RopVersion.getBuildTime());
+        log.info("Starting RocketmqProtocolHandler, listener: {}, rop version is: '{}'",
+                rocketmqConfig.getRocketmqListeners(), RopVersion.getVersion());
+        log.info("Git Revision {}", RopVersion.getGitSha());
+        log.info("Built by {} on {} at {}",
+                RopVersion.getBuildUser(),
+                RopVersion.getBuildHost(),
+                RopVersion.getBuildTime());
         try {
             rocketMQBroker.start();
         } catch (Exception e) {

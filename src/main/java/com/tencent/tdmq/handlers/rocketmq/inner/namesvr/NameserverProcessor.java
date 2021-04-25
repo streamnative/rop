@@ -3,7 +3,7 @@
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -19,6 +19,7 @@ import static org.apache.rocketmq.common.constant.PermName.PERM_READ;
 import static org.apache.rocketmq.common.constant.PermName.PERM_WRITE;
 import static org.apache.rocketmq.common.protocol.RequestCode.GET_ROUTEINTO_BY_TOPIC;
 
+import com.google.common.collect.Maps;
 import com.tencent.tdmq.handlers.rocketmq.RocketMQServiceConfiguration;
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
 import com.tencent.tdmq.handlers.rocketmq.utils.RocketMQTopic;
@@ -28,13 +29,17 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.logging.log4j.util.Strings;
+import org.apache.pulsar.client.admin.PulsarAdmin;
 import org.apache.rocketmq.common.help.FAQUrl;
 import org.apache.rocketmq.common.protocol.RequestCode;
 import org.apache.rocketmq.common.protocol.ResponseCode;
+import org.apache.rocketmq.common.protocol.body.ClusterInfo;
 import org.apache.rocketmq.common.protocol.header.namesrv.GetRouteInfoRequestHeader;
 import org.apache.rocketmq.common.protocol.route.BrokerData;
 import org.apache.rocketmq.common.protocol.route.QueueData;
@@ -42,6 +47,7 @@ import org.apache.rocketmq.common.protocol.route.TopicRouteData;
 import org.apache.rocketmq.remoting.common.RemotingHelper;
 import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
+import org.testng.collections.Sets;
 
 @Slf4j
 public class NameserverProcessor implements NettyRequestProcessor {
@@ -82,7 +88,7 @@ public class NameserverProcessor implements NettyRequestProcessor {
                 // TODO return this.getRouteInfoByTopic(ctx, request);
                 return handleTopicMetadata(ctx, request);
             case RequestCode.GET_BROKER_CLUSTER_INFO:
-                // return this.getBrokerClusterInfo(ctx, request);
+                return this.getBrokerClusterInfo(ctx, request);
             case RequestCode.WIPE_WRITE_PERM_OF_BROKER:
             case RequestCode.GET_ALL_TOPIC_LIST_FROM_NAMESERVER:
                 // return getAllTopicListFromNameserver(ctx, request);
@@ -125,6 +131,33 @@ public class NameserverProcessor implements NettyRequestProcessor {
         topicRouteData.setQueueDatas(queueDatas);
 
         String clusterName = config.getClusterName();
+
+        /*
+         * 如果主题名和clusterName相同，返回集群中任意一个节点到客户端。这里为了兼容客户端创建主题操作
+         */
+        if (clusterName.equals(requestHeader.getTopic())) {
+            try {
+                PulsarAdmin adminClient = brokerController.getBrokerService().pulsar().getAdminClient();
+                List<String> brokers = adminClient.brokers().getActiveBrokers(clusterName);
+                String randomBroker = brokers.get(new Random().nextInt(brokers.size()));
+                BrokerData brokerData = new BrokerData();
+                HashMap<Long, String> brokerAddrs = Maps.newHashMap();
+                brokerAddrs.put(0L, randomBroker);
+                brokerData.setBrokerAddrs(brokerAddrs);
+                brokerDatas.add(brokerData);
+                byte[] content = topicRouteData.encode();
+                response.setBody(content);
+                response.setCode(ResponseCode.SUCCESS);
+                response.setRemark(null);
+                return response;
+            } catch (Exception e) {
+                log.error("Cluster [{}] get route info failed", clusterName, e);
+                response.setCode(ResponseCode.SYSTEM_ERROR);
+                response.setRemark(null);
+                return response;
+            }
+        }
+
         // 根据传入的请求获取指定的topic
         String requestTopic = requestHeader.getTopic();
         if (Strings.isNotBlank(requestTopic)) {
@@ -182,5 +215,45 @@ public class NameserverProcessor implements NettyRequestProcessor {
             result = matcher.group(1) + servicePort;
         }
         return result;
+    }
+
+    /**
+     * 获取broker集群信息，当前认为一个broker物理集群中只有一个broker集群，这里只返回一个broker集群中的一个节点
+     *
+     * 这里为了兼容客户端主题删除逻辑
+     * rocketmq中删除主题客户端会依次请求broker集群下全部broker节点执行主题删除，pulsar中只需要到一台节点上执行删除主题操作即可
+     */
+    private RemotingCommand getBrokerClusterInfo(ChannelHandlerContext ctx, RemotingCommand request) {
+        final RemotingCommand response = RemotingCommand.createResponseCommand(null);
+
+        String clusterName = config.getClusterName();
+        try {
+            PulsarAdmin adminClient = brokerController.getBrokerService().pulsar().getAdminClient();
+            List<String> brokers = adminClient.brokers().getActiveBrokers(clusterName);
+            String randomBroker = brokers.get(new Random().nextInt(brokers.size()));
+
+            HashMap<String, BrokerData> brokerAddrTable = Maps.newHashMap();
+            HashMap<Long, String> brokerAddrs = Maps.newHashMap();
+            brokerAddrs.put(0L, randomBroker);
+            brokerAddrTable.put(randomBroker, new BrokerData(clusterName, randomBroker, brokerAddrs));
+
+            ClusterInfo clusterInfoSerializeWrapper = new ClusterInfo();
+            clusterInfoSerializeWrapper.setBrokerAddrTable(brokerAddrTable);
+            HashMap<String, Set<String>> clusterAddrTable = Maps.newHashMap();
+            clusterAddrTable.put(clusterName, Sets.newHashSet(randomBroker));
+            clusterInfoSerializeWrapper.setClusterAddrTable(clusterAddrTable);
+
+            response.setBody(clusterInfoSerializeWrapper.encode());
+
+            response.setCode(ResponseCode.SUCCESS);
+            response.setRemark(null);
+            return response;
+        } catch (Exception e) {
+            log.error("ClusterName [{}] getBrokerClusterInfo failed", clusterName, e);
+        }
+
+        response.setCode(ResponseCode.SYSTEM_ERROR);
+        response.setRemark(null);
+        return response;
     }
 }

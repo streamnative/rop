@@ -3,7 +3,7 @@
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -57,7 +57,7 @@ public class ScheduleMessageService {
     private static final long DELAY_FOR_A_WHILE = 1000L;
     private static final long DELAY_FOR_A_PERIOD = 10000L;
     private static final int MAX_FETCH_MESSAGE_NUM = 20;
-    private final static int PRODUCER_EXPIRED_TIME_MS = 5 * 60;
+    private final static int PRODUCER_EXPIRED_TIME_SEC = 60 * 60;
     private final static int PRODUCER_CACHE_SIZE = 200;
     /*  key is delayed level  value is delay timeMillis */
     private final ConcurrentLongHashMap<Long> delayLevelTable;
@@ -81,7 +81,7 @@ public class ScheduleMessageService {
         this.maxDelayLevel = config.getMaxDelayLevelNum();
         this.parseDelayLevel();
         this.sendBackProdcuer = CacheBuilder.newBuilder()
-                .expireAfterAccess(PRODUCER_EXPIRED_TIME_MS, TimeUnit.MILLISECONDS)
+                .expireAfterAccess(PRODUCER_EXPIRED_TIME_SEC, TimeUnit.SECONDS)
                 .maximumSize(PRODUCER_CACHE_SIZE)
                 .initialCapacity(PRODUCER_CACHE_SIZE)
                 .removalListener((RemovalListener<String, Producer<byte[]>>) l -> {
@@ -105,7 +105,13 @@ public class ScheduleMessageService {
             }
         };
         this.expirationReaper.setDaemon(true);
+    }
 
+    public String getDelayedTopicName(int timeDelayedLevel) {
+        String delayedTopicName = ScheduleMessageService.this.scheduleTopicPrefix + CommonUtils.UNDERSCORE_CHAR
+                + delayLevelArray[timeDelayedLevel - 1];
+        RocketMQTopic rocketMQTopic = RocketMQTopic.getRocketMQMetaTopic(delayedTopicName);
+        return rocketMQTopic.getPulsarFullName();
     }
 
     public long computeDeliverTimestamp(final long delayLevel, final long storeTimestamp) {
@@ -123,7 +129,7 @@ public class ScheduleMessageService {
                     .collect(ArrayList::new, (arr, level) -> {
                         arr.add(new DeliverDelayedMessageTimerTask(level));
                     }, ArrayList::addAll);
-            this.deliverDelayedMessageManager.stream()
+            this.deliverDelayedMessageManager
                     .forEach((i) -> this.timer.schedule(i, FIRST_DELAY_TIME, DELAY_FOR_A_WHILE));
             this.expirationReaper.start();
         }
@@ -132,9 +138,7 @@ public class ScheduleMessageService {
     public void shutdown() {
         if (this.started.compareAndSet(true, false)) {
             expirationReaper.shutdown();
-            deliverDelayedMessageManager.stream().forEach((i) -> {
-                i.close();
-            });
+            deliverDelayedMessageManager.forEach(DeliverDelayedMessageTimerTask::close);
             sendBackProdcuer.invalidateAll();
         }
     }
@@ -182,8 +186,7 @@ public class ScheduleMessageService {
 
         public DeliverDelayedMessageTimerTask(long delayLevel) {
             this.delayLevel = delayLevel;
-            this.delayTopic = ScheduleMessageService.this.scheduleTopicPrefix + CommonUtils.UNDERSCORE_CHAR
-                    + delayLevelArray[(int) (delayLevel - 1)];
+            this.delayTopic = getDelayedTopicName((int) delayLevel);
             this.pulsarService = ScheduleMessageService.this.pulsarBroker.pulsar();
             this.timeoutTimer = SystemTimer.builder().executorName("DeliverDelayedMessageTimeWheelExecutor").build();
             try {
@@ -193,7 +196,7 @@ public class ScheduleMessageService {
                         .subscriptionMode(SubscriptionMode.Durable)
                         .subscriptionType(SubscriptionType.Shared)
                         .subscriptionName(this.delayTopic + CommonUtils.UNDERSCORE_CHAR + "consumer")
-                        .topicsPattern(this.delayTopic)
+                        .topic(this.delayTopic)
                         .subscriptionInitialPosition(SubscriptionInitialPosition.Earliest)
                         .subscribe();
             } catch (Exception e) {
@@ -249,9 +252,9 @@ public class ScheduleMessageService {
                                             try {
                                                 producer = pulsarService.getClient().newProducer()
                                                         .topic(pTopic)
-                                                        .producerName(pTopic + "delayedMessageSender")
+                                                        .producerName(pTopic + "_delayedMessageSender")
                                                         .enableBatching(true)
-                                                        .sendTimeout(3, TimeUnit.SECONDS)
+                                                        .sendTimeout(3000, TimeUnit.MILLISECONDS)
                                                         .create();
                                             } catch (Exception e) {
                                                 log.warn("create delayedMessageSender error.", e);
@@ -260,7 +263,7 @@ public class ScheduleMessageService {
                                         sendBackProdcuer.put(pTopic, producer);
                                     }
                                 }
-                                producer.send(formatter.encode(msgInner, 1).get(0).array());
+                                producer.send(formatter.encode(msgInner, 1).get(0));
                                 delayedConsumer.acknowledge(message.getMessageId());
                             } catch (Exception ex) {
                                 log.warn("create delayedMessageSender error.", ex);

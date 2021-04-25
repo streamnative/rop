@@ -3,7 +3,7 @@
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -208,6 +208,7 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
                                 break;
                             }
                         }
+                        assert pullResult != null;
                         List<MessageExt> opMsg = pullResult.getMsgFoundList();
                         boolean isNeedCheck = (opMsg == null && valueOfCurrentMinusBorn > checkImmunityTime)
                                 || (opMsg != null && (opMsg.get(opMsg.size() - 1).getBornTimestamp() - startTime
@@ -386,7 +387,7 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
     private Long getLong(String s) {
         long v = -1;
         try {
-            v = Long.valueOf(s);
+            v = Long.parseLong(s);
         } catch (Exception e) {
             log.error("GetLong error", e);
         }
@@ -397,7 +398,7 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
     private Integer getInt(String s) {
         int v = -1;
         try {
-            v = Integer.valueOf(s);
+            v = Integer.parseInt(s);
         } catch (Exception e) {
             log.error("GetInt error", e);
         }
@@ -408,8 +409,8 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
     private long calculateOpOffset(List<Long> doneOffset, long oldOffset) {
         Collections.sort(doneOffset);
         long newOffset = oldOffset;
-        for (int i = 0; i < doneOffset.size(); i++) {
-            if (doneOffset.get(i) == newOffset) {
+        for (Long aLong : doneOffset) {
+            if (aLong == newOffset) {
                 newOffset++;
             } else {
                 break;

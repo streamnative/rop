@@ -3,7 +3,7 @@
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,6 +16,7 @@ package com.tencent.tdmq.handlers.rocketmq.inner.processor;
 
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
 import com.tencent.tdmq.handlers.rocketmq.inner.consumer.ConsumerGroupInfo;
+import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientGroupAndTopicName;
 import io.netty.channel.ChannelHandlerContext;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
@@ -131,12 +132,11 @@ public class ConsumerManageProcessor implements NettyRequestProcessor {
             response.setCode(ResponseCode.SUCCESS);
             response.setRemark(null);
         } else {
-            long minOffset = 0L
-                    /*this.brokerController.getMessageStore().getMinOffsetInQueue(requestHeader.getTopic(),
-                            requestHeader.getQueueId())*/;
-            if (minOffset <= 0
-                    /*&& !this.brokerController.getMessageStore().checkInDiskByConsumeOffset(
-                    requestHeader.getTopic(), requestHeader.getQueueId(), 0)*/) {
+            long minOffset = this.brokerController.getConsumerOffsetManager()
+                    .getMaxOffsetInQueue(new ClientGroupAndTopicName(requestHeader.getConsumerGroup(),
+                                    requestHeader.getTopic()),
+                            requestHeader.getQueueId());
+            if (minOffset <= 0) {
                 responseHeader.setOffset(0L);
                 response.setCode(ResponseCode.SUCCESS);
                 response.setRemark(null);

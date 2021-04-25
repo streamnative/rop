@@ -3,7 +3,7 @@
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -53,7 +53,7 @@ public class MessageIdUtils {
         checkArgument(offset > 0, "Expected Offset > 0, but get " + offset);
 
         long ledgerId = offset >>> (ENTRY_BITS + PARTITION_BITS);
-        long entryId = (offset & 0x0F_FF_FF_FF_FF_FFL) >>> PARTITION_BITS;
+        long entryId = (offset >>> PARTITION_BITS) & ((1 << ENTRY_BITS) - 1);
         //int partitionId = (int) (offset & 0x2FF);
 
         return new MessageIdImpl(ledgerId, entryId, -1);
@@ -63,7 +63,7 @@ public class MessageIdUtils {
         // De-multiplex ledgerId and entryId from offset
         checkArgument(offset >= 0, "Expected Offset >= 0, but get " + offset);
         long ledgerId = offset >>> (ENTRY_BITS + PARTITION_BITS);
-        long entryId = (offset & 0x0F_FF_FF_FF_FF_FFL) >>> PARTITION_BITS;
+        long entryId = (offset >>> PARTITION_BITS) & ((1 << ENTRY_BITS) - 1);
 
         return new PositionImpl(ledgerId, entryId);
     }

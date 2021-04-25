@@ -3,7 +3,7 @@
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,6 +17,9 @@ package com.tencent.tdmq.handlers.rocketmq.inner.processor;
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
 import com.tencent.tdmq.handlers.rocketmq.inner.consumer.ConsumerGroupInfo;
 import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientGroupName;
+import com.tencent.tdmq.handlers.rocketmq.utils.CommonUtils;
+import com.tencent.tdmq.handlers.rocketmq.utils.MessageIdUtils;
+import com.tencent.tdmq.handlers.rocketmq.utils.OffsetFinder;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import java.io.UnsupportedEncodingException;
@@ -28,10 +31,20 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.bookkeeper.mledger.AsyncCallbacks;
+import org.apache.bookkeeper.mledger.ManagedLedgerException;
+import org.apache.bookkeeper.mledger.Position;
+import org.apache.bookkeeper.mledger.impl.ManagedLedgerImpl;
+import org.apache.bookkeeper.mledger.impl.PositionImpl;
+import org.apache.pulsar.broker.service.Topic;
+import org.apache.pulsar.broker.service.persistent.PersistentTopic;
 import org.apache.rocketmq.broker.client.ClientChannelInfo;
 import org.apache.rocketmq.broker.topic.TopicValidator;
 import org.apache.rocketmq.broker.transaction.queue.TransactionalMessageUtil;
@@ -115,9 +128,9 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
     public RemotingCommand processRequest(ChannelHandlerContext ctx,
             RemotingCommand request) throws RemotingCommandException {
         switch (request.getCode()) {
-            case RequestCode.UPDATE_AND_CREATE_TOPIC: // 需要| 管控端
+            case RequestCode.UPDATE_AND_CREATE_TOPIC: // 需要 | 管控端接口 | 客户端已废弃
                 return this.updateAndCreateTopic(ctx, request);
-            case RequestCode.DELETE_TOPIC_IN_BROKER:
+            case RequestCode.DELETE_TOPIC_IN_BROKER: // 需要 | 管控端接口 | 客户端已废弃
                 return this.deleteTopic(ctx, request);
             case RequestCode.GET_ALL_TOPIC_CONFIG:
                 return this.getAllTopicConfig(ctx, request);
@@ -125,31 +138,31 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
                 return this.updateBrokerConfig(ctx, request);
             case RequestCode.GET_BROKER_CONFIG:
                 return this.getBrokerConfig(ctx, request);
-            case RequestCode.SEARCH_OFFSET_BY_TIMESTAMP: // 需要
+            case RequestCode.SEARCH_OFFSET_BY_TIMESTAMP: // 需要 | 客户端需要
                 return this.searchOffsetByTimestamp(ctx, request);
-            case RequestCode.GET_MAX_OFFSET: // 需要
+            case RequestCode.GET_MAX_OFFSET: // 需要 | 管控端接口 | 客户端已废弃
                 return this.getMaxOffset(ctx, request);
-            case RequestCode.GET_MIN_OFFSET: // 需要
+            case RequestCode.GET_MIN_OFFSET: // 需要 | 客户端接口 | 客户端已废弃
                 return this.getMinOffset(ctx, request);
-            case RequestCode.GET_EARLIEST_MSG_STORETIME: // 需要
+            case RequestCode.GET_EARLIEST_MSG_STORETIME:
                 return this.getEarliestMsgStoretime(ctx, request);
             case RequestCode.GET_BROKER_RUNTIME_INFO:
                 return this.getBrokerRuntimeInfo(ctx, request);
-            case RequestCode.LOCK_BATCH_MQ: // 需要
+            case RequestCode.LOCK_BATCH_MQ: // 需要 | 客户端rebalance
                 return this.lockBatchMQ(ctx, request);
-            case RequestCode.UNLOCK_BATCH_MQ: // 需要
+            case RequestCode.UNLOCK_BATCH_MQ: // 需要 | 客户端rebalance
                 return this.unlockBatchMQ(ctx, request);
-            case RequestCode.UPDATE_AND_CREATE_SUBSCRIPTIONGROUP: // 管控端
+            case RequestCode.UPDATE_AND_CREATE_SUBSCRIPTIONGROUP: // 需要 | 管控端
                 return this.updateAndCreateSubscriptionGroup(ctx, request);
             case RequestCode.GET_ALL_SUBSCRIPTIONGROUP_CONFIG:
                 return this.getAllSubscriptionGroup(ctx, request);
-            case RequestCode.DELETE_SUBSCRIPTIONGROUP: // 管控端
+            case RequestCode.DELETE_SUBSCRIPTIONGROUP: // 管控端 | 管控端
                 return this.deleteSubscriptionGroup(ctx, request);
             case RequestCode.GET_TOPIC_STATS_INFO:
                 return this.getTopicStatsInfo(ctx, request);
-            case RequestCode.GET_CONSUMER_CONNECTION_LIST: // 需要
+            case RequestCode.GET_CONSUMER_CONNECTION_LIST: // 需要 | 管控端监控
                 return this.getConsumerConnectionList(ctx, request);
-            case RequestCode.GET_PRODUCER_CONNECTION_LIST: // 需要
+            case RequestCode.GET_PRODUCER_CONNECTION_LIST: // 需要 | 管控端监控
                 return this.getProducerConnectionList(ctx, request);
             case RequestCode.GET_CONSUME_STATS:
                 return this.getConsumeStats(ctx, request);
@@ -157,11 +170,11 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
                 return this.getAllConsumerOffset(ctx, request);
             case RequestCode.GET_ALL_DELAY_OFFSET:
                 return this.getAllDelayOffset(ctx, request);
-            case RequestCode.INVOKE_BROKER_TO_RESET_OFFSET: // 需要
+            case RequestCode.INVOKE_BROKER_TO_RESET_OFFSET: // 需要，调用broker接口重置客户端的offset，动态改变客户端的消息拉取位置
                 return this.resetOffset(ctx, request);
             case RequestCode.INVOKE_BROKER_TO_GET_CONSUMER_STATUS:
                 return this.getConsumerStatus(ctx, request);
-            case RequestCode.QUERY_TOPIC_CONSUME_BY_WHO: // 管控端
+            case RequestCode.QUERY_TOPIC_CONSUME_BY_WHO: // 需要 | 管控端监控 | 查询主题被哪些消费组消费
                 return this.queryTopicConsumeByWho(ctx, request);
             case RequestCode.QUERY_CONSUME_TIME_SPAN:
                 return this.queryConsumeTimeSpan(ctx, request);
@@ -171,7 +184,7 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
                 return this.cleanExpiredConsumeQueue();
             case RequestCode.CLEAN_UNUSED_TOPIC:
                 return this.cleanUnusedTopic();
-            case RequestCode.GET_CONSUMER_RUNNING_INFO: // 管控端
+            case RequestCode.GET_CONSUMER_RUNNING_INFO: // 管控端 | 管控端监控
                 return this.getConsumerRunningInfo(ctx, request);
             case RequestCode.QUERY_CORRECTION_OFFSET:
                 return this.queryCorrectionOffset(ctx, request);
@@ -228,16 +241,6 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
             return response;
         }
 
-        try {
-            response.setCode(ResponseCode.SUCCESS);
-            response.setOpaque(request.getOpaque());
-            response.markResponseType();
-            response.setRemark(null);
-            ctx.writeAndFlush(response);
-        } catch (Exception e) {
-            log.error("Failed to produce a proper response", e);
-        }
-
         TopicConfig topicConfig = new TopicConfig(requestHeader.getTopic());
         topicConfig.setReadQueueNums(requestHeader.getReadQueueNums());
         topicConfig.setWriteQueueNums(requestHeader.getWriteQueueNums());
@@ -247,11 +250,14 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
 
         this.brokerController.getTopicConfigManager().updateTopicConfig(topicConfig);
 
-/*
-TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this.brokerController.getTopicConfigManager().getDataVersion());
-*/
+        this.brokerController.getTopicConfigManager().createOrUpdateTopic(topicConfig);
 
-        return null;
+        response.setCode(ResponseCode.SUCCESS);
+        response.setOpaque(request.getOpaque());
+        response.markResponseType();
+        response.setRemark(null);
+
+        return response;
     }
 
     private synchronized RemotingCommand deleteTopic(ChannelHandlerContext ctx,
@@ -263,8 +269,8 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
         log.info("deleteTopic called by {}", RemotingHelper.parseChannelRemoteAddr(ctx.channel()));
 
         this.brokerController.getTopicConfigManager().deleteTopicConfig(requestHeader.getTopic());
-/*TODO        this.brokerController.getMessageStore()
-                .cleanUnusedTopic(this.brokerController.getTopicConfigManager().getTopicConfigTable().keySet());*/
+
+        this.brokerController.getTopicConfigManager().deleteTopic(requestHeader.getTopic());
 
         response.setCode(ResponseCode.SUCCESS);
         response.setRemark(null);
@@ -274,10 +280,9 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
 
     private RemotingCommand getAllTopicConfig(ChannelHandlerContext ctx, RemotingCommand request) {
         final RemotingCommand response = RemotingCommand.createResponseCommand(GetAllTopicConfigResponseHeader.class);
-        // final GetAllTopicConfigResponseHeader responseHeader =
-        // (GetAllTopicConfigResponseHeader) response.readCustomHeader();
 
-        String content = "";//TODO:this.brokerController.getTopicConfigManager().encode();
+        // TODO: hanmz 2021/4/24 TopicConfigManager add encode
+        String content = "" /*this.brokerController.getTopicConfigManager().encode()*/;
         if (content != null && content.length() > 0) {
             try {
                 response.setBody(content.getBytes(MixAll.DEFAULT_CHARSET));
@@ -371,14 +376,61 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
         final SearchOffsetRequestHeader requestHeader =
                 (SearchOffsetRequestHeader) request.decodeCommandCustomHeader(SearchOffsetRequestHeader.class);
 
-        long offset = 0L;/*TODO:this.brokerController.getMessageStore()
-                .getOffsetInQueueByTime(requestHeader.getTopic(), requestHeader.getQueueId(),
-                        requestHeader.getTimestamp());*/
+        long timestamp = requestHeader.getTimestamp();
+        String pulsarTopicName = CommonUtils.tdmqGroupName(requestHeader.getTopic());
 
-        responseHeader.setOffset(offset);
+        CompletableFuture<Long> finalOffset = new CompletableFuture<>();
 
-        response.setCode(ResponseCode.SUCCESS);
-        response.setRemark(null);
+        try {
+            Optional<Topic> optionalTopic = this.brokerController.getBrokerService().getTopicIfExists(pulsarTopicName)
+                    .get();
+            if (optionalTopic.isPresent()) {
+                PersistentTopic persistentTopic = (PersistentTopic) optionalTopic.get();
+
+                // find with real wanted timestamp
+                OffsetFinder offsetFinder = new OffsetFinder((ManagedLedgerImpl) persistentTopic.getManagedLedger());
+
+                offsetFinder.findMessages(timestamp, new AsyncCallbacks.FindEntryCallback() {
+                    @Override
+                    public void findEntryComplete(Position position, Object ctx) {
+                        PositionImpl finalPosition;
+                        if (position == null) {
+                            finalOffset.complete(-1L);
+                        } else {
+                            finalPosition = (PositionImpl) position;
+                            long offset = MessageIdUtils
+                                    .getOffset(finalPosition.getLedgerId(), finalPosition.getEntryId());
+                            finalOffset.complete(offset);
+                        }
+                    }
+
+                    @Override
+                    public void findEntryFailed(ManagedLedgerException exception,
+                            Optional<Position> position, Object ctx) {
+                        log.warn("Unable to find position for topic {} time {}. Exception:", pulsarTopicName, timestamp,
+                                exception);
+                        finalOffset.complete(-1L);
+                    }
+                });
+            } else {
+                log.warn("SearchOffsetByTimestamp: topic [{}] not found.", pulsarTopicName);
+            }
+        } catch (Exception e) {
+            log.warn("SearchOffsetByTimestamp: get topic [{}] from broker error.", pulsarTopicName);
+        }
+
+        try {
+            long offset = finalOffset.get(5, TimeUnit.SECONDS);
+            if (offset >= 0) {
+                responseHeader.setOffset(offset);
+                response.setCode(ResponseCode.SUCCESS);
+                return response;
+            }
+        } catch (Exception e) {
+            log.warn("SearchOffsetByTimestamp: topic [{}] search offset timeout.", pulsarTopicName);
+        }
+
+        response.setCode(ResponseCode.SYSTEM_ERROR);
         return response;
     }
 
@@ -389,12 +441,27 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
         final GetMaxOffsetRequestHeader requestHeader =
                 (GetMaxOffsetRequestHeader) request.decodeCommandCustomHeader(GetMaxOffsetRequestHeader.class);
 
-        long offset = 0L; /*TODO this.brokerController.getMessageStore()
-                .getMaxOffsetInQueue(requestHeader.getTopic(), requestHeader.getQueueId());*/
+        String pulsarTopicName = CommonUtils.tdmqGroupName(requestHeader.getTopic());
+        try {
+            Optional<Topic> optionalTopic = this.brokerController.getBrokerService()
+                    .getTopicIfExists(pulsarTopicName).get();
+            if (optionalTopic.isPresent()) {
+                PersistentTopic persistentTopic = (PersistentTopic) optionalTopic.get();
+                PositionImpl lastPosition = (PositionImpl) persistentTopic.getLastPosition();
+                long offset = MessageIdUtils.getOffset(lastPosition.getLedgerId(), lastPosition.getEntryId());
 
-        responseHeader.setOffset(offset);
+                responseHeader.setOffset(offset);
+                response.setCode(ResponseCode.SUCCESS);
+                response.setRemark(null);
+                return response;
+            } else {
+                log.warn("GetMaxOffset: topic [{}] not found.", pulsarTopicName);
+            }
+        } catch (Exception e) {
+            log.error("GetMaxOffset: get topic [{}] from broker error", pulsarTopicName);
+        }
 
-        response.setCode(ResponseCode.SUCCESS);
+        response.setCode(ResponseCode.SYSTEM_ERROR);
         response.setRemark(null);
         return response;
     }
@@ -406,15 +473,34 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
         final GetMinOffsetRequestHeader requestHeader =
                 (GetMinOffsetRequestHeader) request.decodeCommandCustomHeader(GetMinOffsetRequestHeader.class);
 
-        long offset = 0L;/*TODO this.brokerController.getMessageStore()
-                .getMinOffsetInQueue(requestHeader.getTopic(), requestHeader.getQueueId());*/
+        String pulsarTopicName = CommonUtils.tdmqGroupName(requestHeader.getTopic());
+        try {
+            Optional<Topic> optionalTopic = this.brokerController.getBrokerService()
+                    .getTopicIfExists(pulsarTopicName).get();
+            if (optionalTopic.isPresent()) {
+                PersistentTopic persistentTopic = (PersistentTopic) optionalTopic.get();
+                PositionImpl lastPosition = persistentTopic.getFirstPosition();
+                long offset = MessageIdUtils.getOffset(lastPosition.getLedgerId(), lastPosition.getEntryId());
 
-        responseHeader.setOffset(offset);
-        response.setCode(ResponseCode.SUCCESS);
+                responseHeader.setOffset(offset);
+
+                response.setCode(ResponseCode.SUCCESS);
+                response.setRemark(null);
+                return response;
+            } else {
+                log.warn("GetMinOffset: topic [{}] not found.", pulsarTopicName);
+            }
+        } catch (Exception e) {
+            log.error("GetMinOffset: get topic [{}] from broker error", pulsarTopicName);
+        }
+
+        response.setCode(ResponseCode.SYSTEM_ERROR);
         response.setRemark(null);
         return response;
     }
 
+    // TODO: hanmz 2021/4/22 当前消息中没有存储时间的记录，改接口rocketmq标记为已废弃
+    @Deprecated
     private RemotingCommand getEarliestMsgStoretime(ChannelHandlerContext ctx,
             RemotingCommand request) throws RemotingCommandException {
         final RemotingCommand response = RemotingCommand
@@ -425,9 +511,7 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
                 (GetEarliestMsgStoretimeRequestHeader) request
                         .decodeCommandCustomHeader(GetEarliestMsgStoretimeRequestHeader.class);
 
-        long timestamp = 0L;/* TODO:
-                this.brokerController.getMessageStore()
-                        .getEarliestMessageTime(requestHeader.getTopic(), requestHeader.getQueueId());*/
+        long timestamp = 0L;
 
         responseHeader.setTimestamp(timestamp);
         response.setCode(ResponseCode.SUCCESS);
@@ -503,7 +587,9 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
     private RemotingCommand getAllSubscriptionGroup(ChannelHandlerContext ctx,
             RemotingCommand request) throws RemotingCommandException {
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
-/* TODO:       String content = this.brokerController.getSubscriptionGroupManager().encode();
+
+        // TODO: hanmz 2021/4/24 SubscriptionGroupManager add encode
+        String content = "" /*this.brokerController.getSubscriptionGroupManager().encode()*/;
         if (content != null && content.length() > 0) {
             try {
                 response.setBody(content.getBytes(MixAll.DEFAULT_CHARSET));
@@ -522,7 +608,7 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
         }
 
         response.setCode(ResponseCode.SUCCESS);
-        response.setRemark(null);*/
+        response.setRemark(null);
 
         return response;
     }
@@ -646,9 +732,8 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
         Map<Channel, ClientChannelInfo> channelInfoHashMap =
                 this.brokerController.getProducerManager().getGroupChannelTable().get(requestHeader.getProducerGroup());
         if (channelInfoHashMap != null) {
-            Iterator<Map.Entry<Channel, ClientChannelInfo>> it = channelInfoHashMap.entrySet().iterator();
-            while (it.hasNext()) {
-                ClientChannelInfo info = it.next().getValue();
+            for (Entry<Channel, ClientChannelInfo> channelClientChannelInfoEntry : channelInfoHashMap.entrySet()) {
+                ClientChannelInfo info = channelClientChannelInfoEntry.getValue();
                 Connection connection = new Connection();
                 connection.setClientId(info.getClientId());
                 connection.setLanguage(info.getLanguage());
@@ -819,20 +904,18 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
         return response;
     }
 
-    public RemotingCommand resetOffset(ChannelHandlerContext ctx,
-            RemotingCommand request) throws RemotingCommandException {
-        final ResetOffsetRequestHeader requestHeader =
-                (ResetOffsetRequestHeader) request.decodeCommandCustomHeader(ResetOffsetRequestHeader.class);
+    public RemotingCommand resetOffset(ChannelHandlerContext ctx, RemotingCommand request)
+            throws RemotingCommandException {
+        final ResetOffsetRequestHeader requestHeader = (ResetOffsetRequestHeader) request
+                .decodeCommandCustomHeader(ResetOffsetRequestHeader.class);
         log.info("[reset-offset] reset offset started by {}. topic={}, group={}, timestamp={}, isForce={}",
                 RemotingHelper.parseChannelRemoteAddr(ctx.channel()), requestHeader.getTopic(),
                 requestHeader.getGroup(),
                 requestHeader.getTimestamp(), requestHeader.isForce());
         boolean isC = false;
         LanguageCode language = request.getLanguage();
-        switch (language) {
-            case CPP:
-                isC = true;
-                break;
+        if (language == LanguageCode.CPP) {
+            isC = true;
         }
         return this.brokerController.getBroker2Client().resetOffset(requestHeader.getTopic(), requestHeader.getGroup(),
                 requestHeader.getTimestamp(), requestHeader.isForce(), isC);
@@ -1152,7 +1235,8 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
         long totalDiff = 0L;
         for (ClientGroupName group : subscriptionGroups.keySet()) {
             Map<String, List<ConsumeStats>> subscripTopicConsumeMap = new HashMap<>();
-            Set<String> topics = this.brokerController.getConsumerOffsetManager().whichTopicByConsumer(group.getRmqGroupName());
+            Set<String> topics = this.brokerController.getConsumerOffsetManager()
+                    .whichTopicByConsumer(group.getRmqGroupName());
             List<ConsumeStats> consumeStatsList = new ArrayList<>();
             for (String topic : topics) {
                 ConsumeStats consumeStats = new ConsumeStats();
@@ -1171,7 +1255,8 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
                             .findSubscriptionData(group.getRmqGroupName(), topic);
 
                     if (null == findSubscriptionData
-                            && this.brokerController.getConsumerManager().findSubscriptionDataCount(group.getRmqGroupName()) > 0) {
+                            && this.brokerController.getConsumerManager()
+                            .findSubscriptionDataCount(group.getRmqGroupName()) > 0) {
                         log.warn("consumeStats, the consumer group[{}], topic[{}] not exist", group, topic);
                         continue;
                     }
@@ -1208,7 +1293,8 @@ TODO:        this.brokerController.registerIncrementBrokerData(topicConfig, this
                     }
                     consumeStats.getOffsetTable().put(mq, offsetWrapper);
                 }
-                double consumeTps = this.brokerController.getBrokerStatsManager().tpsGroupGetNums(group.getRmqGroupName(), topic);
+                double consumeTps = this.brokerController.getBrokerStatsManager()
+                        .tpsGroupGetNums(group.getRmqGroupName(), topic);
                 consumeTps += consumeStats.getConsumeTps();
                 consumeStats.setConsumeTps(consumeTps);
                 totalDiff += consumeStats.computeTotalDiff();

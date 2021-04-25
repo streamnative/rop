@@ -3,7 +3,7 @@
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -31,7 +31,9 @@ import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.pulsar.client.api.Message;
+import org.apache.pulsar.client.api.MessageId;
 import org.apache.pulsar.client.impl.MessageIdImpl;
+import org.apache.pulsar.client.impl.TopicMessageImpl;
 import org.apache.pulsar.common.api.proto.PulsarApi.MessageIdData;
 import org.apache.pulsar.common.protocol.Commands;
 import org.apache.rocketmq.common.UtilAll;
@@ -53,20 +55,22 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
             .withInitial(() -> ByteBuffer.allocate(MAX_MESSAGE_SIZE));
 
     public static MessageExt decodePulsarMessage(Message message) {
-        return CommonUtils.decode(ByteBuffer.wrap(message.getData()),
-                (MessageIdImpl) message.getMessageId(), true, false);
+        if (message instanceof TopicMessageImpl) {
+            TopicMessageImpl topicMessage = (TopicMessageImpl) message;
+            return CommonUtils.decode(ByteBuffer.wrap(message.getData()),
+                    (MessageIdImpl) topicMessage.getInnerMessageId(), true, false);
+        } else {
+            return CommonUtils.decode(ByteBuffer.wrap(message.getData()),
+                    (MessageIdImpl) message.getMessageId(), true, false);
+        }
     }
 
     public static ByteBuffer decodePulsarMessageResBuffer(Message message) {
-        return CommonUtils.decode(ByteBuffer.wrap(message.getData()));
-    }
-
-    public static ByteBuffer decodePulsarMessageResBuffer(byte[] payload) {
-        return CommonUtils.decode(ByteBuffer.wrap(payload));
+        return CommonUtils.decode(message);
     }
 
     @Override
-    public List<ByteBuffer> encode(MessageExt record, int numMessages) throws RopEncodeException {
+    public List<byte[]> encode(MessageExt record, int numMessages) throws RopEncodeException {
         Preconditions.checkNotNull(record);
         if (record instanceof MessageExtBrokerInner) {
             MessageExtBrokerInner mesg = (MessageExtBrokerInner) record;
@@ -76,9 +80,11 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
                 tagsCode = MessageExtBrokerInner
                         .tagsString2tagsCode(MessageExt.parseTopicFilterType(mesg.getSysFlag()), tags);
             }
-            return Collections.singletonList(convertRocketmq2Pulsar(tagsCode, mesg));
+            byte[] msgBytes = convertRocketmq2Pulsar(tagsCode, mesg);
+            return Collections.singletonList(msgBytes);
         } else if (record instanceof MessageExtBatch) {
             MessageExtBatch msg = (MessageExtBatch) record;
+
             return convertRocketmq2Pulsar(msg);
         }
         throw new RopEncodeException("UNKNOWN Message Type");
@@ -114,6 +120,9 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
     @Override
     public List<ByteBuffer> decodePulsarMessageResBuffer(List<Message> messages,
             Predicate predicate) {//Message in pulsar
+        if (messages == null || messages.isEmpty()) {
+            return Collections.emptyList();
+        }
         if (predicate != null) {
             return messages.stream().filter((Predicate<Message>) predicate)
                     .map(RopEntryFormatter::decodePulsarMessageResBuffer)
@@ -128,7 +137,7 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
         byteBuffer.limit(limit);
     }
 
-    private List<ByteBuffer> convertRocketmq2Pulsar(final MessageExtBatch messageExtBatch) throws RopEncodeException {
+    private List<byte[]> convertRocketmq2Pulsar(final MessageExtBatch messageExtBatch) throws RopEncodeException {
         ByteBuffer msgStoreItemMemory = msgStoreItemMemoryThreadLocal.get();
         List<ByteBuffer> result = new ArrayList<>();
         int totalMsgLen = 0;
@@ -241,11 +250,15 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
             tempBuffer.limit(msgStoreItemMemory.position());
             result.add(tempBuffer);
         }
-        return result;
+        return result.stream().collect(ArrayList::new, (arr, item) -> {
+            byte[] msgBytes = new byte[item.limit()];
+            item.get(msgBytes);
+            arr.add(msgBytes);
+        }, ArrayList::addAll);
     }
 
 
-    private ByteBuffer convertRocketmq2Pulsar(long tagsCode, MessageExtBrokerInner msgInner) throws RopEncodeException {
+    private byte[] convertRocketmq2Pulsar(long tagsCode, MessageExtBrokerInner msgInner) throws RopEncodeException {
         int sysflag = msgInner.getSysFlag();
         int bornHostLength = (sysflag & MessageSysFlag.BORNHOST_V6_FLAG) == 0 ? 4 + 4 : 16 + 4;
         int storeHostLength = (sysflag & MessageSysFlag.STOREHOSTADDRESS_V6_FLAG) == 0 ? 4 + 4 : 16 + 4;
@@ -326,6 +339,8 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
         }
         // Write messages to the queue buffer
         msgStoreItemMemory.flip();
-        return msgStoreItemMemory;
+        byte[] msgBytes = new byte[msgStoreItemMemory.limit()];
+        msgStoreItemMemory.get(msgBytes);
+        return msgBytes;
     }
 }

@@ -3,7 +3,7 @@
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -65,7 +65,7 @@ public class Broker2Client {
         try {
             this.brokerController.getRemotingServer().invokeOneway(channel, request, 10);
         } catch (Exception e) {
-            log.error("Check transaction failed because invoke producer exception. group={}, msgId={}", group,
+            log.error("Check transaction failed because invoke producer exception. group={}, msgId={}, exception={}", group,
                     messageExt.getMsgId(), e.getMessage());
         }
     }
@@ -189,7 +189,7 @@ public class Broker2Client {
                     response.setCode(ResponseCode.SYSTEM_ERROR);
                     response.setRemark("the client does not support this feature. version="
                             + MQVersion.getVersionDesc(version));
-                    log.warn("[reset-offset] the client does not support this feature. version={}",
+                    log.warn("[reset-offset] the client does not support this feature. remoteAddr={}, version={}",
                             RemotingHelper.parseChannelRemoteAddr(entry.getKey()), MQVersion.getVersionDesc(version));
                     return response;
                 }
@@ -250,7 +250,7 @@ public class Broker2Client {
                 result.setCode(ResponseCode.SYSTEM_ERROR);
                 result.setRemark("the client does not support this feature. version="
                         + MQVersion.getVersionDesc(version));
-                log.warn("[get-consumer-status] the client does not support this feature. version={}",
+                log.warn("[get-consumer-status] the client does not support this feature. remoteAddr={}, version={}",
                         RemotingHelper.parseChannelRemoteAddr(entry.getKey()), MQVersion.getVersionDesc(version));
                 return result;
             } else if (UtilAll.isBlank(originClientId) || originClientId.equals(clientId)) {
@@ -277,7 +277,7 @@ public class Broker2Client {
                 } catch (Exception e) {
                     log.error(
                             "[get-consumer-status] get consumer status exception. topic={}, group={}, offset={}",
-                            new Object[]{topic, group}, e);
+                            topic, group, e);
                 }
 
                 if (!UtilAll.isBlank(originClientId) && originClientId.equals(clientId)) {

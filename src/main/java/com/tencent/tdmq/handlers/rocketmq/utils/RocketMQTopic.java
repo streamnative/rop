@@ -3,7 +3,7 @@
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -34,10 +34,10 @@ public class RocketMQTopic {
     private static final char TENANT_NAMESPACE_SEP = '|';
     private static final char ROCKETMQ_NAMESPACE_TOPIC_SEP = NamespaceUtil.NAMESPACE_SEPARATOR;
     private static final TopicDomain domain = TopicDomain.persistent;
-    private static String defaultTenant = "rocketmq";
-    private static String defaultNamespace = "public";
-    private static String metaTenant = "rocketmq";
-    private static String metaNamespace = "__rocketmq";
+    public static String defaultTenant = "rocketmq";
+    public static String defaultNamespace = "public";
+    public static String metaTenant = "rocketmq";
+    public static String metaNamespace = "__rocketmq";
     @Getter
     private TopicName pulsarTopicName;
     private String rocketmqTenant = Strings.EMPTY;
@@ -82,6 +82,10 @@ public class RocketMQTopic {
 
     public final static String getPulsarDefaultNoDomainTopic(String rmqTopic) {
         return new RocketMQTopic(rmqTopic).getDefaultNoDomainTopic();
+    }
+
+    public final static RocketMQTopic getRocketMQMetaTopic(String rmqTopic) {
+        return new RocketMQTopic(RocketMQTopic.metaTenant, RocketMQTopic.metaNamespace, rmqTopic);
     }
 
     public String getRocketDLQTopic() {

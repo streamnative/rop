@@ -49,14 +49,17 @@ mvn clean install -DskipTests
 You can find the nar file in the following directory.
 
 ```bash
-./target/tdmq-protocol-handler-rocketmq-parent-${version}.nar
+./target/tdmq-protocol-handler-rocketmq-${version}.nar
 ```
 
 ### Configuration
 
 |Name|Description|Default|
 |---|---|---|
-rocketmqTenant|RocketMQ on Pulsar broker tenant|public
+rocketmqTenant|RocketMQ on Pulsar broker tenant|rocketmq
+rocketmqMetadataTenant|The tenant used for storing Rocketmq metadata topics|rocketmq
+rocketmqNamespace|Rocketmq on Pulsar Broker namespace|default
+rocketmqMetadataNamespace|The namespace used for storing rocket metadata topics|__rocketmq
 rocketmqListeners|RocketMQ service port|rocketmq://127.0.0.1:9876
 rocketmqMaxNoOfChannels|The maximum number of channels which can exist concurrently on a connection|64
 rocketmqMaxFrameSize|The maximum frame size on a connection|4194304 (4MB)

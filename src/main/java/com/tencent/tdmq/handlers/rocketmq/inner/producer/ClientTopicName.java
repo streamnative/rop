@@ -3,7 +3,7 @@
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -14,20 +14,41 @@
 
 package com.tencent.tdmq.handlers.rocketmq.inner.producer;
 
+import com.google.common.base.Joiner;
 import com.tencent.tdmq.handlers.rocketmq.utils.CommonUtils;
+import com.tencent.tdmq.handlers.rocketmq.utils.RocketMQTopic;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
+import org.apache.pulsar.common.naming.TopicName;
 
 @Data
 @EqualsAndHashCode
 @ToString
 public class ClientTopicName {
+
     private final String rmqTopicName;
     private final String pulsarTopicName;
 
     public ClientTopicName(String rmqTopicName) {
         this.rmqTopicName = rmqTopicName;
         this.pulsarTopicName = CommonUtils.tdmqGroupName(this.rmqTopicName);
+    }
+
+    public ClientTopicName(TopicName tdmpTopicName) {
+        TopicName tempTopic = TopicName.get(tdmpTopicName.getPartitionedTopicName());
+        this.pulsarTopicName = Joiner.on("/")
+                .join(tempTopic.getTenant(), tempTopic.getNamespace(), tempTopic.getLocalName());
+        if (tdmpTopicName.getTenant() == RocketMQTopic.metaTenant
+                && (tdmpTopicName.getNamespace() == RocketMQTopic.metaNamespace ||
+                tdmpTopicName.getNamespace() == RocketMQTopic.defaultNamespace)) {
+            this.rmqTopicName = tempTopic.getLocalName();
+        } else {
+            this.rmqTopicName = tempTopic.getTenant() + "|" + tempTopic.getNamespace() + "%" + tempTopic.getLocalName();
+        }
+    }
+
+    public TopicName toPulsarTopicName() {
+        return TopicName.get(this.pulsarTopicName);
     }
 }
