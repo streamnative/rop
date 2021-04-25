@@ -466,6 +466,10 @@ public class RocketMQBrokerController {
         if (this.delayedMessageService != null) {
             this.delayedMessageService.start();
         }
+
+        if (this.subscriptionGroupManager != null) {
+            this.subscriptionGroupManager.start();
+        }
     }
 
     public void registerSendMessageHook(final SendMessageHook hook) {

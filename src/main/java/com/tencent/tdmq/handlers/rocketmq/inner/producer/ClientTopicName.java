@@ -38,13 +38,13 @@ public class ClientTopicName {
     public ClientTopicName(TopicName tdmpTopicName) {
         TopicName tempTopic = TopicName.get(tdmpTopicName.getPartitionedTopicName());
         this.pulsarTopicName = Joiner.on("/")
-                .join(tempTopic.getTenant(), tempTopic.getNamespace(), tempTopic.getLocalName());
+                .join(tempTopic.getTenant(), tempTopic.getNamespacePortion(), tempTopic.getLocalName());
         if (tdmpTopicName.getTenant() == RocketMQTopic.metaTenant
-                && (tdmpTopicName.getNamespace() == RocketMQTopic.metaNamespace ||
-                tdmpTopicName.getNamespace() == RocketMQTopic.defaultNamespace)) {
+                && (tdmpTopicName.getNamespacePortion() == RocketMQTopic.metaNamespace ||
+                tdmpTopicName.getNamespacePortion() == RocketMQTopic.defaultNamespace)) {
             this.rmqTopicName = tempTopic.getLocalName();
         } else {
-            this.rmqTopicName = tempTopic.getTenant() + "|" + tempTopic.getNamespace() + "%" + tempTopic.getLocalName();
+            this.rmqTopicName = tempTopic.getTenant() + "|" + tempTopic.getNamespacePortion() + "%" + tempTopic.getLocalName();
         }
     }
 

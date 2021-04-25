@@ -14,10 +14,13 @@
 
 package com.tencent.tdmq.handlers.rocketmq.inner.producer;
 
+import com.google.common.base.Joiner;
 import com.tencent.tdmq.handlers.rocketmq.utils.CommonUtils;
+import com.tencent.tdmq.handlers.rocketmq.utils.RocketMQTopic;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
+import org.apache.pulsar.common.naming.TopicName;
 
 @Data
 @EqualsAndHashCode
@@ -30,5 +33,17 @@ public class ClientGroupName {
     public ClientGroupName(String rmqGroupName) {
         this.rmqGroupName = rmqGroupName;
         this.pulsarGroupName = CommonUtils.tdmqGroupName(this.rmqGroupName);
+    }
+
+    public ClientGroupName(TopicName tdmpGroupName) {
+        this.pulsarGroupName = Joiner.on("/")
+                .join(tdmpGroupName.getTenant(), tdmpGroupName.getNamespacePortion(), tdmpGroupName.getLocalName());
+        if (tdmpGroupName.getTenant() == RocketMQTopic.metaTenant
+                && (tdmpGroupName.getNamespacePortion() == RocketMQTopic.metaNamespace ||
+                tdmpGroupName.getNamespacePortion() == RocketMQTopic.defaultNamespace)) {
+            this.rmqGroupName = tdmpGroupName.getLocalName();
+        } else {
+            this.rmqGroupName = tdmpGroupName.getTenant() + "|" + tdmpGroupName.getNamespacePortion() + "%" + tdmpGroupName.getLocalName();
+        }
     }
 }

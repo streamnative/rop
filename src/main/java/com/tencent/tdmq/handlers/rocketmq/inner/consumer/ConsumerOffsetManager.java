@@ -17,6 +17,7 @@ package com.tencent.tdmq.handlers.rocketmq.inner.consumer;
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
 import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientGroupAndTopicName;
 import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientGroupName;
+import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientTopicName;
 import com.tencent.tdmq.handlers.rocketmq.utils.MessageIdUtils;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -27,6 +28,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bookkeeper.mledger.ManagedLedgerException;
 import org.apache.bookkeeper.mledger.impl.PositionImpl;
@@ -49,12 +51,32 @@ public class ConsumerOffsetManager {
      **/
     private ConcurrentMap<ClientGroupAndTopicName, ConcurrentMap<Integer, Long>> offsetTable =
             new ConcurrentHashMap<>(512);
-
-    private ConcurrentHashMap<ClientGroupAndTopicName, ConcurrentMap<Integer, PersistentTopic>> pulsarTopicCache =
+    @Getter
+    private ConcurrentHashMap<ClientTopicName, ConcurrentMap<Integer, PersistentTopic>> pulsarTopicCache =
             new ConcurrentHashMap<>(512);
 
     public ConsumerOffsetManager(RocketMQBrokerController brokerController) {
         this.brokerController = brokerController;
+    }
+
+    public void putPulsarTopic(ClientTopicName clientTopicName, int partitionId, PersistentTopic pulsarTopic) {
+        if (!pulsarTopicCache.containsKey(clientTopicName)) {
+            pulsarTopicCache.putIfAbsent(clientTopicName, new ConcurrentHashMap<>());
+        }
+        pulsarTopicCache.get(clientTopicName).putIfAbsent(partitionId, pulsarTopic);
+    }
+
+    public void removePulsarTopic(ClientTopicName clientTopicName, int partitionId) {
+        if (pulsarTopicCache.containsKey(clientTopicName)) {
+            pulsarTopicCache.get(clientTopicName).remove(partitionId);
+            if (pulsarTopicCache.get(clientTopicName).isEmpty()) {
+                pulsarTopicCache.remove(clientTopicName);
+            }
+        }
+    }
+
+    public void removePulsarTopic(ClientTopicName clientTopicName) {
+        pulsarTopicCache.remove(clientTopicName);
     }
 
     public void scanUnsubscribedTopic() {
@@ -235,7 +257,9 @@ public class ConsumerOffsetManager {
                             if (t2.isPresent()) {
                                 PersistentTopic topic = (PersistentTopic) t2.get();
                                 if (!this.pulsarTopicCache.containsKey(groupAndTopic)) {
-                                    this.pulsarTopicCache.putIfAbsent(groupAndTopic, new ConcurrentHashMap<>());
+
+                                    this.pulsarTopicCache
+                                            .putIfAbsent(groupAndTopic.getClientTopicName(), new ConcurrentHashMap<>());
                                 }
                                 this.pulsarTopicCache.get(groupAndTopic).putIfAbsent(partitionId, topic);
                                 feature.complete(topic);
