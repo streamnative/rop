@@ -259,7 +259,7 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
     }
 
     /**
-     * Read op message, parse op message, and fill removeMap
+     * Read op message, parse op message, and fill removeMap.
      *
      * @param removeMap Half message to be remove, key:halfOffset, value: opOffset.
      * @param opQueue Op message queue.
@@ -310,7 +310,7 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
     }
 
     /**
-     * If return true, skip this msg
+     * If return true, skip this msg.
      *
      * @param removeMap Op message map to determine whether a half message was responded by producer.
      * @param doneOpOffset Op Message which has been checked.
@@ -339,7 +339,7 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
     }
 
     /**
-     * Write messageExt to Half topic again
+     * Write messageExt to Half topic again.
      *
      * @param messageExt Message will be write back to queue
      * @return Put result can used to determine the specific results of storage.
@@ -361,7 +361,7 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
     }
 
     /**
-     * Read half message from Half Topic
+     * Read half message from Half Topic.
      *
      * @param mq Target message queue, in this method, it means the half message queue.
      * @param offset Offset in the message queue.
@@ -373,7 +373,7 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
     }
 
     /**
-     * Read op message from Op Topic
+     * Read op message from Op Topic.
      *
      * @param mq Target Message Queue
      * @param offset Offset in the message queue

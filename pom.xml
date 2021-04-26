@@ -31,7 +31,8 @@
         <!-- 目前使用的社区的最新官方版本 -->
         <tdmq.version>2.7.1</tdmq.version>
         <spotbugs-annotations.version>3.1.8</spotbugs-annotations.version>
-
+        <maven-checkstyle-plugin.version>3.0.0</maven-checkstyle-plugin.version>
+        <puppycrawl.checkstyle.version>6.19</puppycrawl.checkstyle.version>
         <maven.compiler.source>8</maven.compiler.source>
         <maven.compiler.target>8</maven.compiler.target>
         <commons-lang.version>2.6</commons-lang.version>
@@ -230,6 +231,40 @@
     </repositories>
 
     <build>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-checkstyle-plugin</artifactId>
+                    <version>${maven-checkstyle-plugin.version}</version>
+                    <dependencies>
+                        <dependency>
+                            <groupId>com.puppycrawl.tools</groupId>
+                            <artifactId>checkstyle</artifactId>
+                            <version>${puppycrawl.checkstyle.version}</version>
+                        </dependency>
+                    </dependencies>
+                    <configuration>
+                        <configLocation>resources/checkstyle.xml</configLocation>
+                        <suppressionsLocation>resources/suppressions.xml</suppressionsLocation>
+                        <encoding>UTF-8</encoding>
+                        <consoleOutput>true</consoleOutput>
+                        <failOnViolation>true</failOnViolation>
+                        <includeResources>false</includeResources>
+                        <includeTestSourceDirectory>true</includeTestSourceDirectory>
+                    </configuration>
+                    <executions>
+                        <execution>
+                            <id>checkstyle</id>
+                            <phase>validate</phase>
+                            <goals>
+                                <goal>check</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                </plugin>
+            </plugins>
+        </pluginManagement>
         <plugins>
             <plugin>
                 <artifactId>maven-surefire-plugin</artifactId>

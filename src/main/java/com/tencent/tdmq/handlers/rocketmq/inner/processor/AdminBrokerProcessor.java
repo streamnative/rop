@@ -1118,8 +1118,9 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
 
     private RemotingCommand consumeMessageDirectly(ChannelHandlerContext ctx,
             RemotingCommand request) throws RemotingCommandException {
-        final ConsumeMessageDirectlyResultRequestHeader requestHeader = (ConsumeMessageDirectlyResultRequestHeader) request
-                .decodeCommandCustomHeader(ConsumeMessageDirectlyResultRequestHeader.class);
+        final ConsumeMessageDirectlyResultRequestHeader requestHeader =
+                (ConsumeMessageDirectlyResultRequestHeader) request
+                        .decodeCommandCustomHeader(ConsumeMessageDirectlyResultRequestHeader.class);
 
         request.getExtFields().put("brokerName", this.brokerController.getServerConfig().getBrokerName());
         SelectMappedBufferResult selectMappedBufferResult = null;
@@ -1287,7 +1288,7 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
                     mq.setBrokerName(this.brokerController.getServerConfig().getBrokerName());
                     mq.setQueueId(i);
                     OffsetWrapper offsetWrapper = new OffsetWrapper();
-                    long brokerOffset = 0L;/*TODO this.brokerController.getMessageStore().getMaxOffsetInQueue(topic, i);*/
+                    long brokerOffset = 0L; /*TODO: getMessageStore().getMaxOffsetInQueue(topic, i);*/
                     if (brokerOffset < 0) {
                         brokerOffset = 0;
                     }
@@ -1304,7 +1305,7 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
 
                     long timeOffset = consumerOffset - 1;
                     if (timeOffset >= 0) {
-                        long lastTimestamp = 0L;/*TODO this.brokerController.getMessageStore()
+                        long lastTimestamp = 0L; /*TODO this.brokerController.getMessageStore()
                                 .getMessageStoreTimeStamp(topic, i, timeOffset);*/
                         if (lastTimestamp > 0) {
                             offsetWrapper.setLastTimestamp(lastTimestamp);
@@ -1386,7 +1387,8 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
 
         runtimeInfo.put("earliestMessageTimeStamp",
                 String.valueOf(this.brokerController.getMessageStore().getEarliestMessageTime()));
-        //TODO: runtimeInfo.put("startAcceptSendRequestTimeStamp", String.valueOf(this.brokerController.getServerConfig().getStartAcceptSendRequestTimeStamp()));
+        //TODO: runtimeInfo.put("startAcceptSendRequestTimeStamp",
+           String.valueOf(this.brokerController.getServerConfig().getStartAcceptSendRequestTimeStamp()));
         if (this.brokerController.getMessageStore() instanceof DefaultMessageStore) {
             DefaultMessageStore defaultMessageStore = (DefaultMessageStore) this.brokerController.getMessageStore();
             runtimeInfo.put("remainTransientStoreBufferNumbs",
