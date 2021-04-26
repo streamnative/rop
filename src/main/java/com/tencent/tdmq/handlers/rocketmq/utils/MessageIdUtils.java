@@ -21,9 +21,9 @@ import org.apache.pulsar.client.impl.MessageIdImpl;
 
 public class MessageIdUtils {
 
-    // use 32 bits for ledgerId,
-    // 22 bits for entryId,
-    // 10 bits for partitionId.
+    // use 48 bits for ledgerId,
+    // 16 bits for entryId,
+    // 0 bits for partitionId.
     public static final int LEDGER_BITS = 48;
     public static final int ENTRY_BITS = 16;
     public static final int PARTITION_BITS = 0;
