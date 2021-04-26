@@ -42,6 +42,7 @@ class OpFindNewestEntry implements ReadEntryCallback {
     long max;
     Position lastMatchedPosition = null;
     State state;
+
     public OpFindNewestEntry(ManagedLedgerImpl managedLedger, PositionImpl startPosition, Predicate<Entry> condition,
             long numberOfEntries, FindEntryCallback callback, Object ctx) {
         this.managedLedger = managedLedger;

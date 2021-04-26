@@ -12,11 +12,10 @@
  * limitations under the License.
  */
 
-package com.tencent.tdmq.handlers.rocketmq.producer;
+package com.tencent.tdmq.handlers.rocketmq.inner.producer;
 
 import static org.junit.Assert.assertEquals;
 
-import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientGroupName;
 import org.apache.pulsar.common.naming.TopicName;
 import org.junit.Test;
 

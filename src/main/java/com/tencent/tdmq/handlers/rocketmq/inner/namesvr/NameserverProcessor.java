@@ -19,7 +19,6 @@ import static org.apache.rocketmq.common.constant.PermName.PERM_READ;
 import static org.apache.rocketmq.common.constant.PermName.PERM_WRITE;
 import static org.apache.rocketmq.common.protocol.RequestCode.GET_ROUTEINTO_BY_TOPIC;
 
-import com.google.common.base.Joiner;
 import com.google.common.collect.Maps;
 import com.tencent.tdmq.handlers.rocketmq.RocketMQServiceConfiguration;
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;

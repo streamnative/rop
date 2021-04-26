@@ -21,7 +21,6 @@ import static org.apache.pulsar.common.protocol.Commands.readChecksum;
 import com.github.benmanes.caffeine.cache.AsyncLoadingCache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.RemovalCause;
-import com.google.common.collect.Maps;
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
 import com.tencent.tdmq.handlers.rocketmq.inner.format.RopEntryFormatter;
 import com.tencent.tdmq.handlers.rocketmq.utils.CommonUtils;
@@ -33,48 +32,25 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.FileRegion;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
 import org.apache.bookkeeper.mledger.AsyncCallbacks;
-import org.apache.bookkeeper.mledger.AsyncCallbacks.OpenLedgerCallback;
 import org.apache.bookkeeper.mledger.Entry;
-import org.apache.bookkeeper.mledger.LedgerOffloader;
 import org.apache.bookkeeper.mledger.ManagedLedger;
 import org.apache.bookkeeper.mledger.ManagedLedgerConfig;
 import org.apache.bookkeeper.mledger.ManagedLedgerException;
 import org.apache.bookkeeper.mledger.impl.ManagedLedgerImpl;
 import org.apache.bookkeeper.mledger.impl.PositionImpl;
-import org.apache.commons.lang3.tuple.Pair;
-import org.apache.pulsar.broker.PulsarServerException;
 import org.apache.pulsar.broker.ServiceConfiguration;
-import org.apache.pulsar.broker.web.RestException;
-import org.apache.pulsar.client.admin.PulsarAdmin;
-import org.apache.pulsar.client.admin.PulsarAdminException;
-import org.apache.pulsar.client.api.ConsumerCryptoFailureAction;
-import org.apache.pulsar.client.api.Message;
-import org.apache.pulsar.client.api.MessageId;
 import org.apache.pulsar.client.impl.ClientCnx;
 import org.apache.pulsar.client.impl.MessageIdImpl;
-import org.apache.pulsar.common.api.proto.PulsarApi.CommandAck.ValidationError;
 import org.apache.pulsar.common.api.proto.PulsarApi.CompressionType;
-import org.apache.pulsar.common.api.proto.PulsarApi.MessageIdData;
 import org.apache.pulsar.common.api.proto.PulsarApi.MessageMetadata;
 import org.apache.pulsar.common.compression.CompressionCodec;
 import org.apache.pulsar.common.compression.CompressionCodecProvider;
-import org.apache.pulsar.common.naming.TopicName;
-import org.apache.pulsar.common.policies.data.LocalPolicies;
-import org.apache.pulsar.common.policies.data.OffloadPolicies;
-import org.apache.pulsar.common.policies.data.Policies;
 import org.apache.pulsar.common.protocol.Commands;
-import org.apache.pulsar.zookeeper.ZkIsolatedBookieEnsemblePlacementPolicy;
-import org.apache.rocketmq.broker.pagecache.OneMessageTransfer;
 import org.apache.rocketmq.broker.pagecache.QueryMessageTransfer;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.constant.LoggerName;
@@ -91,17 +67,12 @@ import org.apache.rocketmq.remoting.exception.RemotingCommandException;
 import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.store.QueryMessageResult;
-import org.apache.rocketmq.store.SelectMappedBufferResult;
-import org.apache.zookeeper.data.Stat;
 
 public class QueryMessageProcessor implements NettyRequestProcessor {
 
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
-
-    private final RocketMQBrokerController brokerController;
-
     protected final AsyncLoadingCache<String, ManagedLedger> ledgerCache;
-
+    private final RocketMQBrokerController brokerController;
     private final RopEntryFormatter entryFormatter = new RopEntryFormatter();
 
     private final String QUERY_MESSAGE_LEDGER_NAME = "queryMessageProcessor_ledger";
@@ -202,7 +173,8 @@ public class QueryMessageProcessor implements NettyRequestProcessor {
 
     /**
      * query msg by origin id
-     * @param cxt  ChannelHandlerContext
+     *
+     * @param cxt ChannelHandlerContext
      * @param request request
      * @return
      * @throws RemotingCommandException
@@ -214,11 +186,11 @@ public class QueryMessageProcessor implements NettyRequestProcessor {
                 (ViewMessageRequestHeader) request.decodeCommandCustomHeader(ViewMessageRequestHeader.class);
         response.setOpaque(request.getOpaque());
         MessageIdImpl messageId = MessageIdUtils.getMessageId(requestHeader.getOffset());
-        log.info("viewMessageById {}, {} ,{}",request.getOpaque(),
+        log.info("viewMessageById {}, {} ,{}", request.getOpaque(),
                 messageId.getLedgerId(), messageId.getEntryId());
         try {
             CompletableFuture<Entry> future = new CompletableFuture();
-            ManagedLedgerImpl  managedLedger = (ManagedLedgerImpl)ledgerCache.get(QUERY_MESSAGE_LEDGER_NAME).get(10,
+            ManagedLedgerImpl managedLedger = (ManagedLedgerImpl) ledgerCache.get(QUERY_MESSAGE_LEDGER_NAME).get(10,
                     TimeUnit.SECONDS);
             if (managedLedger != null) {
                 // 通过offset来取出要开始消费的messageId的位置
@@ -228,13 +200,14 @@ public class QueryMessageProcessor implements NettyRequestProcessor {
                     public void readEntryFailed(ManagedLedgerException exception, Object ctx) {
                         future.completeExceptionally(exception);
                     }
+
                     @Override
                     public void readEntryComplete(Entry entry, Object ctx) {
                         future.complete(entry);
                     }
                 }, null);
             }
-            future.thenAccept((entry)->{
+            future.thenAccept((entry) -> {
                 ByteBuffer msgBuf = getMessage(messageId, entry.getDataBuffer());
                 if (msgBuf != null) {
                     try {
@@ -251,11 +224,11 @@ public class QueryMessageProcessor implements NettyRequestProcessor {
                     }
                 }
                 entry.release();
-            }).exceptionally((ex)->{
+            }).exceptionally((ex) -> {
                 log.error("query message from bookie or send message to client by id from bookie " +
                         "has " +
                         "exception e " +
-                        "= {}",ex);
+                        "= {}", ex);
                 response.setCode(ResponseCode.SYSTEM_ERROR);
                 if (ex instanceof ManagedLedgerException) {
                     response.setRemark("Read message error by ManagedLedger, " + requestHeader.getOffset());
@@ -263,9 +236,9 @@ public class QueryMessageProcessor implements NettyRequestProcessor {
                     response.setRemark("Send message to client error, " + requestHeader.getOffset());
                 }
                 return null;
-            }).get(30,TimeUnit.SECONDS);
+            }).get(30, TimeUnit.SECONDS);
         } catch (InterruptedException | ExecutionException | TimeoutException e) {
-            log.error("query message by id has exception e = {}",e);
+            log.error("query message by id has exception e = {}", e);
             response.setCode(ResponseCode.SYSTEM_ERROR);
             response.setRemark("can not find message by the offset or query time out, " + requestHeader.getOffset());
         }
@@ -278,7 +251,7 @@ public class QueryMessageProcessor implements NettyRequestProcessor {
 
         ManagedLedger managedLedger = null;
         try {
-            ServiceConfiguration serviceConfig  =
+            ServiceConfiguration serviceConfig =
                     brokerController.getBrokerService().getPulsar().getConfig();
             ManagedLedgerConfig managedLedgerConfig = new ManagedLedgerConfig();
             managedLedgerConfig.setEnsembleSize(serviceConfig.getManagedLedgerDefaultEnsembleSize());
@@ -288,25 +261,33 @@ public class QueryMessageProcessor implements NettyRequestProcessor {
             managedLedgerConfig.setDigestType(serviceConfig.getManagedLedgerDigestType());
             managedLedgerConfig.setPassword(serviceConfig.getManagedLedgerPassword());
             managedLedgerConfig.setMaxUnackedRangesToPersist(serviceConfig.getManagedLedgerMaxUnackedRangesToPersist());
-            managedLedgerConfig.setMaxUnackedRangesToPersistInZk(serviceConfig.getManagedLedgerMaxUnackedRangesToPersistInZooKeeper());
+            managedLedgerConfig.setMaxUnackedRangesToPersistInZk(
+                    serviceConfig.getManagedLedgerMaxUnackedRangesToPersistInZooKeeper());
             managedLedgerConfig.setMaxEntriesPerLedger(serviceConfig.getManagedLedgerMaxEntriesPerLedger());
-            managedLedgerConfig.setMinimumRolloverTime(serviceConfig.getManagedLedgerMinLedgerRolloverTimeMinutes(), TimeUnit.MINUTES);
-            managedLedgerConfig.setMaximumRolloverTime(serviceConfig.getManagedLedgerMaxLedgerRolloverTimeMinutes(), TimeUnit.MINUTES);
+            managedLedgerConfig.setMinimumRolloverTime(serviceConfig.getManagedLedgerMinLedgerRolloverTimeMinutes(),
+                    TimeUnit.MINUTES);
+            managedLedgerConfig.setMaximumRolloverTime(serviceConfig.getManagedLedgerMaxLedgerRolloverTimeMinutes(),
+                    TimeUnit.MINUTES);
             managedLedgerConfig.setMaxSizePerLedgerMb(serviceConfig.getManagedLedgerMaxSizePerLedgerMbytes());
-            managedLedgerConfig.setMetadataOperationsTimeoutSeconds(serviceConfig.getManagedLedgerMetadataOperationsTimeoutSeconds());
+            managedLedgerConfig.setMetadataOperationsTimeoutSeconds(
+                    serviceConfig.getManagedLedgerMetadataOperationsTimeoutSeconds());
             managedLedgerConfig.setReadEntryTimeoutSeconds(serviceConfig.getManagedLedgerReadEntryTimeoutSeconds());
             managedLedgerConfig.setAddEntryTimeoutSeconds(serviceConfig.getManagedLedgerAddEntryTimeoutSeconds());
             managedLedgerConfig.setMetadataEnsembleSize(serviceConfig.getManagedLedgerDefaultEnsembleSize());
-            managedLedgerConfig.setUnackedRangesOpenCacheSetEnabled(serviceConfig.isManagedLedgerUnackedRangesOpenCacheSetEnabled());
+            managedLedgerConfig.setUnackedRangesOpenCacheSetEnabled(
+                    serviceConfig.isManagedLedgerUnackedRangesOpenCacheSetEnabled());
             managedLedgerConfig.setMetadataWriteQuorumSize(serviceConfig.getManagedLedgerDefaultWriteQuorum());
             managedLedgerConfig.setMetadataAckQuorumSize(serviceConfig.getManagedLedgerDefaultAckQuorum());
-            managedLedgerConfig.setMetadataMaxEntriesPerLedger(serviceConfig.getManagedLedgerCursorMaxEntriesPerLedger());
+            managedLedgerConfig
+                    .setMetadataMaxEntriesPerLedger(serviceConfig.getManagedLedgerCursorMaxEntriesPerLedger());
             managedLedgerConfig.setLedgerRolloverTimeout(serviceConfig.getManagedLedgerCursorRolloverTimeInSeconds());
             managedLedgerConfig.setAutoSkipNonRecoverableData(serviceConfig.isAutoSkipNonRecoverableData());
             managedLedgerConfig.setLazyCursorRecovery(serviceConfig.isLazyCursorRecovery());
 
-            managedLedgerConfig.setDeletionAtBatchIndexLevelEnabled(serviceConfig.isAcknowledgmentAtBatchIndexLevelEnabled());
-            managedLedgerConfig.setNewEntriesCheckDelayInMillis(serviceConfig.getManagedLedgerNewEntriesCheckDelayInMillis());
+            managedLedgerConfig
+                    .setDeletionAtBatchIndexLevelEnabled(serviceConfig.isAcknowledgmentAtBatchIndexLevelEnabled());
+            managedLedgerConfig
+                    .setNewEntriesCheckDelayInMillis(serviceConfig.getManagedLedgerNewEntriesCheckDelayInMillis());
             managedLedger =
                     brokerController.getBrokerService().getManagedLedgerFactory().open(ledgerName
                             , managedLedgerConfig);
@@ -330,7 +311,7 @@ public class QueryMessageProcessor implements NettyRequestProcessor {
         } else {
             try {
                 msgMetadata = Commands.parseMessageMetadata(headersAndPayload);
-                if (msgMetadata != null ) {
+                if (msgMetadata != null) {
                     // uncompress decryptedPayload and release decryptedPayload-ByteBuf
                     uncompressedPayload = uncompressPayloadIfNeeded(messageId, msgMetadata, headersAndPayload, true);
                 }
@@ -339,7 +320,7 @@ public class QueryMessageProcessor implements NettyRequestProcessor {
                     return uncompressedPayload.nioBuffer();
                 }
             } catch (Throwable t) {
-                log.error("parseMessageMetadata has error e {}",t);
+                log.error("parseMessageMetadata has error e {}", t);
             }
         }
         return null;
@@ -353,7 +334,7 @@ public class QueryMessageProcessor implements NettyRequestProcessor {
         int payloadSize = payload.readableBytes();
         if (checkMaxMessageSize && payloadSize > ClientCnx.getMaxMessageSize()) {
             // payload size is itself corrupted since it cannot be bigger than the MaxMessageSize
-            log.error("Got corrupted payload message size {} at {}",  payloadSize,
+            log.error("Got corrupted payload message size {} at {}", payloadSize,
                     messageId);
             return null;
         }

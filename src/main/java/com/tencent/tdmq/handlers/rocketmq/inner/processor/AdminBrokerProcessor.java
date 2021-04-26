@@ -826,7 +826,8 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
                 if (timeOffset >= 0) {
                     // TODO: 2021/4/25 获取指定offset位点的存储时间（当前消费位置时间）
                     long lastTimestamp = 0L;
-                    try(Reader<byte[]> reader = this.brokerController.getBrokerService().pulsar().getClient().newReader()
+                    try (Reader<byte[]> reader = this.brokerController.getBrokerService().pulsar().getClient()
+                            .newReader()
                             .topic(clientGroupName.getClientTopicName().getPulsarTopicName())
                             .receiverQueueSize(100)
                             .startMessageId(org.apache.pulsar.client.api.MessageId.earliest)

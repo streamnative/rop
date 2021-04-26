@@ -70,7 +70,7 @@ public class ConsumerOffsetManager {
         pulsarTopicCache.get(clientTopicName).putIfAbsent(partitionId, pulsarTopic);
 
         pulsarTopic.getSubscriptions().forEach((grp, grpInfo) -> {
-            if(!isSystemGroup(grp)) {
+            if (!isSystemGroup(grp)) {
                 ManagedCursor cursor = grpInfo.getCursor();
                 PositionImpl readPosition = (PositionImpl) cursor.getReadPosition();
                 ClientGroupName clientGroupName = new ClientGroupName(TopicName.get(grp));

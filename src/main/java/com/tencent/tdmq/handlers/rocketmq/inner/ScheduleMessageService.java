@@ -220,7 +220,8 @@ public class ScheduleMessageService {
             try {
                 Preconditions.checkNotNull(this.delayedConsumer);
                 int i = 0;
-                while (i++ < MAX_BATCH_SIZE && timeoutTimer.size() < MAX_BATCH_SIZE && !this.delayedConsumer.isConnected()) {
+                while (i++ < MAX_BATCH_SIZE && timeoutTimer.size() < MAX_BATCH_SIZE && !this.delayedConsumer
+                        .isConnected()) {
                     Message<byte[]> message = this.delayedConsumer
                             .receive(PULL_MESSAGE_TIMEOUT_MS, TimeUnit.MILLISECONDS);
                     if (message == null) {
