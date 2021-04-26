@@ -118,6 +118,9 @@ import org.apache.rocketmq.remoting.protocol.RemotingSerializable;
 import org.apache.rocketmq.store.MessageExtBrokerInner;
 import org.apache.rocketmq.store.SelectMappedBufferResult;
 
+/**
+ * Admin broker processor.
+ */
 @Slf4j
 public class AdminBrokerProcessor implements NettyRequestProcessor {
 
@@ -196,7 +199,7 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
             case RequestCode.CLONE_GROUP_OFFSET:
                 return this.cloneGroupOffset(ctx, request);
             case RequestCode.VIEW_BROKER_STATS_DATA:
-                return ViewBrokerStatsData(ctx, request);
+                return viewBrokerStatsData(ctx, request);
             case RequestCode.GET_BROKER_CONSUME_STATS:
                 return fetchAllConsumeStatsInBroker(ctx, request);
             case RequestCode.QUERY_CONSUME_QUEUE:
@@ -1188,7 +1191,7 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
         return response;
     }
 
-    private RemotingCommand ViewBrokerStatsData(ChannelHandlerContext ctx,
+    private RemotingCommand viewBrokerStatsData(ChannelHandlerContext ctx,
             RemotingCommand request) throws RemotingCommandException {
         final ViewBrokerStatsDataRequestHeader requestHeader =
                 (ViewBrokerStatsDataRequestHeader) request
@@ -1403,9 +1406,12 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
                             false));
         }
 
-        TODO:    java.io.File commitLogDir = new java.io.File(this.brokerController.getMessageStoreConfig().getStorePathRootDir());
+        TODO:    java.io.File commitLogDir = new java.io.File(this.brokerController.
+         getMessageStoreConfig().getStorePathRootDir());
         if (commitLogDir.exists()) {
-            runtimeInfo.put("commitLogDirCapacity", String.format("Total : %s, Free : %s.", MixAll.humanReadableByteCount(commitLogDir.getTotalSpace(), false), MixAll.humanReadableByteCount(commitLogDir.getFreeSpace(), false)));
+            runtimeInfo.put("commitLogDirCapacity", String.format("Total : %s, Free : %s.",
+            MixAll.humanReadableByteCount(commitLogDir.getTotalSpace(), false),
+            MixAll.humanReadableByteCount(commitLogDir.getFreeSpace(), false)));
         }*/
 
         return new HashMap<>();
@@ -1464,8 +1470,8 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
 
         RemotingCommand response = RemotingCommand.createResponseCommand(null);
 
-        /*TODO ConsumeQueue consumeQueue = this.brokerController.getMessageStore().getConsumeQueue(requestHeader.getTopic(),
-                requestHeader.getQueueId());
+        /*TODO ConsumeQueue consumeQueue = this.brokerController.getMessageStore().
+           getConsumeQueue(requestHeader.getTopic(), requestHeader.getQueueId());
         if (consumeQueue == null) {
             response.setCode(ResponseCode.SYSTEM_ERROR);
             response.setRemark(

@@ -20,6 +20,9 @@ import org.apache.pulsar.client.api.Message;
 import org.apache.rocketmq.common.filter.ExpressionType;
 import org.apache.rocketmq.common.protocol.heartbeat.SubscriptionData;
 
+/**
+ * Rop message filter.
+ */
 public class RopMessageFilter implements Predicate<Message> {
 
     protected final SubscriptionData subscriptionData;

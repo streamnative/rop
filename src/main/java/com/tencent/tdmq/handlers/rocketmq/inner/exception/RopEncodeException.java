@@ -14,6 +14,9 @@
 
 package com.tencent.tdmq.handlers.rocketmq.inner.exception;
 
+/**
+ * Rop encode exception.
+ */
 public class RopEncodeException extends Exception {
 
     public RopEncodeException() {

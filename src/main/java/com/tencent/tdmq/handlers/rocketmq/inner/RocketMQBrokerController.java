@@ -59,6 +59,9 @@ import org.apache.rocketmq.store.MessageArrivingListener;
 import org.apache.rocketmq.store.stats.BrokerStats;
 import org.apache.rocketmq.store.stats.BrokerStatsManager;
 
+/**
+ * RocketMQ broker controller.
+ */
 @Data
 @Slf4j
 public class RocketMQBrokerController {

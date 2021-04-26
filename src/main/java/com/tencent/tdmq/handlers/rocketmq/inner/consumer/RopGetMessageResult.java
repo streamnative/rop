@@ -19,6 +19,9 @@ import java.util.List;
 import lombok.Data;
 import org.apache.rocketmq.store.GetMessageStatus;
 
+/**
+ * Rop get message result.
+ */
 @Data
 public class RopGetMessageResult {
 

@@ -25,6 +25,9 @@ import org.apache.rocketmq.store.MessageExtBrokerInner;
 import org.apache.rocketmq.store.PutMessageResult;
 import org.apache.rocketmq.store.PutMessageStatus;
 
+/**
+ * Default transactional message check listener.
+ */
 @Slf4j
 public class DefaultTransactionalMessageCheckListener extends AbstractTransactionalMessageCheckListener {
 
@@ -35,23 +38,23 @@ public class DefaultTransactionalMessageCheckListener extends AbstractTransactio
     @Override
     public void resolveDiscardMsg(MessageExt msgExt) {
         log.error(
-                "MsgExt:{} has been checked too many times, so discard it by moving it to system topic TRANS_CHECK_MAXTIME_TOPIC",
-                msgExt);
+                "MsgExt:{} has been checked too many times, so discard it by moving it to system topic "
+                        + "TRANS_CHECK_MAXTIME_TOPIC", msgExt);
 
         try {
             MessageExtBrokerInner brokerInner = toMessageExtBrokerInner(msgExt);
-            PutMessageResult putMessageResult = null;/*TODO this.getBrokerController().getMessageStore().putMessage(brokerInner);*/
+            PutMessageResult putMessageResult = null; /*TODO: getMessageStore().putMessage(brokerInner);*/
             if (putMessageResult != null && putMessageResult.getPutMessageStatus() == PutMessageStatus.PUT_OK) {
                 log.info(
-                        "Put checked-too-many-time half message to TRANS_CHECK_MAXTIME_TOPIC OK. Restored in queueOffset={}, "
-                                +
-                                "commitLogOffset={}, real topic={}", msgExt.getQueueOffset(),
-                        msgExt.getCommitLogOffset(), msgExt.getUserProperty(
-                                MessageConst.PROPERTY_REAL_TOPIC));
+                        "Put checked-too-many-time half message to TRANS_CHECK_MAXTIME_TOPIC OK. "
+                                + "Restored in queueOffset={}, commitLogOffset={}, real topic={}",
+                        msgExt.getQueueOffset(),
+                        msgExt.getCommitLogOffset(),
+                        msgExt.getUserProperty(MessageConst.PROPERTY_REAL_TOPIC));
             } else {
                 log.error(
-                        "Put checked-too-many-time half message to TRANS_CHECK_MAXTIME_TOPIC failed, real topic={}, msgId={}",
-                        msgExt.getTopic(), msgExt.getMsgId());
+                        "Put checked-too-many-time half message to TRANS_CHECK_MAXTIME_TOPIC failed, "
+                                + "real topic={}, msgId={}", msgExt.getTopic(), msgExt.getMsgId());
             }
         } catch (Exception e) {
             log.warn("Put checked-too-many-time message to TRANS_CHECK_MAXTIME_TOPIC error. {}", e.getMessage());

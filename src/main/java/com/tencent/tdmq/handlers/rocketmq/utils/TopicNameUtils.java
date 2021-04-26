@@ -22,6 +22,9 @@ import org.apache.pulsar.common.naming.TopicDomain;
 import org.apache.pulsar.common.naming.TopicName;
 import org.apache.rocketmq.common.message.MessageQueue;
 
+/**
+ * Topic name utils.
+ */
 public class TopicNameUtils {
 
     public static TopicName pulsarTopicName(MessageQueue topicPartition, NamespaceName namespace) {

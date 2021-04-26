@@ -23,6 +23,9 @@ import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.store.MessageExtBrokerInner;
 import org.apache.rocketmq.store.PutMessageResult;
 
+/**
+ * Pulsar message store interface.
+ */
 public interface PulsarMessageStore {
 
     PutMessageResult putMessage(MessageExtBrokerInner messageExtBrokerInner, String producerGroup);

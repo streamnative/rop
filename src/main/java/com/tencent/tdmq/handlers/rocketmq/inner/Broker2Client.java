@@ -45,6 +45,9 @@ import org.apache.rocketmq.remoting.exception.RemotingSendRequestException;
 import org.apache.rocketmq.remoting.exception.RemotingTimeoutException;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 
+/**
+ * Broker to client.
+ */
 @Slf4j
 public class Broker2Client {
 
@@ -132,9 +135,9 @@ public class Broker2Client {
             long timeStampOffset;
             if (timeStamp == -1) {
 
-                timeStampOffset = 0L/*TODO this.brokerController.getMessageStore().getMaxOffsetInQueue(topic, i)*/;
+                timeStampOffset = 0L; /* TODO:this.brokerController.getMessageStore().getMaxOffsetInQueue(topic, i)*/
             } else {
-                timeStampOffset = 0L/*this.brokerController.getMessageStore().getOffsetInQueueByTime(topic, i, timeStamp)*/;
+                timeStampOffset = 0L; /* TODO: getMessageStore().getOffsetInQueueByTime(topic, i, timeStamp)*/
             }
 
             if (timeStampOffset < 0) {
@@ -259,21 +262,16 @@ public class Broker2Client {
                     RemotingCommand response =
                             this.brokerController.getRemotingServer().invokeSync(entry.getKey(), request, 5000);
                     assert response != null;
-                    switch (response.getCode()) {
-                        case ResponseCode.SUCCESS: {
-                            if (response.getBody() != null) {
-                                GetConsumerStatusBody body =
-                                        GetConsumerStatusBody.decode(response.getBody(),
-                                                GetConsumerStatusBody.class);
+                    if (response.getCode() == ResponseCode.SUCCESS) {
+                        if (response.getBody() != null) {
+                            GetConsumerStatusBody body =
+                                    GetConsumerStatusBody.decode(response.getBody(),
+                                            GetConsumerStatusBody.class);
 
-                                consumerStatusTable.put(clientId, body.getMessageQueueTable());
-                                log.info(
-                                        "[get-consumer-status] get consumer status success. topic={}, group={}, channelRemoteAddr={}",
-                                        topic, group, clientId);
-                            }
+                            consumerStatusTable.put(clientId, body.getMessageQueueTable());
+                            log.info("[get-consumer-status] get consumer status success. topic={}, group={}, "
+                                            + "channelRemoteAddr={}", topic, group, clientId);
                         }
-                        default:
-                            break;
                     }
                 } catch (Exception e) {
                     log.error(

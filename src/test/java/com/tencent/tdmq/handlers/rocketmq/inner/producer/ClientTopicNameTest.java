@@ -19,6 +19,9 @@ import static org.junit.Assert.assertEquals;
 import org.apache.pulsar.common.naming.TopicName;
 import org.junit.Test;
 
+/**
+ * Test client topic name.
+ */
 public class ClientTopicNameTest {
 
     @Test

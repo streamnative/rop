@@ -29,6 +29,9 @@ import java.util.stream.Stream;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.pulsar.common.configuration.PulsarConfiguration;
 
+/**
+ * Configuration utils class.
+ */
 public final class ConfigurationUtils {
 
     private ConfigurationUtils() {

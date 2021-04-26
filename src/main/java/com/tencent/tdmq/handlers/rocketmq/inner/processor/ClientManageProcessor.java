@@ -36,6 +36,9 @@ import org.apache.rocketmq.remoting.exception.RemotingCommandException;
 import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 
+/**
+ * Client manage processor.
+ */
 @Slf4j
 public class ClientManageProcessor implements NettyRequestProcessor {
 

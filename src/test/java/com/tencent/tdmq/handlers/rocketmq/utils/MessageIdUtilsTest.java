@@ -21,6 +21,9 @@ import static org.junit.Assert.assertEquals;
 import org.apache.pulsar.client.impl.MessageIdImpl;
 import org.junit.Test;
 
+/**
+ * Test messageID utils.
+ */
 public class MessageIdUtilsTest {
 
     @Test

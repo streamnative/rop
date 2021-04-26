@@ -68,6 +68,9 @@ import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.store.QueryMessageResult;
 
+/**
+ * Query message processor.
+ */
 public class QueryMessageProcessor implements NettyRequestProcessor {
 
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
@@ -75,7 +78,7 @@ public class QueryMessageProcessor implements NettyRequestProcessor {
     private final RocketMQBrokerController brokerController;
     private final RopEntryFormatter entryFormatter = new RopEntryFormatter();
 
-    private final String QUERY_MESSAGE_LEDGER_NAME = "queryMessageProcessor_ledger";
+    private final String queryMessageLedgerName = "queryMessageProcessor_ledger";
 
     public QueryMessageProcessor(final RocketMQBrokerController brokerController) {
         this.brokerController = brokerController;
@@ -172,7 +175,7 @@ public class QueryMessageProcessor implements NettyRequestProcessor {
     }
 
     /**
-     * query msg by origin id
+     * query msg by origin id.
      *
      * @param cxt ChannelHandlerContext
      * @param request request
@@ -190,7 +193,7 @@ public class QueryMessageProcessor implements NettyRequestProcessor {
                 messageId.getLedgerId(), messageId.getEntryId());
         try {
             CompletableFuture<Entry> future = new CompletableFuture();
-            ManagedLedgerImpl managedLedger = (ManagedLedgerImpl) ledgerCache.get(QUERY_MESSAGE_LEDGER_NAME).get(10,
+            ManagedLedgerImpl managedLedger = (ManagedLedgerImpl) ledgerCache.get(queryMessageLedgerName).get(10,
                     TimeUnit.SECONDS);
             if (managedLedger != null) {
                 // 通过offset来取出要开始消费的messageId的位置
@@ -225,10 +228,8 @@ public class QueryMessageProcessor implements NettyRequestProcessor {
                 }
                 entry.release();
             }).exceptionally((ex) -> {
-                log.error("query message from bookie or send message to client by id from bookie " +
-                        "has " +
-                        "exception e " +
-                        "= {}", ex);
+                log.error("query message from bookie or send message to client by id from bookie "
+                        + "has exception e = {}", ex);
                 response.setCode(ResponseCode.SYSTEM_ERROR);
                 if (ex instanceof ManagedLedgerException) {
                     response.setRemark("Read message error by ManagedLedger, " + requestHeader.getOffset());
@@ -313,7 +314,8 @@ public class QueryMessageProcessor implements NettyRequestProcessor {
                 msgMetadata = Commands.parseMessageMetadata(headersAndPayload);
                 if (msgMetadata != null) {
                     // uncompress decryptedPayload and release decryptedPayload-ByteBuf
-                    uncompressedPayload = uncompressPayloadIfNeeded(messageId, msgMetadata, headersAndPayload, true);
+                    uncompressedPayload = uncompressPayloadIfNeeded(messageId, msgMetadata,
+                            headersAndPayload, true);
                 }
 
                 if (uncompressedPayload != null) {

@@ -48,6 +48,9 @@ import org.apache.rocketmq.common.message.MessageDecoder;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.store.MessageExtBrokerInner;
 
+/**
+ * Schedule message service.
+ */
 @Slf4j
 public class ScheduleMessageService {
 
@@ -55,8 +58,8 @@ public class ScheduleMessageService {
     private static final long DELAY_FOR_A_WHILE = 1000L;
     private static final long DELAY_FOR_A_PERIOD = 10000L;
     private static final int MAX_FETCH_MESSAGE_NUM = 20;
-    private final static int PRODUCER_EXPIRED_TIME_SEC = 60 * 60;
-    private final static int PRODUCER_CACHE_SIZE = 200;
+    private static final int PRODUCER_EXPIRED_TIME_SEC = 60 * 60;
+    private static final int PRODUCER_CACHE_SIZE = 200;
     /*  key is delayed level  value is delay timeMillis */
     private final ConcurrentLongHashMap<Long> delayLevelTable;
     private final AtomicBoolean started = new AtomicBoolean(false);
@@ -174,8 +177,8 @@ public class ScheduleMessageService {
 
     class DeliverDelayedMessageTimerTask extends TimerTask {
 
-        private final static int PULL_MESSAGE_TIMEOUT_MS = 200;
-        private final static int MAX_BATCH_SIZE = 2000;
+        private static final int PULL_MESSAGE_TIMEOUT_MS = 200;
+        private static final int MAX_BATCH_SIZE = 2000;
         private final PulsarService pulsarService;
         private final long delayLevel;
         private final String delayTopic;

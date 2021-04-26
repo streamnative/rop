@@ -21,6 +21,9 @@ import java.util.function.Predicate;
 import org.apache.pulsar.client.api.Message;
 import org.apache.rocketmq.common.message.MessageExt;
 
+/**
+ * The formatter for conversion between Kafka records and Bookie entries.
+ */
 public interface EntryFormatter<T> {
 
     /**

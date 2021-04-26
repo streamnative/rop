@@ -17,6 +17,9 @@ package com.tencent.tdmq.handlers.rocketmq.inner;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.common.ServiceThread;
 
+/**
+ * Transactional message check service.
+ */
 @Slf4j
 public class TransactionalMessageCheckService extends ServiceThread {
 

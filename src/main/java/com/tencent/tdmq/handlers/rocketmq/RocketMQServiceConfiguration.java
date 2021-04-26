@@ -21,6 +21,9 @@ import org.apache.pulsar.common.configuration.FieldContext;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.constant.PermName;
 
+/**
+ * RocketMQ service configuration.
+ */
 @Data
 public class RocketMQServiceConfiguration extends ServiceConfiguration {
 

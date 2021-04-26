@@ -23,15 +23,19 @@ import java.util.concurrent.locks.ReentrantLock;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.common.message.MessageQueue;
 
+/**
+ * Rebalanced lock manager.
+ */
 @Slf4j
 public class RebalancedLockManager {
 
-    private final static long REBALANCED_LOCK_MAX_LIVE_TIME = Long.parseLong(System.getProperty(
+    private static final long RebalancedLockMaxLiveTime = Long.parseLong(System.getProperty(
             "rocketmq.rebalanced.lockMaxLiveTime", "60000"));
     private final Lock lock = new ReentrantLock();
     private final ConcurrentMap<String/* group */, ConcurrentHashMap<MessageQueue,
-            RebalancedLockManager.LockEntry>> mqLockTable = new ConcurrentHashMap<String, ConcurrentHashMap<MessageQueue, RebalancedLockManager.LockEntry>>(
-            1024);
+            RebalancedLockManager.LockEntry>> mqLockTable =
+            new ConcurrentHashMap<String, ConcurrentHashMap<MessageQueue,
+                    RebalancedLockManager.LockEntry>>(1024);
 
     public boolean tryLock(final String group, final MessageQueue mq, final String clientId) {
 
@@ -263,7 +267,7 @@ public class RebalancedLockManager {
         }
 
         public boolean isExpired() {
-            return (System.currentTimeMillis() - this.lastUpdateTimestamp) > REBALANCED_LOCK_MAX_LIVE_TIME;
+            return (System.currentTimeMillis() - this.lastUpdateTimestamp) > RebalancedLockMaxLiveTime;
         }
     }
 }

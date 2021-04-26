@@ -134,7 +134,8 @@
 //
 //    @Override
 //    public void sendLookupResponse(String brokerServiceUrl, String brokerServiceUrlTls, boolean authoritative,
-//            PulsarApi.CommandLookupTopicResponse.LookupType response, long requestId, boolean proxyThroughServiceUrl) {
+//            PulsarApi.CommandLookupTopicResponse.LookupType response, long requestId,
+//            boolean proxyThroughServiceUrl) {
 //    }
 //
 //    @Override

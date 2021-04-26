@@ -45,12 +45,15 @@ import org.apache.rocketmq.store.AppendMessageStatus;
 import org.apache.rocketmq.store.CommitLog;
 import org.apache.rocketmq.store.MessageExtBrokerInner;
 
+/**
+ * Rop entry formatter.
+ */
 @Slf4j
 public class RopEntryFormatter implements EntryFormatter<MessageExt> {
 
     // The maximum size of message,default is 4M
-    private final static int MAX_MESSAGE_SIZE = 1024 * 1024 * 4;
-    private final static ThreadLocal<ByteBuffer> msgStoreItemMemoryThreadLocal = ThreadLocal
+    private static final int MAX_MESSAGE_SIZE = 1024 * 1024 * 4;
+    private static final ThreadLocal<ByteBuffer> msgStoreItemMemoryThreadLocal = ThreadLocal
             .withInitial(() -> ByteBuffer.allocate(MAX_MESSAGE_SIZE));
 
     public static MessageExt decodePulsarMessage(Message message) {

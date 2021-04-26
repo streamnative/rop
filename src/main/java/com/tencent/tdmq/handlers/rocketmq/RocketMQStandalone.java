@@ -22,6 +22,9 @@ import org.apache.pulsar.zookeeper.LocalBookkeeperEnsemble;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * RocketMQ standalone server.
+ */
 public class RocketMQStandalone implements AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(PulsarStandalone.class);

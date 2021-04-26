@@ -25,6 +25,9 @@ import org.apache.rocketmq.broker.longpolling.PullRequest;
 import org.apache.rocketmq.common.ServiceThread;
 import org.apache.rocketmq.common.SystemClock;
 
+/**
+ * Pull request hold service.
+ */
 @Slf4j
 public class PullRequestHoldService extends ServiceThread {
 
@@ -32,10 +35,8 @@ public class PullRequestHoldService extends ServiceThread {
     private final RocketMQBrokerController brokerController;
     private final SystemClock systemClock = new SystemClock();
 
-    /**
-     * key       => topicName@partitionId
-     * topicName => tenant/ns/topicName
-     */
+     // key       => topicName@partitionId
+     // topicName => tenant/ns/topicName
     private ConcurrentMap<String, ManyPullRequest> pullRequestTable =
             new ConcurrentHashMap<>(1024);
 
@@ -101,7 +102,7 @@ public class PullRequestHoldService extends ServiceThread {
             if (2 == kArray.length) {
                 String topic = kArray[0];
                 int queueId = Integer.parseInt(kArray[1]);
-                final long offset = 0L;/*TODO this.brokerController.getMessageStore().getMaxOffsetInQueue(topic, queueId);*/
+                final long offset = 0L; /*TODO: getMessageStore().getMaxOffsetInQueue(topic, queueId);*/
                 try {
                     this.notifyMessageArriving(topic, queueId, offset);
                 } catch (Throwable e) {
@@ -127,12 +128,12 @@ public class PullRequestHoldService extends ServiceThread {
                 for (PullRequest request : requestList) {
                     long newestOffset = maxOffset;
                     if (newestOffset <= request.getPullFromThisOffset()) {
-                        newestOffset = 0L/*this.brokerController.getMessageStore().getMaxOffsetInQueue(topic, queueId)*/;
+                        newestOffset = 0L; /*TODO: getMessageStore().getMaxOffsetInQueue(topic, queueId)*/
                     }
 
                     if (newestOffset > request.getPullFromThisOffset()) {
-                        boolean match = true/* TODO request.getMessageFilter().isMatchedByConsumeQueue(tagsCode,
-                                new ConsumeQueueExt.CqExtUnit(tagsCode, msgStoreTime, filterBitMap))*/;
+                        boolean match = true; /* TODO request.getMessageFilter().isMatchedByConsumeQueue(tagsCode,
+                                new ConsumeQueueExt.CqExtUnit(tagsCode, msgStoreTime, filterBitMap))*/
                         // match by bit map, need eval again when properties is not null.
                         if (match && properties != null) {
                             match = request.getMessageFilter().isMatchedByCommitLog(null, properties);

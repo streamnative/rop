@@ -19,6 +19,9 @@ import static com.google.common.base.Preconditions.checkArgument;
 import org.apache.bookkeeper.mledger.impl.PositionImpl;
 import org.apache.pulsar.client.impl.MessageIdImpl;
 
+/**
+ * MessageID utils class.
+ */
 public class MessageIdUtils {
 
     // use 48 bits for ledgerId,

@@ -21,6 +21,9 @@ import org.apache.rocketmq.common.protocol.header.EndTransactionRequestHeader;
 import org.apache.rocketmq.store.MessageExtBrokerInner;
 import org.apache.rocketmq.store.PutMessageResult;
 
+/**
+ * Transactional message service.
+ */
 public interface TransactionalMessageService {
 
     /**

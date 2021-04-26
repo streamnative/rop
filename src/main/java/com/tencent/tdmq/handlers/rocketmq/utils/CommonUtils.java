@@ -40,6 +40,9 @@ import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.sysflag.MessageSysFlag;
 import org.apache.rocketmq.store.MessageExtBrokerInner;
 
+/**
+ * Common utils class.
+ */
 @Slf4j
 public class CommonUtils {
 

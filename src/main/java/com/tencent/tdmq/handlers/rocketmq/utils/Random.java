@@ -16,6 +16,9 @@ package com.tencent.tdmq.handlers.rocketmq.utils;
 
 import java.util.UUID;
 
+/**
+ * Random utils class.
+ */
 public class Random {
 
     public static Long randomLong(int bit) throws Exception {

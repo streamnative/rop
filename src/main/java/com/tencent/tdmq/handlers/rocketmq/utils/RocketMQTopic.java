@@ -64,7 +64,7 @@ public class RocketMQTopic {
         this(defaultTenant, defaultNamespace, rmqTopicName);
     }
 
-    public final static void init(String metaTenant, String metaNamespace, String defaultTenant,
+    public static final void init(String metaTenant, String metaNamespace, String defaultTenant,
             String defaultNamespace) {
         RocketMQTopic.defaultTenant = defaultTenant;
         RocketMQTopic.defaultNamespace = defaultNamespace;
@@ -72,19 +72,19 @@ public class RocketMQTopic {
         RocketMQTopic.metaNamespace = metaNamespace;
     }
 
-    public final static String getPulsarOrigNoDomainTopic(String rmqTopic) {
+    public static final String getPulsarOrigNoDomainTopic(String rmqTopic) {
         return new RocketMQTopic(rmqTopic).getOrigNoDomainTopicName();
     }
 
-    public final static String getPulsarMetaNoDomainTopic(String rmqTopic) {
+    public static final String getPulsarMetaNoDomainTopic(String rmqTopic) {
         return new RocketMQTopic(rmqTopic).getMetaNoDomainTopic();
     }
 
-    public final static String getPulsarDefaultNoDomainTopic(String rmqTopic) {
+    public static final String getPulsarDefaultNoDomainTopic(String rmqTopic) {
         return new RocketMQTopic(rmqTopic).getDefaultNoDomainTopic();
     }
 
-    public final static RocketMQTopic getRocketMQMetaTopic(String rmqTopic) {
+    public static final RocketMQTopic getRocketMQMetaTopic(String rmqTopic) {
         return new RocketMQTopic(RocketMQTopic.metaTenant, RocketMQTopic.metaNamespace, rmqTopic);
     }
 

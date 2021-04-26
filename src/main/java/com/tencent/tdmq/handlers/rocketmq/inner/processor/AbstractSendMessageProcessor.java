@@ -50,10 +50,13 @@ import org.apache.rocketmq.remoting.protocol.LanguageCode;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.store.MessageExtBrokerInner;
 
+/**
+ * Abstract send message processor.
+ */
 @Slf4j
 public abstract class AbstractSendMessageProcessor implements NettyRequestProcessor {
 
-    protected final static int DLQ_NUMS_PER_GROUP = 1;
+    protected static final int DLQ_NUMS_PER_GROUP = 1;
     protected final RocketMQBrokerController brokerController;
     protected final Random random = new Random(System.currentTimeMillis());
     private List<SendMessageHook> sendMessageHookList;

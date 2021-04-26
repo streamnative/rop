@@ -23,6 +23,9 @@ import org.apache.pulsar.common.api.proto.PulsarApi.CommandSubscribe.InitialPosi
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandSubscribe.SubType;
 import org.apache.pulsar.common.api.proto.PulsarApi.KeyValue;
 
+/**
+ * Pulsar utils class.
+ */
 public class PulsarUtil {
 
     public static InitialPosition parseSubPosition(SubscriptionInitialPosition subPosition) {
@@ -51,7 +54,7 @@ public class PulsarUtil {
         }
     }
 
-    public static List<KeyValue> ConvertFromStringMap(Map<String, String> stringMap) {
+    public static List<KeyValue> convertFromStringMap(Map<String, String> stringMap) {
         List<KeyValue> keyValueList = new ArrayList<>();
         for (Map.Entry<String, String> entry : stringMap.entrySet()) {
             KeyValue build = KeyValue.newBuilder()

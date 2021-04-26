@@ -53,6 +53,9 @@ import org.apache.rocketmq.remoting.netty.ResponseFuture;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.remoting.protocol.RemotingSysResponseCode;
 
+/**
+ * Netty remoting abstract.
+ */
 @Slf4j
 public abstract class NettyRemotingAbstract {
 
@@ -92,7 +95,7 @@ public abstract class NettyRemotingAbstract {
      */
     protected volatile SslContext sslContext;
     /**
-     * custom rpc hooks
+     * custom rpc hooks.
      */
     protected List<RPCHook> rpcHooks = new ArrayList<RPCHook>();
 
@@ -442,7 +445,8 @@ public abstract class NettyRemotingAbstract {
 
     public void invokeAsyncImpl(final Channel channel, final RemotingCommand request, final long timeoutMillis,
             final InvokeCallback invokeCallback)
-            throws InterruptedException, RemotingTooMuchRequestException, RemotingTimeoutException, RemotingSendRequestException {
+            throws InterruptedException, RemotingTooMuchRequestException,
+            RemotingTimeoutException, RemotingSendRequestException {
         long beginStartTime = System.currentTimeMillis();
         final int opaque = request.getOpaque();
         boolean acquired = this.semaphoreAsync.tryAcquire(timeoutMillis, TimeUnit.MILLISECONDS);
@@ -482,8 +486,8 @@ public abstract class NettyRemotingAbstract {
             } else {
                 String info =
                         String.format(
-                                "invokeAsyncImpl tryAcquire semaphore timeout, %dms, waiting thread nums: %d semaphoreAsyncValue: %d",
-                                timeoutMillis,
+                                "invokeAsyncImpl tryAcquire semaphore timeout, %dms, waiting thread nums: %d "
+                                        + "semaphoreAsyncValue: %d", timeoutMillis,
                                 this.semaphoreAsync.getQueueLength(),
                                 this.semaphoreAsync.availablePermits()
                         );
@@ -509,7 +513,7 @@ public abstract class NettyRemotingAbstract {
     }
 
     /**
-     * mark the request of the specified channel as fail and to invoke fail callback immediately
+     * mark the request of the specified channel as fail and to invoke fail callback immediately.
      *
      * @param channel the channel which is close already
      */
@@ -527,7 +531,8 @@ public abstract class NettyRemotingAbstract {
     }
 
     public void invokeOnewayImpl(final Channel channel, final RemotingCommand request, final long timeoutMillis)
-            throws InterruptedException, RemotingTooMuchRequestException, RemotingTimeoutException, RemotingSendRequestException {
+            throws InterruptedException, RemotingTooMuchRequestException,
+            RemotingTimeoutException, RemotingSendRequestException {
         request.markOnewayRPC();
         boolean acquired = this.semaphoreOneway.tryAcquire(timeoutMillis, TimeUnit.MILLISECONDS);
         if (acquired) {
@@ -552,8 +557,8 @@ public abstract class NettyRemotingAbstract {
                 throw new RemotingTooMuchRequestException("invokeOnewayImpl invoke too fast");
             } else {
                 String info = String.format(
-                        "invokeOnewayImpl tryAcquire semaphore timeout, %dms, waiting thread nums: %d semaphoreAsyncValue: %d",
-                        timeoutMillis,
+                        "invokeOnewayImpl tryAcquire semaphore timeout, %dms, waiting thread nums: %d "
+                                + "semaphoreAsyncValue: %d", timeoutMillis,
                         this.semaphoreOneway.getQueueLength(),
                         this.semaphoreOneway.availablePermits()
                 );
@@ -563,6 +568,9 @@ public abstract class NettyRemotingAbstract {
         }
     }
 
+    /**
+     * Netty event executor.
+     */
     public class NettyEventExecutor extends ServiceThread {
 
         private final LinkedBlockingQueue<NettyEvent> eventQueue = new LinkedBlockingQueue<NettyEvent>();

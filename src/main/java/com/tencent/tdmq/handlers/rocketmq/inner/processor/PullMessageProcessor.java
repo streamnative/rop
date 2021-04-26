@@ -52,9 +52,11 @@ import org.apache.rocketmq.remoting.exception.RemotingCommandException;
 import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
 import org.apache.rocketmq.remoting.netty.RequestTask;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
-import org.apache.rocketmq.store.config.BrokerRole;
 import org.apache.rocketmq.store.stats.BrokerStatsManager;
 
+/**
+ * Pull message processor.
+ */
 @Slf4j
 public class PullMessageProcessor implements NettyRequestProcessor {
 
@@ -243,7 +245,8 @@ public class PullMessageProcessor implements NettyRequestProcessor {
                     if (0 != requestHeader.getQueueOffset()) {
                         response.setCode(ResponseCode.PULL_OFFSET_MOVED);
                         log.info(
-                                "the broker store no queue data, fix the request offset {} to {}, Topic: {} QueueId: {} Consumer Group: {}",
+                                "the broker store no queue data, fix the request offset {} to {}, "
+                                        + "Topic: {} QueueId: {} Consumer Group: {}",
                                 requestHeader.getQueueOffset(),
                                 ropGetMessageResult.getNextBeginOffset(),
                                 requestHeader.getTopic(),
@@ -262,7 +265,7 @@ public class PullMessageProcessor implements NettyRequestProcessor {
                     break;
                 case OFFSET_OVERFLOW_BADLY:
                     response.setCode(ResponseCode.PULL_OFFSET_MOVED);
-                    // XXX: warn and notify me
+                    // TODO: warn and notify me
                     log.info("the request offset: {} over flow badly, broker max offset: {}, consumer: {}",
                             requestHeader.getQueueOffset(), ropGetMessageResult.getMaxOffset(),
                             channel.remoteAddress());
@@ -273,7 +276,8 @@ public class PullMessageProcessor implements NettyRequestProcessor {
                 case OFFSET_TOO_SMALL:
                     response.setCode(ResponseCode.PULL_OFFSET_MOVED);
                     log.info(
-                            "the request offset too small. group={}, topic={}, requestOffset={}, brokerMinOffset={}, clientIp={}",
+                            "the request offset too small. group={}, topic={}, requestOffset={},"
+                                    + " brokerMinOffset={}, clientIp={}",
                             requestHeader.getConsumerGroup(), requestHeader.getTopic(), requestHeader.getQueueOffset(),
                             ropGetMessageResult.getMinOffset(), channel.remoteAddress());
                     break;
@@ -344,7 +348,6 @@ public class PullMessageProcessor implements NettyRequestProcessor {
                     response.setBody(r);
                     break;
                 case ResponseCode.PULL_NOT_FOUND:
-
                     if (brokerAllowSuspend && hasSuspendFlag) {
                         long pollingTimeMills = suspendTimeoutMillisLong;
                         if (!this.brokerController.getServerConfig().isLongPollingEnable()) {
@@ -361,14 +364,14 @@ public class PullMessageProcessor implements NettyRequestProcessor {
                         response = null;
                         break;
                     }
-
                 case ResponseCode.PULL_RETRY_IMMEDIATELY:
                     break;
                 case ResponseCode.PULL_OFFSET_MOVED:
                     responseHeader.setSuggestWhichBrokerId(subscriptionGroupConfig.getBrokerId());
                     response.setCode(ResponseCode.PULL_RETRY_IMMEDIATELY);
                     log.warn(
-                            "PULL_OFFSET_MOVED:none correction. topic={}, groupId={}, requestOffset={}, suggestBrokerId={}",
+                            "PULL_OFFSET_MOVED:none correction. topic={}, groupId={}, "
+                                    + "requestOffset={}, suggestBrokerId={}",
                             requestHeader.getTopic(), requestHeader.getConsumerGroup(),
                             requestHeader.getQueueOffset(),
                             responseHeader.getSuggestWhichBrokerId());
@@ -381,10 +384,12 @@ public class PullMessageProcessor implements NettyRequestProcessor {
             response.setRemark("store getMessage return null");
         }
         boolean storeOffsetEnable = brokerAllowSuspend;
-        storeOffsetEnable = storeOffsetEnable && hasCommitOffsetFlag;;
+        storeOffsetEnable = storeOffsetEnable && hasCommitOffsetFlag;
         if (storeOffsetEnable) {
-            this.brokerController.getConsumerOffsetManager().commitOffset(RemotingHelper.parseChannelRemoteAddr(channel),
-                    requestHeader.getConsumerGroup(), requestHeader.getTopic(), requestHeader.getQueueId(), requestHeader.getCommitOffset());
+            this.brokerController.getConsumerOffsetManager().commitOffset(
+                    RemotingHelper.parseChannelRemoteAddr(channel),
+                    requestHeader.getConsumerGroup(), requestHeader.getTopic(),
+                    requestHeader.getQueueId(), requestHeader.getCommitOffset());
         }
         return response;
     }

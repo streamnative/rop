@@ -14,6 +14,9 @@
 
 package com.tencent.tdmq.handlers.rocketmq.inner.timer;
 
+/**
+ * Time util class.
+ */
 public interface Time {
 
     Time SYSTEM = new SystemTime();

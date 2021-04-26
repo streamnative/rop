@@ -49,6 +49,9 @@ import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.testng.collections.Sets;
 
+/**
+ * Nameserver processor.
+ */
 @Slf4j
 public class NameserverProcessor implements NettyRequestProcessor {
 
@@ -220,10 +223,10 @@ public class NameserverProcessor implements NettyRequestProcessor {
     }
 
     /**
-     * 获取broker集群信息，当前认为一个broker物理集群中只有一个broker集群，这里只返回一个broker集群中的一个节点
+     * 获取broker集群信息，当前认为一个broker物理集群中只有一个broker集群，这里只返回一个broker集群中的一个节点.
      *
-     * 这里为了兼容客户端主题删除逻辑
-     * rocketmq中删除主题客户端会依次请求broker集群下全部broker节点执行主题删除，pulsar中只需要到一台节点上执行删除主题操作即可
+     * <p>这里为了兼容客户端主题删除逻辑</p>
+     * <p>rocketmq中删除主题客户端会依次请求broker集群下全部broker节点执行主题删除，pulsar中只需要到一台节点上执行删除主题操作即可</p>
      */
     private RemotingCommand getBrokerClusterInfo(ChannelHandlerContext ctx, RemotingCommand request) {
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);

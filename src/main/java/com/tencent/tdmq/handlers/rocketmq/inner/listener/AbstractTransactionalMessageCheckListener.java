@@ -28,13 +28,16 @@ import org.apache.rocketmq.common.message.MessageConst;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.protocol.header.CheckTransactionStateRequestHeader;
 
+/**
+ * Abstract transactional message check listener.
+ */
 @Slf4j
 public abstract class AbstractTransactionalMessageCheckListener {
 
     //queue nums of topic TRANS_CHECK_MAX_TIME_TOPIC
-    protected final static int TCMT_QUEUE_NUMS = 1;
-    private static ExecutorService executorService = new ThreadPoolExecutor(2, 5, 100, TimeUnit.SECONDS,
-            new ArrayBlockingQueue<Runnable>(2000), new ThreadFactory() {
+    protected static final int TCMT_QUEUE_NUMS = 1;
+    private static ExecutorService executorService = new ThreadPoolExecutor(2, 5,
+            100, TimeUnit.SECONDS, new ArrayBlockingQueue<Runnable>(2000), new ThreadFactory() {
         @Override
         public Thread newThread(Runnable r) {
             Thread thread = new Thread(r);
@@ -53,7 +56,8 @@ public abstract class AbstractTransactionalMessageCheckListener {
     }
 
     public void sendCheckMessage(MessageExt msgExt) throws Exception {
-        CheckTransactionStateRequestHeader checkTransactionStateRequestHeader = new CheckTransactionStateRequestHeader();
+        CheckTransactionStateRequestHeader checkTransactionStateRequestHeader =
+                new CheckTransactionStateRequestHeader();
         checkTransactionStateRequestHeader.setCommitLogOffset(msgExt.getCommitLogOffset());
         checkTransactionStateRequestHeader.setOffsetMsgId(msgExt.getMsgId());
         checkTransactionStateRequestHeader
@@ -91,7 +95,7 @@ public abstract class AbstractTransactionalMessageCheckListener {
     }
 
     /**
-     * Inject brokerController for this listener
+     * Inject brokerController for this listener.
      *
      * @param brokerController
      */

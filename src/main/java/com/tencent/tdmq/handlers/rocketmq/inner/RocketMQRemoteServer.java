@@ -56,6 +56,9 @@ import org.apache.rocketmq.remoting.netty.TlsHelper;
 import org.apache.rocketmq.remoting.netty.TlsSystemConfig;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 
+/**
+ * RocketMQ remote server.
+ */
 @Slf4j
 public class RocketMQRemoteServer extends NettyRemotingAbstract implements RemotingServer {
 
@@ -222,7 +225,8 @@ public class RocketMQRemoteServer extends NettyRemotingAbstract implements Remot
 
     @Override
     public void invokeAsync(Channel channel, RemotingCommand request, long timeoutMillis, InvokeCallback invokeCallback)
-            throws InterruptedException, RemotingTooMuchRequestException, RemotingTimeoutException, RemotingSendRequestException {
+            throws InterruptedException, RemotingTooMuchRequestException,
+            RemotingTimeoutException, RemotingSendRequestException {
         this.invokeAsyncImpl(channel, request, timeoutMillis, invokeCallback);
     }
 
@@ -255,8 +259,8 @@ public class RocketMQRemoteServer extends NettyRemotingAbstract implements Remot
                 switch (tlsMode) {
                     case DISABLED:
                         ctx.close();
-                        log.warn(
-                                "Clients intend to establish an SSL connection while this server is running in SSL disabled mode");
+                        log.warn("Clients intend to establish an SSL connection while this server "
+                                + "is running in SSL disabled mode");
                         break;
                     case PERMISSIVE:
                     case ENFORCING:
@@ -279,8 +283,8 @@ public class RocketMQRemoteServer extends NettyRemotingAbstract implements Remot
                 }
             } else if (tlsMode == TlsMode.ENFORCING) {
                 ctx.close();
-                log.warn(
-                        "Clients intend to establish an insecure connection while this server is running in SSL enforcing mode");
+                log.warn("Clients intend to establish an insecure connection while this "
+                        + "server is running in SSL enforcing mode");
             }
 
             // reset the reader index so that handshake negotiation may proceed as normal.

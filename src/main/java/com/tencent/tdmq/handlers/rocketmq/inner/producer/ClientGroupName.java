@@ -22,6 +22,9 @@ import lombok.EqualsAndHashCode;
 import lombok.ToString;
 import org.apache.pulsar.common.naming.TopicName;
 
+/**
+ * Client Group Name, consists of rmqGroupName and pulsarGroupName.
+ */
 @Data
 @EqualsAndHashCode
 @ToString
@@ -39,8 +42,8 @@ public class ClientGroupName {
         this.pulsarGroupName = Joiner.on("/")
                 .join(tdmpGroupName.getTenant(), tdmpGroupName.getNamespacePortion(), tdmpGroupName.getLocalName());
         if (tdmpGroupName.getTenant() == RocketMQTopic.metaTenant
-                && (tdmpGroupName.getNamespacePortion() == RocketMQTopic.metaNamespace ||
-                tdmpGroupName.getNamespacePortion() == RocketMQTopic.defaultNamespace)) {
+                && (tdmpGroupName.getNamespacePortion() == RocketMQTopic.metaNamespace
+                || tdmpGroupName.getNamespacePortion() == RocketMQTopic.defaultNamespace)) {
             this.rmqGroupName = tdmpGroupName.getLocalName();
         } else {
             this.rmqGroupName =

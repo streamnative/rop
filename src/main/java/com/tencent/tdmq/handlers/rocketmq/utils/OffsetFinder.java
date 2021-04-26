@@ -18,6 +18,9 @@ import org.apache.bookkeeper.mledger.impl.ManagedLedgerImpl;
 import org.apache.bookkeeper.mledger.impl.PositionImpl;
 import org.apache.pulsar.client.impl.MessageImpl;
 
+/**
+ * Offset finder manager.
+ */
 @Slf4j
 public class OffsetFinder implements AsyncCallbacks.FindEntryCallback {
 

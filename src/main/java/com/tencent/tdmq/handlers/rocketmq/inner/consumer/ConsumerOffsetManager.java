@@ -35,21 +35,22 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.bookkeeper.mledger.ManagedCursor;
 import org.apache.bookkeeper.mledger.ManagedLedgerException;
 import org.apache.bookkeeper.mledger.impl.PositionImpl;
-import org.apache.pulsar.broker.service.persistent.PersistentSubscription;
 import org.apache.pulsar.broker.service.persistent.PersistentTopic;
-import org.apache.pulsar.common.api.proto.PulsarApi.CommandSubscribe.InitialPosition;
 import org.apache.pulsar.common.naming.TopicName;
 import org.apache.rocketmq.common.UtilAll;
 
+/**
+ * Consumer offset manager.
+ */
 @Slf4j
 public class ConsumerOffsetManager {
 
     private final RocketMQBrokerController brokerController;
     /**
-     * key   => topic@group
-     * topic => tenant/namespace/topicName
-     * group => tenant/namespace/groupName
-     * map   => [key => queueId] & [value => offset]
+     * key   => topic@group.
+     * topic => tenant/namespace/topicName.
+     * group => tenant/namespace/groupName.
+     * map   => [key => queueId] & [value => offset].
      **/
     private ConcurrentMap<ClientGroupAndTopicName, ConcurrentMap<Integer, Long>> offsetTable =
             new ConcurrentHashMap<>(512);
@@ -124,7 +125,6 @@ public class ConsumerOffsetManager {
         while (it.hasNext() && result) {
             Entry<Integer, Long> next = it.next();
             long minOffsetInStore = getMinOffsetInQueue(topicAtGroup, next.getKey());
-            ;
             long offsetInPersist = next.getValue();
             result = offsetInPersist <= minOffsetInStore;
         }
@@ -167,7 +167,8 @@ public class ConsumerOffsetManager {
             Long storeOffset = map.put(queueId, offset);
             if (storeOffset != null && offset < storeOffset) {
                 log.warn(
-                        "[NOTIFYME]update consumer offset less than store. clientHost={}, key={}, queueId={}, requestOffset={}, storeOffset={}",
+                        "[NOTIFYME]update consumer offset less than store. clientHost={}, key={}, queueId={}, "
+                                + "requestOffset={}, storeOffset={}",
                         clientHost, clientGroupAndTopicName, queueId, offset, storeOffset);
             }
         }
@@ -306,8 +307,8 @@ public class ConsumerOffsetManager {
     }
 
     private boolean isSystemGroup(String groupName) {
-        return groupName.startsWith(RocketMQTopic.metaTenant + "/" + RocketMQTopic.metaNamespace) ||
-                groupName.startsWith(RocketMQTopic.defaultTenant + "/" + RocketMQTopic.defaultNamespace);
+        return groupName.startsWith(RocketMQTopic.metaTenant + "/" + RocketMQTopic.metaNamespace)
+                || groupName.startsWith(RocketMQTopic.defaultTenant + "/" + RocketMQTopic.defaultNamespace);
     }
 
     public synchronized void persist() {

@@ -20,6 +20,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.broker.client.ClientChannelInfo;
 import org.apache.rocketmq.remoting.protocol.LanguageCode;
 
+/**
+ * Rop client channel cnx.
+ */
 @Slf4j
 public class RopClientChannelCnx extends ClientChannelInfo {
 

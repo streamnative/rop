@@ -32,6 +32,9 @@ import org.apache.pulsar.broker.ServiceConfigurationUtils;
 import org.apache.pulsar.broker.protocol.ProtocolHandler;
 import org.apache.pulsar.broker.service.BrokerService;
 
+/**
+ * RocketMQ protocol handler load and run by Pulsar Service.
+ */
 @Slf4j
 @Data
 public class RocketMQProtocolHandler implements ProtocolHandler {

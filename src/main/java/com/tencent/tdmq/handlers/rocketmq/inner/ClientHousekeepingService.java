@@ -22,6 +22,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.common.ThreadFactoryImpl;
 import org.apache.rocketmq.remoting.ChannelEventListener;
 
+/**
+ * Client housekeeping service.
+ */
 @Slf4j
 public class ClientHousekeepingService implements ChannelEventListener {
 

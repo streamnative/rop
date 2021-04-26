@@ -35,11 +35,14 @@ import org.apache.rocketmq.common.TopicConfig;
 import org.apache.rocketmq.common.constant.PermName;
 import org.apache.rocketmq.common.protocol.body.KVTable;
 
+/**
+ * Topic config manager.
+ */
 @Slf4j
 public abstract class TopicConfigManager {
 
     protected static final long LOCK_TIMEOUT_MILLIS = 3000;
-    protected transient final Lock lockTopicConfigTable = new ReentrantLock();
+    protected final transient Lock lockTopicConfigTable = new ReentrantLock();
 
     //key = {tenant}/{ns}/{topic}
     protected final ConcurrentMap<String, TopicConfig> topicConfigTable = new ConcurrentHashMap<String, TopicConfig>(
@@ -102,7 +105,8 @@ public abstract class TopicConfigManager {
         {
             String delayedLevelStr = config.getMessageDelayLevel();
             Splitter.on(" ").omitEmptyStrings().split(delayedLevelStr).forEach(lvl -> {
-                        String topic = RocketMQTopic.getPulsarMetaNoDomainTopic(config.getRmqScheduleTopic() + "_" + lvl);
+                        String topic = RocketMQTopic.getPulsarMetaNoDomainTopic(config.getRmqScheduleTopic()
+                                + "_" + lvl);
                         TopicConfig topicConfig = new TopicConfig(topic);
                         this.systemTopicList.add(topic);
                         topicConfig.setReadQueueNums(config.getRmqScheduleTopicPartitionNum());
@@ -214,7 +218,8 @@ public abstract class TopicConfigManager {
                             topicConfig.setTopicFilterType(defaultTopicConfig.getTopicFilterType());
                         } else {
                             log.warn(
-                                    "Create new topic failed, because the default topic[{}] has no perm [{}] producer:[{}]",
+                                    "Create new topic failed, because the default topic[{}] has "
+                                            + "no perm [{}] producer:[{}]",
                                     defaultTopic, defaultTopicConfig.getPerm(), remoteAddress);
                         }
                     } else {

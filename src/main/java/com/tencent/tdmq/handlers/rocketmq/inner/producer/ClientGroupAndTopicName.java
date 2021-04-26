@@ -18,6 +18,9 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
 
+/**
+ * Client group and client topic name.
+ */
 @Data
 @EqualsAndHashCode
 @ToString

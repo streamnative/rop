@@ -45,6 +45,9 @@ import org.apache.rocketmq.store.MessageStore;
 import org.apache.rocketmq.store.PutMessageResult;
 import org.apache.rocketmq.store.PutMessageStatus;
 
+/**
+ * Transactional message bridge.
+ */
 public class TransactionalMessageBridge {
 
     private static final InternalLogger LOGGER = InnerLoggerFactory.getLogger(LoggerName.TRANSACTION_LOGGER_NAME);
@@ -134,9 +137,9 @@ public class TransactionalMessageBridge {
                     if (foundList == null || foundList.size() == 0) {
                         break;
                     }
-                    /* TODO: this.brokerController.getBrokerStatsManager().recordDiskFallBehindTime(group, topic, queueId,
-                            this.brokerController.getMessageStore().now() - foundList.get(foundList.size() - 1)
-                                    .getStoreTimestamp());*/
+                    /* TODO: this.brokerController.getBrokerStatsManager().recordDiskFallBehindTime(group, topic,
+                        queueId, this.brokerController.getMessageStore().now() - foundList.get(foundList.size() - 1)
+                        .getStoreTimestamp());*/
                     break;
                 case NO_MATCHED_MESSAGE:
                     pullStatus = PullStatus.NO_MATCHED_MSG;
@@ -296,7 +299,7 @@ public class TransactionalMessageBridge {
 
     /**
      * Use this function while transaction msg is committed or rollback write a flag 'd' to operation queue for the
-     * msg's offset
+     * msg's offset.
      *
      * @param messageExt Op message
      * @param messageQueue Op message queue

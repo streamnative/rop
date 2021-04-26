@@ -5,6 +5,9 @@ import static org.apache.commons.lang3.StringUtils.isBlank;
 import org.apache.pulsar.broker.ServiceConfiguration;
 import org.apache.pulsar.broker.ServiceConfigurationUtils;
 
+/**
+ * Builder RocketMQ Standalone env.
+ */
 public class RocketMQStandaloneBuilder {
 
     private RocketMQStandalone rocketmqStandalone;

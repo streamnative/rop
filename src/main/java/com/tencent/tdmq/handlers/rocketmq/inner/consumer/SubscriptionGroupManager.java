@@ -25,11 +25,14 @@ import org.apache.rocketmq.common.DataVersion;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.subscription.SubscriptionGroupConfig;
 
+/**
+ * Subscription group manager.
+ */
 @Slf4j
 public class SubscriptionGroupManager {
 
-    private final ConcurrentMap<ClientGroupName, SubscriptionGroupConfig> subscriptionGroupTable = new ConcurrentHashMap(
-            512);
+    private final ConcurrentMap<ClientGroupName, SubscriptionGroupConfig> subscriptionGroupTable =
+            new ConcurrentHashMap(512);
     private final DataVersion dataVersion = new DataVersion();
     private final RocketMQBrokerController brokerController;
 

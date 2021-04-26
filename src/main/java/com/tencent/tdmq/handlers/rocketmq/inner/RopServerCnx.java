@@ -68,13 +68,16 @@ import org.apache.rocketmq.store.MessageExtBrokerInner;
 import org.apache.rocketmq.store.PutMessageResult;
 import org.apache.rocketmq.store.PutMessageStatus;
 
+/**
+ * Rop server cnx.
+ */
 @Slf4j
 @Getter
 public class RopServerCnx extends ChannelInboundHandlerAdapter implements PulsarMessageStore {
 
-    public static String ROP_HANDLER_NAME = "RopServerCnxHandler";
-    private final int SEND_TIMEOUT_IN_SEC = 3;
-    private final int MAX_BATCH_MESSAGE_NUM = 20;
+    public static String ropHandlerName = "RopServerCnxHandler";
+    private final int sendTimeoutInSec = 3;
+    private final int maxBatchMessageNum = 20;
     private final BrokerService service;
     private final ConcurrentLongHashMap<Producer> producers;
     private final ConcurrentLongHashMap<Reader> readers;
@@ -98,8 +101,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         this.producers = new ConcurrentLongHashMap(8, 1);
         this.readers = new ConcurrentLongHashMap(8, 1);
         synchronized (ctx) {
-            if (ctx.pipeline().get(ROP_HANDLER_NAME) == null) {
-                ctx.pipeline().addLast(ROP_HANDLER_NAME, this);
+            if (ctx.pipeline().get(ropHandlerName) == null) {
+                ctx.pipeline().addLast(ropHandlerName, this);
             }
         }
     }
@@ -184,7 +187,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                                 .newProducer()
                                 .topic(pTopic)
                                 .producerName(producerGroup + CommonUtils.UNDERSCORE_CHAR + producerId)
-                                .sendTimeout(SEND_TIMEOUT_IN_SEC, TimeUnit.SECONDS)
+                                .sendTimeout(sendTimeoutInSec, TimeUnit.SECONDS)
                                 .enableBatching(false)
                                 .create();
                         Producer oldProducer = this.producers.put(producerId, producer);
@@ -225,8 +228,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                                 .topic(pTopic)
                                 .producerName(producerGroup + producerId)
                                 .batchingMaxPublishDelay(200, TimeUnit.MILLISECONDS)
-                                .sendTimeout(SEND_TIMEOUT_IN_SEC, TimeUnit.SECONDS)
-                                .batchingMaxMessages(MAX_BATCH_MESSAGE_NUM)
+                                .sendTimeout(sendTimeoutInSec, TimeUnit.SECONDS)
+                                .batchingMaxMessages(maxBatchMessageNum)
                                 .enableBatching(true)
                                 .create();
                         Producer oldProducer = this.producers.put(producerId, putMsgProducer);
@@ -245,7 +248,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 batchMessageFutures.add(producer.sendAsync(item));
                 totoalBytesSize.getAndAdd(item.length);
             });
-            FutureUtil.waitForAll(batchMessageFutures).get(SEND_TIMEOUT_IN_SEC, TimeUnit.SECONDS);
+            FutureUtil.waitForAll(batchMessageFutures).get(sendTimeoutInSec, TimeUnit.SECONDS);
             StringBuilder sb = new StringBuilder();
             for (CompletableFuture<MessageId> f : batchMessageFutures) {
                 MessageIdImpl messageId = (MessageIdImpl) f.get();
@@ -446,7 +449,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                         messageList.add(message);
                     }
                 }
-                if(!messageList.isEmpty()) {
+                if (!messageList.isEmpty()) {
                     MessageIdImpl lastMsgId = (MessageIdImpl) messageList.get(messageList.size() - 1).getMessageId();
                     nextBeginOffset = MessageIdUtils.getOffset(lastMsgId.getLedgerId(), lastMsgId.getEntryId() + 1);
                 }
@@ -488,7 +491,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         return Math.abs(Joiner.on("/").join(tags).hashCode());
     }
 
-    static enum State {
+    enum State {
         Start,
         Connected,
         Failed,

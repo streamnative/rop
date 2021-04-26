@@ -18,6 +18,9 @@ import com.tencent.tdmq.handlers.rocketmq.inner.PullRequestHoldService;
 import java.util.Map;
 import org.apache.rocketmq.store.MessageArrivingListener;
 
+/**
+ * Notify message arriving listener.
+ */
 public class NotifyMessageArrivingListener implements MessageArrivingListener {
 
     private final PullRequestHoldService pullRequestHoldService;

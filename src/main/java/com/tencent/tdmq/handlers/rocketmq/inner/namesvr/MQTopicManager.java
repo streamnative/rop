@@ -56,16 +56,19 @@ import org.apache.pulsar.common.policies.data.RetentionPolicies;
 import org.apache.pulsar.common.policies.data.TenantInfo;
 import org.apache.rocketmq.common.TopicConfig;
 
+/**
+ * MQ topic manager.
+ */
 @Slf4j
 public class MQTopicManager extends TopicConfigManager implements NamespaceBundleOwnershipListener {
 
-    private final int MAX_CACHE_SIZE = 1024;
-    private final int MAX_CACHE_TIME_IN_SEC = 120;
+    private final int maxCacheSize = 1024;
+    private final int maxCacheTimeInSec = 120;
     //cache-key TopicName = {tenant/ns/topic}, Map key={partition id} nonPartitionedTopic, only one record in map.
     @Getter
     private final Cache<TopicName, Map<Integer, InetSocketAddress>> lookupCache = CacheBuilder
             .newBuilder()
-            .initialCapacity(MAX_CACHE_SIZE)
+            .initialCapacity(maxCacheSize)
             .build();
     private final int servicePort;
     private PulsarService pulsarService;
@@ -381,7 +384,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
     }
 
     /**
-     * if pulsar topic not exist, create pulsar topic, else update pulsar topic partition
+     * if pulsar topic not exist, create pulsar topic, else update pulsar topic partition.
      *
      * @param tc topic config
      */
@@ -424,7 +427,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
     }
 
     /**
-     * delete pulsar topic
+     * delete pulsar topic.
      *
      * @param topic rop topic name
      */
