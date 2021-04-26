@@ -181,7 +181,6 @@ public class ConsumerOffsetManager {
                 return offset;
             }
         }
-
         return -1L;
     }
 

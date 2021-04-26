@@ -302,7 +302,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
             log.info("pulsar lookup the topic of name = [{}].", tdmpTopicName);
             adminClient.lookups().lookupTopicAsync(tdmpTopicName);
         } catch (Exception e) {
-            log.warn("load system topic [{}] error.", tdmpTopicName, e);
+            log.warn("lookup topic [{}] error.", tdmpTopicName);
         }
     }
 

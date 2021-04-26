@@ -175,19 +175,27 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
 
         long producerId = buildPulsarProducerId(producerGroup, pTopic, this.remoteAddress.toString());
         try {
-            if (!this.producers.containsKey(producerId)) {
-                log.info("putMessage creatint producer[id={}] and channl=[{}].", producerId, ctx.channel());
-                Producer<byte[]> producer = this.service.pulsar().getClient()
-                        .newProducer()
-                        .topic(pTopic)
-                        .producerName(producerGroup + producerId)
-                        .sendTimeout(SEND_TIMEOUT_IN_SEC, TimeUnit.SECONDS)
-                        .enableBatching(false)
-                        .create();
-                this.producers.putIfAbsent(producerId, producer);
+            Producer<byte[]> producer = this.producers.get(producerId);
+            if (producer == null || !producer.isConnected()) {
+                log.info("putMessage creating producer[id={}] and channl=[{}].", producerId, ctx.channel());
+                synchronized (this.producers) {
+                    if (producer == null || !producer.isConnected()) {
+                        producer = this.service.pulsar().getClient()
+                                .newProducer()
+                                .topic(pTopic)
+                                .producerName(producerGroup + CommonUtils.UNDERSCORE_CHAR + producerId)
+                                .sendTimeout(SEND_TIMEOUT_IN_SEC, TimeUnit.SECONDS)
+                                .enableBatching(false)
+                                .create();
+                        Producer oldProducer = this.producers.put(producerId, producer);
+                        if (oldProducer != null) {
+                            oldProducer.closeAsync();
+                        }
+                    }
+                }
             }
             List<byte[]> body = this.entryFormatter.encode(messageInner, 1);
-            MessageIdImpl messageId = (MessageIdImpl) producers.get(producerId).send(body.get(0));
+            MessageIdImpl messageId = (MessageIdImpl) producer.send(body.get(0));
             AppendMessageResult appendMessageResult = new AppendMessageResult(AppendMessageStatus.PUT_OK);
             appendMessageResult.setMsgNum(1);
             appendMessageResult.setWroteBytes(body.get(0).length);
@@ -209,10 +217,9 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         long producerId = buildPulsarProducerId(producerGroup, pTopic, this.remoteAddress.toString());
         try {
             Producer putMsgProducer = this.producers.get(producerId);
-
-            if (putMsgProducer == null) {
+            if (putMsgProducer == null || !putMsgProducer.isConnected()) {
                 synchronized (this.producers) {
-                    if (putMsgProducer == null) {
+                    if (putMsgProducer == null || !putMsgProducer.isConnected()) {
                         log.info("putMessages create producer[id={}] successfully.", producerId);
                         putMsgProducer = this.service.pulsar().getClient().newProducer()
                                 .topic(pTopic)
@@ -222,7 +229,10 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                                 .batchingMaxMessages(MAX_BATCH_MESSAGE_NUM)
                                 .enableBatching(true)
                                 .create();
-                        this.producers.putIfAbsent(producerId, putMsgProducer);
+                        Producer oldProducer = this.producers.put(producerId, putMsgProducer);
+                        if (oldProducer != null) {
+                            oldProducer.closeAsync();
+                        }
                     }
                 }
             }
@@ -230,8 +240,9 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             List<CompletableFuture<MessageId>> batchMessageFutures = new ArrayList<>();
             List<byte[]> body = this.entryFormatter.encode(batchMessage, 1);
             AtomicInteger totoalBytesSize = new AtomicInteger(0);
+            final Producer producer = putMsgProducer;
             body.forEach(item -> {
-                batchMessageFutures.add(this.producers.get(producerId).sendAsync(item));
+                batchMessageFutures.add(producer.sendAsync(item));
                 totoalBytesSize.getAndAdd(item.length);
             });
             FutureUtil.waitForAll(batchMessageFutures).get(SEND_TIMEOUT_IN_SEC, TimeUnit.SECONDS);
@@ -433,7 +444,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         List<Message> messageList = new ArrayList<>();
         try {
             Reader reader = this.readers.get(readerId);
-            MessageId messageId = MessageIdUtils.getMessageId(nextBeginOffset);
+            MessageId messageId = MessageIdUtils.getMessageId(queueOffset);
             reader.seek(messageId);
             for (int i = 0; reader.hasMessageAvailable() && i < maxMsgNums; i++) {
                 Message message = reader.readNext(100, TimeUnit.MILLISECONDS);
@@ -441,6 +452,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                     messageList.add(message);
                 }
             }
+
         } catch (Exception e) {
             log.warn("retrieve message error, group = [{}], topic = [{}].", consumerGroup, topic);
         }
@@ -464,10 +476,6 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
 
     private long nextOffsetCorrection(long oldOffset, long newOffset) {
         long nextOffset = oldOffset;
-        // TODO: check the broker status
-//        if (this.getMessageStoreConfig().getBrokerRole() != BrokerRole.SLAVE || this.getMessageStoreConfig().isOffsetCheckInSlave()) {
-//            nextOffset = newOffset;
-//        }
         return nextOffset;
     }
 

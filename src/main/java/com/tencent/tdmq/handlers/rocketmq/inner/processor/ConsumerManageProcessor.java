@@ -17,9 +17,11 @@ package com.tencent.tdmq.handlers.rocketmq.inner.processor;
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
 import com.tencent.tdmq.handlers.rocketmq.inner.consumer.ConsumerGroupInfo;
 import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientGroupAndTopicName;
+import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientGroupName;
 import io.netty.channel.ChannelHandlerContext;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.common.consumer.ConsumeFromWhere;
 import org.apache.rocketmq.common.protocol.RequestCode;
 import org.apache.rocketmq.common.protocol.ResponseCode;
 import org.apache.rocketmq.common.protocol.header.GetConsumerListByGroupRequestHeader;
@@ -29,6 +31,7 @@ import org.apache.rocketmq.common.protocol.header.QueryConsumerOffsetRequestHead
 import org.apache.rocketmq.common.protocol.header.QueryConsumerOffsetResponseHeader;
 import org.apache.rocketmq.common.protocol.header.UpdateConsumerOffsetRequestHeader;
 import org.apache.rocketmq.common.protocol.header.UpdateConsumerOffsetResponseHeader;
+import org.apache.rocketmq.common.subscription.SubscriptionGroupConfig;
 import org.apache.rocketmq.remoting.common.RemotingHelper;
 import org.apache.rocketmq.remoting.exception.RemotingCommandException;
 import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
@@ -132,18 +135,29 @@ public class ConsumerManageProcessor implements NettyRequestProcessor {
             response.setCode(ResponseCode.SUCCESS);
             response.setRemark(null);
         } else {
-            long minOffset = this.brokerController.getConsumerOffsetManager()
-                    .getMinOffsetInQueue(new ClientGroupAndTopicName(requestHeader.getConsumerGroup(),
-                                    requestHeader.getTopic()),
-                            requestHeader.getQueueId());
-            if (minOffset <= 0) {
-                responseHeader.setOffset(0L);
-                response.setCode(ResponseCode.SUCCESS);
-                response.setRemark(null);
+            ConsumerGroupInfo consumerGroupInfo = this.brokerController.getConsumerManager()
+                    .getConsumerGroupInfo(requestHeader.getConsumerGroup());
+            if (consumerGroupInfo != null) {
+                if (consumerGroupInfo.getConsumeFromWhere() == ConsumeFromWhere.CONSUME_FROM_FIRST_OFFSET) {
+                    long minOffset = this.brokerController.getConsumerOffsetManager()
+                            .getMinOffsetInQueue(new ClientGroupAndTopicName(requestHeader.getConsumerGroup(),
+                                            requestHeader.getTopic()),
+                                    requestHeader.getQueueId());
+                    responseHeader.setOffset(minOffset);
+                    response.setCode(ResponseCode.SUCCESS);
+                    response.setRemark(null);
+                } else {
+                    long maxOffset = this.brokerController.getConsumerOffsetManager()
+                            .getMaxOffsetInQueue(new ClientGroupAndTopicName(requestHeader.getConsumerGroup(),
+                                            requestHeader.getTopic()),
+                                    requestHeader.getQueueId());
+                    responseHeader.setOffset(maxOffset);
+                    response.setCode(ResponseCode.SUCCESS);
+                    response.setRemark(null);
+                }
             } else {
-                responseHeader.setOffset(minOffset);
-                response.setCode(ResponseCode.SUCCESS);
-                response.setRemark(null);
+                response.setCode(ResponseCode.QUERY_NOT_FOUND);
+                response.setRemark("Not found, V3_0_6_SNAPSHOT maybe this group consumer boot first");
             }
         }
 

@@ -15,9 +15,6 @@
 package com.tencent.tdmq.handlers.rocketmq.inner;
 
 import com.google.common.base.Preconditions;
-import com.google.common.cache.Cache;
-import com.google.common.cache.CacheBuilder;
-import com.google.common.cache.RemovalListener;
 import com.tencent.tdmq.handlers.rocketmq.RocketMQServiceConfiguration;
 import com.tencent.tdmq.handlers.rocketmq.inner.format.RopEntryFormatter;
 import com.tencent.tdmq.handlers.rocketmq.inner.timer.SystemTimer;
@@ -29,6 +26,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import lombok.extern.slf4j.Slf4j;
@@ -66,7 +64,7 @@ public class ScheduleMessageService {
     private final RocketMQBrokerController rocketBroker;
     private final ServiceThread expirationReaper;
     private final Timer timer = new Timer();
-    private final Cache<String, Producer<byte[]>> sendBackProdcuer;
+    private final ConcurrentHashMap<String, Producer<byte[]>> sendBackProdcuer;
     private String scheduleTopicPrefix;
     private int maxDelayLevel;
     private String[] delayLevelArray;
@@ -80,13 +78,7 @@ public class ScheduleMessageService {
         this.delayLevelTable = new ConcurrentLongHashMap<>(config.getMaxDelayLevelNum(), 1);
         this.maxDelayLevel = config.getMaxDelayLevelNum();
         this.parseDelayLevel();
-        this.sendBackProdcuer = CacheBuilder.newBuilder()
-                .expireAfterAccess(PRODUCER_EXPIRED_TIME_SEC, TimeUnit.SECONDS)
-                .maximumSize(PRODUCER_CACHE_SIZE)
-                .initialCapacity(PRODUCER_CACHE_SIZE)
-                .removalListener((RemovalListener<String, Producer<byte[]>>) l -> {
-                    l.getValue().closeAsync();
-                }).build();
+        this.sendBackProdcuer = new ConcurrentHashMap<>();
         this.expirationReaper = new ServiceThread() {
             @Override
             public String getServiceName() {
@@ -146,7 +138,7 @@ public class ScheduleMessageService {
         if (this.started.compareAndSet(true, false)) {
             expirationReaper.shutdown();
             deliverDelayedMessageManager.forEach(DeliverDelayedMessageTimerTask::close);
-            sendBackProdcuer.invalidateAll();
+            sendBackProdcuer.values().stream().forEach(Producer::closeAsync);
         }
     }
 
@@ -182,7 +174,7 @@ public class ScheduleMessageService {
 
     class DeliverDelayedMessageTimerTask extends TimerTask {
 
-        private final static int PULL_MESSAGE_TIMEOUT_MS = 100;
+        private final static int PULL_MESSAGE_TIMEOUT_MS = 200;
         private final static int MAX_BATCH_SIZE = 2000;
         private final PulsarService pulsarService;
         private final long delayLevel;
@@ -228,7 +220,7 @@ public class ScheduleMessageService {
             try {
                 Preconditions.checkNotNull(this.delayedConsumer);
                 int i = 0;
-                while (i++ < MAX_BATCH_SIZE && timeoutTimer.size() < MAX_BATCH_SIZE) {
+                while (i++ < MAX_BATCH_SIZE && timeoutTimer.size() < MAX_BATCH_SIZE && !this.delayedConsumer.isConnected()) {
                     Message<byte[]> message = this.delayedConsumer
                             .receive(PULL_MESSAGE_TIMEOUT_MS, TimeUnit.MILLISECONDS);
                     if (message == null) {
@@ -252,10 +244,10 @@ public class ScheduleMessageService {
                                 RocketMQTopic rmqTopic = new RocketMQTopic(msgInner.getTopic());
                                 int partitionId = msgInner.getQueueId();
                                 String pTopic = rmqTopic.getPartitionName(partitionId);
-                                Producer<byte[]> producer = sendBackProdcuer.getIfPresent(pTopic);
-                                if (producer == null) {
+                                Producer<byte[]> producer = sendBackProdcuer.get(pTopic);
+                                if (producer == null || !producer.isConnected()) {
                                     synchronized (sendBackProdcuer) {
-                                        if (producer == null) {
+                                        if (producer == null || !producer.isConnected()) {
                                             try {
                                                 producer = pulsarService.getClient().newProducer()
                                                         .topic(pTopic)
@@ -267,7 +259,10 @@ public class ScheduleMessageService {
                                                 log.warn("create delayedMessageSender error.", e);
                                             }
                                         }
-                                        sendBackProdcuer.put(pTopic, producer);
+                                        Producer<byte[]> oldProducer = sendBackProdcuer.put(pTopic, producer);
+                                        if (oldProducer != null) {
+                                            oldProducer.closeAsync();
+                                        }
                                     }
                                 }
                                 producer.send(formatter.encode(msgInner, 1).get(0));
