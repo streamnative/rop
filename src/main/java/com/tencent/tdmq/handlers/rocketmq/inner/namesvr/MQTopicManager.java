@@ -413,12 +413,21 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
      * @param topic rop topic name
      */
     public void deleteTopic(final String topic) {
-        String pulsarTopicName = RocketMQTopic.getPulsarOrigNoDomainTopic(topic);
+        String fullTopicName = RocketMQTopic.getPulsarOrigNoDomainTopic(topic);
         try {
-            adminClient.topics().deletePartitionedTopic(pulsarTopicName, true);
+            PartitionedTopicMetadata topicMetadata = adminClient.topics().getPartitionedTopicMetadata(fullTopicName);
+            if (topicMetadata.partitions > 0) {
+                for (int i = 0; i < topicMetadata.partitions; i++) {
+                    adminClient.topics().delete(fullTopicName + PARTITIONED_TOPIC_SUFFIX + i);
+                }
+            } else {
+                log.warn("Topic {} not exist.", fullTopicName);
+            }
+//            adminClient.topics().deletePartitionedTopic(fullTopicName, true);
         } catch (Exception e) {
-            log.warn("Topic {} create or update partition failed", pulsarTopicName, e);
+            log.warn("Topic {} create or update partition failed", fullTopicName, e);
         }
+
     }
 
 }
