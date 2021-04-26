@@ -73,7 +73,7 @@ public class ConsumerManager {
 
         for (Entry<ClientGroupName, ConsumerGroupInfo> clientGroupNameConsumerGroupInfoEntry : this.consumerTable
                 .entrySet()) {
-            Entry<ClientGroupName, ConsumerGroupInfo> next = (Entry) clientGroupNameConsumerGroupInfoEntry;
+            Entry<ClientGroupName, ConsumerGroupInfo> next = clientGroupNameConsumerGroupInfoEntry;
             ConsumerGroupInfo info = next.getValue();
             boolean removed = info.doChannelCloseEvent(remoteAddr, channel);
             if (removed) {

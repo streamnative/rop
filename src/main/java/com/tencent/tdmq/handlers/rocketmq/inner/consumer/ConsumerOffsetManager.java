@@ -29,6 +29,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.TimeUnit;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bookkeeper.mledger.ManagedCursor;
@@ -265,23 +266,40 @@ public class ConsumerOffsetManager {
             synchronized (this) {
                 CompletableFuture<PersistentTopic> feature = new CompletableFuture<>();
                 TopicName pulsarTopicName = TopicName.get(groupAndTopic.getClientTopicName().getPulsarTopicName());
-                this.brokerController.getBrokerService().getTopic(pulsarTopicName.toString(), false)
-                        .whenComplete((t2, throwable) -> {
-                            if (throwable != null) {
-                                log.warn("getPulsarPersistentTopic error, topic=[{}].", pulsarTopicName.toString());
-                                feature.complete(null);
-                                return;
-                            }
-                            if (t2.isPresent()) {
-                                PersistentTopic topic = (PersistentTopic) t2.get();
-                                if (!this.pulsarTopicCache.containsKey(groupAndTopic)) {
-                                    this.pulsarTopicCache
-                                            .putIfAbsent(groupAndTopic.getClientTopicName(), new ConcurrentHashMap<>());
+                try {
+                    this.brokerController.getBrokerService().pulsar().getAdminClient().lookups()
+                            .lookupTopicAsync(pulsarTopicName.getPartition(partitionId).toString())
+                            .whenComplete((serviceUrl, throwable) -> {
+                                if (throwable != null) {
+                                    log.warn("getPulsarPersistentTopic error, topic=[{}].", pulsarTopicName.toString());
+                                    feature.complete(null);
+                                    return;
                                 }
-                                this.pulsarTopicCache.get(groupAndTopic).putIfAbsent(partitionId, topic);
-                                feature.complete(topic);
-                            }
-                        });
+                                this.brokerController.getBrokerService().getTopic(pulsarTopicName.toString(), false)
+                                        .whenComplete((topic, throwable2) -> {
+                                            if (throwable2 != null) {
+                                                log.warn("getPulsarPersistentTopic error, topic=[{}].",
+                                                        pulsarTopicName.toString());
+                                                feature.complete(null);
+                                                return;
+                                            }
+                                            if (topic.isPresent()) {
+                                                PersistentTopic pTopic = (PersistentTopic) topic.get();
+                                                if (!this.pulsarTopicCache.containsKey(groupAndTopic)) {
+                                                    this.pulsarTopicCache
+                                                            .putIfAbsent(groupAndTopic.getClientTopicName(),
+                                                                    new ConcurrentHashMap<>());
+                                                }
+                                                this.pulsarTopicCache.get(groupAndTopic)
+                                                        .putIfAbsent(partitionId, pTopic);
+                                                feature.complete(pTopic);
+                                            }
+                                        });
+                            });
+                    return feature.get(3, TimeUnit.SECONDS);
+                } catch (Exception e) {
+                    log.warn("lookup PersistentTopic[{}] error.", pulsarTopicName.getPartition(partitionId));
+                }
             }
         }
         return null;
@@ -296,28 +314,24 @@ public class ConsumerOffsetManager {
         offsetTable.forEach((groupAndTopic, offsetMap) -> {
             String pulsarTopic = groupAndTopic.getClientTopicName().getPulsarTopicName();
             String pulsarGroup = groupAndTopic.getClientGroupName().getPulsarGroupName();
-            if (!isSystemGroup(pulsarGroup)) {
+ /*           if (!isSystemGroup(pulsarGroup)) {
                 offsetMap.forEach((partitionId, offset) -> {
-                    PersistentTopic persistentTopic = getPulsarPersistentTopic(groupAndTopic, partitionId);
-                    if (persistentTopic != null) {
-                        PersistentSubscription subscription = persistentTopic.getSubscription(pulsarGroup);
-                        if (subscription == null) {
-                            try {
+                    try {
+                        PersistentTopic persistentTopic = getPulsarPersistentTopic(groupAndTopic, partitionId);
+                        if (persistentTopic != null) {
+                            PersistentSubscription subscription = persistentTopic.getSubscription(pulsarGroup);
+                            if (subscription == null) {
                                 subscription = (PersistentSubscription) persistentTopic
                                         .createSubscription(pulsarGroup, InitialPosition.Latest, false).get();
-                            } catch (Exception e) {
-                                log.warn("persist topic[{}] offset[{}] error.", groupAndTopic, offset);
                             }
+                            subscription.resetCursor(MessageIdUtils.getPosition(offset));
                         }
-                        subscription.resetCursor(MessageIdUtils.getPosition(offset));
+                    } catch (Exception e) {
+                        log.warn("persist topic[{}] offset[{}] error.", groupAndTopic, offset);
                     }
                 });
-            }
+            }*/
         });
-    }
-
-    public synchronized void start() {
-
     }
 
     private boolean isPulsarTopicCached(ClientGroupAndTopicName groupAndTopicName, int partitionId) {

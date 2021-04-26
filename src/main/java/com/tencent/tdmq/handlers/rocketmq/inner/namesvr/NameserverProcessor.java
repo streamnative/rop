@@ -134,7 +134,7 @@ public class NameserverProcessor implements NettyRequestProcessor {
         /*
          * 如果主题名和clusterName相同，返回集群中任意一个节点到客户端。这里为了兼容客户端创建主题操作
          */
-        if (clusterName.equals(requestHeader.getTopic()) || "TBW102".equals(requestHeader.getTopic())) {
+        if (clusterName.equals(requestHeader.getTopic())) {
             try {
                 PulsarAdmin adminClient = brokerController.getBrokerService().pulsar().getAdminClient();
                 List<String> brokers = adminClient.brokers().getActiveBrokers(clusterName);

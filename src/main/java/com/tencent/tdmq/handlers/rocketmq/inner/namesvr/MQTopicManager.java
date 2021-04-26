@@ -43,6 +43,7 @@ import org.apache.pulsar.broker.namespace.NamespaceBundleOwnershipListener;
 import org.apache.pulsar.broker.service.BrokerService;
 import org.apache.pulsar.broker.service.persistent.PersistentTopic;
 import org.apache.pulsar.client.admin.PulsarAdmin;
+import org.apache.pulsar.client.admin.PulsarAdminException;
 import org.apache.pulsar.client.admin.PulsarAdminException.ConflictException;
 import org.apache.pulsar.client.impl.Backoff;
 import org.apache.pulsar.client.impl.PulsarClientImpl;
@@ -105,6 +106,21 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
 
         createSysResource();
         this.pulsarService.getNamespaceService().addNamespaceBundleOwnershipListener(this);
+    }
+
+    @Override
+    public TopicConfig selectTopicConfig(String rmqTopicName) {
+        TopicConfig topicConfig = super.selectTopicConfig(rmqTopicName);
+        if (topicConfig == null) {
+            try {
+                String lookupTopic = RocketMQTopic.getPulsarOrigNoDomainTopic(rmqTopicName);
+                adminClient.lookups().lookupTopic(lookupTopic);
+                getTopicBrokerAddr(TopicName.get(lookupTopic));
+            } catch (PulsarAdminException e) {
+                log.info("selectTopicConfig rocketmq topic [{}].", rmqTopicName);
+            }
+        }
+        return super.selectTopicConfig(rmqTopicName);
     }
 
     public void shutdown() {

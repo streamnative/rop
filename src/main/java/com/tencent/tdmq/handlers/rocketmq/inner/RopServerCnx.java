@@ -38,15 +38,14 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.ReentrantLock;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang.exception.ExceptionUtils;
-import org.apache.pulsar.broker.PulsarServerException;
 import org.apache.pulsar.broker.service.BrokerService;
 import org.apache.pulsar.client.api.Message;
 import org.apache.pulsar.client.api.MessageId;
 import org.apache.pulsar.client.api.Producer;
-import org.apache.pulsar.client.api.PulsarClientException;
 import org.apache.pulsar.client.api.Reader;
 import org.apache.pulsar.client.impl.ClientCnx;
 import org.apache.pulsar.client.impl.MessageIdImpl;
@@ -86,6 +85,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
     private State state;
     private SystemClock systemClock = new SystemClock();
     private int localListenPort = 9876;
+    private final ReentrantLock readLock = new ReentrantLock();
 
     public RopServerCnx(RocketMQBrokerController brokerController, ChannelHandlerContext ctx) {
         this.brokerController = brokerController;
@@ -411,59 +411,60 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         } else if (queueOffset < minOffsetInQueue) {
             status = GetMessageStatus.OFFSET_TOO_SMALL;
             nextBeginOffset = minOffsetInQueue;
-        } else if (queueOffset >= maxOffsetInQueue) {
+        } else if (queueOffset > maxOffsetInQueue) {
             status = GetMessageStatus.OFFSET_OVERFLOW_ONE;
             nextBeginOffset = maxOffsetInQueue;
-        }
-
-        String ctxId = this.ctx.channel().id().asLongText();
-        long readerId = buildPulsarReaderId(consumerGroup, topic, ctxId);
-        RocketMQTopic rmqTopic = new RocketMQTopic(requestHeader.getTopic());
-        String pTopic = rmqTopic.getPartitionName(partitionId);
-        // 通过offset来取出要开始消费的messageId的位置
-        try {
-            if (!this.readers.containsKey(readerId)
-                    || !this.readers.get(readerId).isConnected()) {
-                Reader<byte[]> reader = this.service.pulsar().getClient().newReader()
-                        .topic(pTopic)
-                        .receiverQueueSize(100)
-                        .startMessageId(MessageId.latest)
-                        .readerName(consumerGroup + readerId)
-                        .create();
-                Reader oldReader = this.readers.put(readerId, reader);
-                if (oldReader != null) {
-                    oldReader.closeAsync();
-                }
-            }
-        } catch (PulsarServerException | PulsarClientException e) {
-            log.error("create new reader[{}] error: {}", consumerGroup, e);
-            getResult.setStatus(GetMessageStatus.NO_MATCHED_MESSAGE);
-            e.printStackTrace();
-        }
-
-        List<Message> messageList = new ArrayList<>();
-        try {
-            Reader reader = this.readers.get(readerId);
-            MessageId messageId = MessageIdUtils.getMessageId(queueOffset);
-            reader.seek(messageId);
-            for (int i = 0; reader.hasMessageAvailable() && i < maxMsgNums; i++) {
-                Message message = reader.readNext(100, TimeUnit.MILLISECONDS);
-                if (message != null) {
-                    messageList.add(message);
-                }
-            }
-
-        } catch (Exception e) {
-            log.warn("retrieve message error, group = [{}], topic = [{}].", consumerGroup, topic);
-        }
-
-        List<ByteBuffer> messagesBufferList = this.entryFormatter
-                .decodePulsarMessageResBuffer(messageList, messageFilter);
-        if (null != messagesBufferList && !messagesBufferList.isEmpty()) {
-            status = GetMessageStatus.FOUND;
-            getResult.setMessageBufferList(messagesBufferList);
         } else {
-            status = GetMessageStatus.OFFSET_FOUND_NULL;
+            String ctxId = this.ctx.channel().id().asLongText();
+            long readerId = buildPulsarReaderId(consumerGroup, topic, ctxId);
+            RocketMQTopic rmqTopic = new RocketMQTopic(requestHeader.getTopic());
+            String pTopic = rmqTopic.getPartitionName(partitionId);
+            // 通过offset来取出要开始消费的messageId的位置
+            List<Message> messageList = new ArrayList<>();
+            try {
+                readLock.lock();
+                if (!this.readers.containsKey(readerId)) {
+                    Reader<byte[]> reader = this.service.pulsar().getClient().newReader()
+                            .topic(pTopic)
+                            .receiverQueueSize(100)
+                            .startMessageId(MessageId.latest)
+                            .readerName(consumerGroup + readerId)
+                            .create();
+                    Reader oldReader = this.readers.put(readerId, reader);
+                    if (oldReader != null) {
+                        oldReader.closeAsync();
+                    }
+                }
+
+                Reader reader = this.readers.get(readerId);
+                MessageId messageId = MessageIdUtils.getMessageId(queueOffset);
+                reader.seek(messageId);
+                Message message = null;
+                for (int i = 0; reader.hasMessageAvailable() && i < maxMsgNums; i++) {
+                    message = reader.readNext(100, TimeUnit.MILLISECONDS);
+                    if (message != null) {
+                        messageList.add(message);
+                    }
+                }
+                if(!messageList.isEmpty()) {
+                    MessageIdImpl lastMsgId = (MessageIdImpl) messageList.get(messageList.size() - 1).getMessageId();
+                    nextBeginOffset = MessageIdUtils.getOffset(lastMsgId.getLedgerId(), lastMsgId.getEntryId() + 1);
+                }
+            } catch (Exception e) {
+                log.warn("retrieve message error, group = [{}], topic = [{}].", consumerGroup, topic);
+                e.printStackTrace();
+            } finally {
+                readLock.unlock();
+            }
+
+            List<ByteBuffer> messagesBufferList = this.entryFormatter
+                    .decodePulsarMessageResBuffer(messageList, messageFilter);
+            if (null != messagesBufferList && !messagesBufferList.isEmpty()) {
+                status = GetMessageStatus.FOUND;
+                getResult.setMessageBufferList(messagesBufferList);
+            } else {
+                status = GetMessageStatus.OFFSET_FOUND_NULL;
+            }
         }
 
         getResult.setMaxOffset(maxOffsetInQueue);

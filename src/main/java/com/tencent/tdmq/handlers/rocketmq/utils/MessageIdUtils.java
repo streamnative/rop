@@ -32,7 +32,7 @@ public class MessageIdUtils {
         // Combine ledger id and entry id to form offset
         checkArgument(ledgerId >= 0, "Expected ledgerId >= 0, but get " + ledgerId);
         //checkArgument(entryId >= 0, "Expected entryId >= 0, but get " + entryId);
-
+        entryId = entryId < 0 ? 0 : entryId;
         long offset = (ledgerId << (ENTRY_BITS + PARTITION_BITS) | (entryId
                 & ((1 << ENTRY_BITS) - 1) << PARTITION_BITS));
         return offset;
@@ -45,6 +45,7 @@ public class MessageIdUtils {
         checkArgument(partitionId < (1 << PARTITION_BITS),
                 "Expected batchIndex only take " + PARTITION_BITS + " bits, but it is " + partitionId);
 
+        entryId = entryId < 0 ? 0 : entryId;
         long offset =
                 (ledgerId << (ENTRY_BITS + PARTITION_BITS) | (entryId & ((1 << ENTRY_BITS) - 1) << PARTITION_BITS))
                         + partitionId;
