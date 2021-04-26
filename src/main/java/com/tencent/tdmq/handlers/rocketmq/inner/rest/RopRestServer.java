@@ -35,7 +35,7 @@ public class RopRestServer {
         ServletContextHandler context = new ServletContextHandler();
         context.setContextPath("/");
         server.setHandler(context);
-        context.addServlet(new ServletHolder(new NameserverServlet()), "/rocketmq/nsaddr");
+        context.addServlet(new ServletHolder(new NameserverServlet()), "/rocketmq/*");
         try {
             server.start();
         } catch (Exception e) {

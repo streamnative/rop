@@ -33,9 +33,7 @@ public class NameserverServlet extends HttpServlet {
         Writer writer = resp.getWriter();
 
         // TODO: hanmz 2021/4/26 根据host返回对应的broker列表
-        String remoteHost = req.getRemoteHost();
-
-        writer.write(remoteHost + "\n\r");
+        writer.write(req.getHeader("Host") + "\n\r");
 
     }
 
