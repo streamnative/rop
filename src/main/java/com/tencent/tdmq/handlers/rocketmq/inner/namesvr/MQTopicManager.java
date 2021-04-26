@@ -442,7 +442,8 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
             } else {
                 log.warn("Topic {} not exist.", fullTopicName);
             }
-//            adminClient.topics().deletePartitionedTopic(fullTopicName, true);
+            // 删除分区主题源主题，否者再次创建的主题的时候会查询到分区主题的一些元数据
+            adminClient.topics().deletePartitionedTopic(fullTopicName, true);
         } catch (Exception e) {
             log.warn("Topic {} create or update partition failed", fullTopicName, e);
         }

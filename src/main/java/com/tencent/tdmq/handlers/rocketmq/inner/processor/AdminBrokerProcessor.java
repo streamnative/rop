@@ -16,6 +16,7 @@ package com.tencent.tdmq.handlers.rocketmq.inner.processor;
 
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
 import com.tencent.tdmq.handlers.rocketmq.inner.consumer.ConsumerGroupInfo;
+import com.tencent.tdmq.handlers.rocketmq.inner.consumer.SubscriptionGroupManager;
 import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientGroupAndTopicName;
 import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientGroupName;
 import com.tencent.tdmq.handlers.rocketmq.utils.CommonUtils;
@@ -36,6 +37,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
@@ -75,6 +77,7 @@ import org.apache.rocketmq.common.protocol.body.ProducerConnection;
 import org.apache.rocketmq.common.protocol.body.QueryConsumeTimeSpanBody;
 import org.apache.rocketmq.common.protocol.body.QueryCorrectionOffsetBody;
 import org.apache.rocketmq.common.protocol.body.QueueTimeSpan;
+import org.apache.rocketmq.common.protocol.body.SubscriptionGroupWrapper;
 import org.apache.rocketmq.common.protocol.body.TopicList;
 import org.apache.rocketmq.common.protocol.body.UnlockBatchRequestBody;
 import org.apache.rocketmq.common.protocol.header.CloneGroupOffsetRequestHeader;
@@ -594,8 +597,18 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
             RemotingCommand request) throws RemotingCommandException {
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
 
-        // TODO: hanmz 2021/4/24 SubscriptionGroupManager add encode
-        String content = "" /*this.brokerController.getSubscriptionGroupManager().encode()*/;
+        SubscriptionGroupManager subscriptionGroupManager = this.brokerController.getSubscriptionGroupManager();
+
+        SubscriptionGroupWrapper subscriptionGroupWrapper = new SubscriptionGroupWrapper();
+        ConcurrentMap<String, SubscriptionGroupConfig> subscriptionGroupTable = new ConcurrentHashMap<>(1024);
+        subscriptionGroupManager.getSubscriptionGroupTable().forEach((clientGroupName, subscriptionGroupConfig) -> {
+            subscriptionGroupTable.putIfAbsent(clientGroupName.getRmqGroupName(), subscriptionGroupConfig);
+        });
+        subscriptionGroupWrapper.setSubscriptionGroupTable(subscriptionGroupTable);
+        subscriptionGroupWrapper.setDataVersion(subscriptionGroupManager.getDataVersion());
+
+        /*this.brokerController.getSubscriptionGroupManager().encode()*/
+        String content = subscriptionGroupWrapper.toJson();
         if (content != null && content.length() > 0) {
             try {
                 response.setBody(content.getBytes(MixAll.DEFAULT_CHARSET));
