@@ -98,7 +98,8 @@ public class CommonUtils {
         return UtilAll.bytes2string(input.array());
     }
 
-    public static String createMessageId(SocketAddress socketAddress, long transactionIdhashCode) {
+    public static String createMessageId(SocketAddress socketAddress,
+            int port, long transactionIdhashCode) {
         InetSocketAddress inetSocketAddress = (InetSocketAddress) socketAddress;
         int msgIDLength = inetSocketAddress.getAddress() instanceof Inet4Address ? 16 : 28;
         ByteBuffer byteBuffer = ByteBuffer.allocate(msgIDLength);

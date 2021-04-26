@@ -16,6 +16,7 @@ package com.tencent.tdmq.handlers.rocketmq.inner;
 
 import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
+import com.tencent.tdmq.handlers.rocketmq.RocketMQProtocolHandler;
 import com.tencent.tdmq.handlers.rocketmq.inner.consumer.RopGetMessageResult;
 import com.tencent.tdmq.handlers.rocketmq.inner.format.RopEntryFormatter;
 import com.tencent.tdmq.handlers.rocketmq.inner.format.RopMessageFilter;
@@ -84,9 +85,12 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
     private SocketAddress remoteAddress;
     private State state;
     private SystemClock systemClock = new SystemClock();
+    private int localListenPort = 9876;
 
     public RopServerCnx(RocketMQBrokerController brokerController, ChannelHandlerContext ctx) {
         this.brokerController = brokerController;
+        this.localListenPort =
+                RocketMQProtocolHandler.getListenerPort(brokerController.getServerConfig().getRocketmqListeners());
         this.service = brokerController.getBrokerService();
         this.ctx = ctx;
         this.remoteAddress = ctx.channel().remoteAddress();
@@ -187,7 +191,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             AppendMessageResult appendMessageResult = new AppendMessageResult(AppendMessageStatus.PUT_OK);
             appendMessageResult.setMsgNum(1);
             appendMessageResult.setWroteBytes(body.get(0).length);
-            appendMessageResult.setMsgId(CommonUtils.createMessageId(this.ctx.channel().localAddress(),
+            appendMessageResult.setMsgId(CommonUtils.createMessageId(this.ctx.channel().localAddress(), localListenPort,
                     MessageIdUtils.getOffset(messageId.getLedgerId(), messageId.getEntryId())));
             return new PutMessageResult(PutMessageStatus.PUT_OK, appendMessageResult);
         } catch (Exception ex) {
@@ -236,7 +240,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 MessageIdImpl messageId = (MessageIdImpl) f.get();
                 long ledgerId = messageId.getLedgerId();
                 long entryId = messageId.getEntryId();
-                String msgId = CommonUtils.createMessageId(this.ctx.channel().localAddress(),
+                String msgId = CommonUtils.createMessageId(this.ctx.channel().localAddress(), localListenPort,
                         MessageIdUtils.getOffset(ledgerId, entryId));
                 sb.append(msgId).append(",");
             }

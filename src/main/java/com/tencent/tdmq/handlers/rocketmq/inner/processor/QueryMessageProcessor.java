@@ -250,6 +250,7 @@ public class QueryMessageProcessor implements NettyRequestProcessor {
                         response.setRemark("Decode or encode msg has error :" + e.toString());
                     }
                 }
+                entry.release();
             }).exceptionally((ex)->{
                 log.error("query message from bookie or send message to client by id from bookie " +
                         "has " +
