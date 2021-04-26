@@ -443,10 +443,12 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 MessageId messageId = MessageIdUtils.getMessageId(queueOffset);
                 reader.seek(messageId);
                 Message message = null;
-                for (int i = 0; reader.hasMessageAvailable() && i < maxMsgNums; i++) {
-                    message = reader.readNext(100, TimeUnit.MILLISECONDS);
+                for (int i = 0; i < maxMsgNums; i++) {
+                    message = reader.readNext(200, TimeUnit.MILLISECONDS);
                     if (message != null) {
                         messageList.add(message);
+                    } else {
+                        break;
                     }
                 }
                 if (!messageList.isEmpty()) {
@@ -457,7 +459,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 log.warn("retrieve message error, group = [{}], topic = [{}].", consumerGroup, topic);
                 e.printStackTrace();
             } finally {
-                readLock.unlock();
+               readLock.unlock();
             }
 
             List<ByteBuffer> messagesBufferList = this.entryFormatter

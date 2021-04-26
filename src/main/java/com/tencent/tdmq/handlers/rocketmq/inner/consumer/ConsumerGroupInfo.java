@@ -79,12 +79,10 @@ public class ConsumerGroupInfo {
 
     public List<String> getAllClientId() {
         List<String> result = new ArrayList<>();
-
         for (Entry<Channel, ClientChannelInfo> entry : this.channelInfoTable.entrySet()) {
             ClientChannelInfo clientChannelInfo = entry.getValue();
             result.add(clientChannelInfo.getClientId());
         }
-
         return result;
     }
 

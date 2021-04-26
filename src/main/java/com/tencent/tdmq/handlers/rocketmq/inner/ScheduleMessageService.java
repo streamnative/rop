@@ -142,6 +142,7 @@ public class ScheduleMessageService {
             expirationReaper.shutdown();
             deliverDelayedMessageManager.forEach(DeliverDelayedMessageTimerTask::close);
             sendBackProdcuer.values().stream().forEach(Producer::closeAsync);
+            timer.cancel();
         }
     }
 
@@ -223,8 +224,8 @@ public class ScheduleMessageService {
             try {
                 Preconditions.checkNotNull(this.delayedConsumer);
                 int i = 0;
-                while (i++ < MAX_BATCH_SIZE && timeoutTimer.size() < MAX_BATCH_SIZE && !this.delayedConsumer
-                        .isConnected()) {
+                while (i++ < MAX_BATCH_SIZE && timeoutTimer.size() < MAX_BATCH_SIZE
+                        && ScheduleMessageService.this.isStarted()) {
                     Message<byte[]> message = this.delayedConsumer
                             .receive(PULL_MESSAGE_TIMEOUT_MS, TimeUnit.MILLISECONDS);
                     if (message == null) {
@@ -263,9 +264,11 @@ public class ScheduleMessageService {
                                                 log.warn("create delayedMessageSender error.", e);
                                             }
                                         }
-                                        Producer<byte[]> oldProducer = sendBackProdcuer.put(pTopic, producer);
-                                        if (oldProducer != null) {
-                                            oldProducer.closeAsync();
+                                        if (producer != null) {
+                                            Producer<byte[]> oldProducer = sendBackProdcuer.put(pTopic, producer);
+                                            if (oldProducer != null) {
+                                                oldProducer.closeAsync();
+                                            }
                                         }
                                     }
                                 }
@@ -281,6 +284,9 @@ public class ScheduleMessageService {
             } catch (Exception e) {
                 log.warn("DeliverDelayedMessageTimerTask[delayLevel={}] pull message exception.", this.delayLevel,
                         e);
+                if (!ScheduleMessageService.this.isStarted()) {
+                    Thread.interrupted();
+                }
             }
         }
 
