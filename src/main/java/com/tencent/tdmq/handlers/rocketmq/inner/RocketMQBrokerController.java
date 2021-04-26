@@ -325,12 +325,49 @@ public class RocketMQBrokerController {
                 this.endTransactionExecutor);
 
         /**
+         * NameserverProcessor
+         */
+        NameserverProcessor namesvrProcessor = new NameserverProcessor(this);
+        this.remotingServer.registerProcessor(RequestCode.PUT_KV_CONFIG, namesvrProcessor, this.adminBrokerExecutor);
+        this.remotingServer.registerProcessor(RequestCode.GET_KV_CONFIG, namesvrProcessor, this.adminBrokerExecutor);
+        this.remotingServer.registerProcessor(RequestCode.DELETE_KV_CONFIG, namesvrProcessor, this.adminBrokerExecutor);
+        this.remotingServer
+                .registerProcessor(RequestCode.QUERY_DATA_VERSION, namesvrProcessor, this.adminBrokerExecutor);
+        this.remotingServer.registerProcessor(RequestCode.REGISTER_BROKER, namesvrProcessor, this.adminBrokerExecutor);
+        this.remotingServer
+                .registerProcessor(RequestCode.UNREGISTER_BROKER, namesvrProcessor, this.adminBrokerExecutor);
+        this.remotingServer
+                .registerProcessor(RequestCode.GET_ROUTEINTO_BY_TOPIC, namesvrProcessor, this.adminBrokerExecutor);
+        this.remotingServer
+                .registerProcessor(RequestCode.GET_BROKER_CLUSTER_INFO, namesvrProcessor, this.adminBrokerExecutor);
+        this.remotingServer
+                .registerProcessor(RequestCode.WIPE_WRITE_PERM_OF_BROKER, namesvrProcessor, this.adminBrokerExecutor);
+        this.remotingServer.registerProcessor(RequestCode.GET_ALL_TOPIC_LIST_FROM_NAMESERVER, namesvrProcessor,
+                this.adminBrokerExecutor);
+        this.remotingServer
+                .registerProcessor(RequestCode.DELETE_TOPIC_IN_NAMESRV, namesvrProcessor, this.adminBrokerExecutor);
+        this.remotingServer
+                .registerProcessor(RequestCode.GET_KVLIST_BY_NAMESPACE, namesvrProcessor, this.adminBrokerExecutor);
+        this.remotingServer
+                .registerProcessor(RequestCode.GET_TOPICS_BY_CLUSTER, namesvrProcessor, this.adminBrokerExecutor);
+        this.remotingServer.registerProcessor(RequestCode.GET_SYSTEM_TOPIC_LIST_FROM_NS, namesvrProcessor,
+                this.adminBrokerExecutor);
+        this.remotingServer
+                .registerProcessor(RequestCode.GET_UNIT_TOPIC_LIST, namesvrProcessor, this.adminBrokerExecutor);
+        this.remotingServer
+                .registerProcessor(RequestCode.GET_HAS_UNIT_SUB_TOPIC_LIST, namesvrProcessor, this.adminBrokerExecutor);
+        this.remotingServer.registerProcessor(RequestCode.GET_HAS_UNIT_SUB_UNUNIT_TOPIC_LIST, namesvrProcessor,
+                this.adminBrokerExecutor);
+        this.remotingServer
+                .registerProcessor(RequestCode.UPDATE_NAMESRV_CONFIG, namesvrProcessor, this.adminBrokerExecutor);
+        this.remotingServer
+                .registerProcessor(RequestCode.GET_NAMESRV_CONFIG, namesvrProcessor, this.adminBrokerExecutor);
+
+        /**
          * Default
          */
         AdminBrokerProcessor adminProcessor = new AdminBrokerProcessor(this);
         this.remotingServer.registerDefaultProcessor(adminProcessor, this.adminBrokerExecutor);
-        NameserverProcessor namesvrProcessor = new NameserverProcessor(this);
-        this.remotingServer.registerDefaultProcessor(namesvrProcessor, this.adminBrokerExecutor);
     }
 
     public long headSlowTimeMills(BlockingQueue<Runnable> q) {
