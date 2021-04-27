@@ -35,7 +35,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.bookkeeper.mledger.ManagedCursor;
 import org.apache.bookkeeper.mledger.ManagedLedgerException;
 import org.apache.bookkeeper.mledger.impl.PositionImpl;
+import org.apache.pulsar.broker.service.persistent.PersistentSubscription;
 import org.apache.pulsar.broker.service.persistent.PersistentTopic;
+import org.apache.pulsar.common.api.proto.PulsarApi.CommandSubscribe.InitialPosition;
 import org.apache.pulsar.common.naming.TopicName;
 import org.apache.rocketmq.common.UtilAll;
 
@@ -315,7 +317,7 @@ public class ConsumerOffsetManager {
         offsetTable.forEach((groupAndTopic, offsetMap) -> {
             String pulsarTopic = groupAndTopic.getClientTopicName().getPulsarTopicName();
             String pulsarGroup = groupAndTopic.getClientGroupName().getPulsarGroupName();
- /*           if (!isSystemGroup(pulsarGroup)) {
+            if (!isSystemGroup(pulsarGroup)) {
                 offsetMap.forEach((partitionId, offset) -> {
                     try {
                         PersistentTopic persistentTopic = getPulsarPersistentTopic(groupAndTopic, partitionId);
@@ -331,7 +333,7 @@ public class ConsumerOffsetManager {
                         log.warn("persist topic[{}] offset[{}] error.", groupAndTopic, offset);
                     }
                 });
-            }*/
+            }
         });
     }
 

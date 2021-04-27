@@ -355,4 +355,10 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
             doc = "rocketmq max number of delayed level.\n"
     )
     private int maxDelayLevelNum = 16;
+
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
+            doc = "rocketmq rest server port.\n"
+    )
+    private int ropRestServerPort = 9888;
 }

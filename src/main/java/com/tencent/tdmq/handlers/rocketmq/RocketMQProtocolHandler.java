@@ -77,6 +77,7 @@ public class RocketMQProtocolHandler implements ProtocolHandler {
             // when loaded with PulsarService as NAR, `conf` will be type of ServiceConfiguration
             rocketmqConfig = ConfigurationUtils.create(conf.getProperties(), RocketMQServiceConfiguration.class);
         }
+
         this.bindAddress = ServiceConfigurationUtils.getDefaultOrConfiguredAddress(rocketmqConfig.getBindAddress());
         this.rocketMQBroker = new RocketMQBrokerController(rocketmqConfig);
         this.rocketMQBroker.initialize();

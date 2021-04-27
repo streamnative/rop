@@ -32,6 +32,7 @@ import com.tencent.tdmq.handlers.rocketmq.inner.processor.PullMessageProcessor;
 import com.tencent.tdmq.handlers.rocketmq.inner.processor.QueryMessageProcessor;
 import com.tencent.tdmq.handlers.rocketmq.inner.processor.SendMessageProcessor;
 import com.tencent.tdmq.handlers.rocketmq.inner.producer.ProducerManager;
+import com.tencent.tdmq.handlers.rocketmq.inner.rest.RopRestServer;
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.List;
@@ -147,6 +148,8 @@ public class RocketMQBrokerController {
         this.brokerStatsManager = new BrokerStatsManager(serverConfig.getBrokerName());
         this.remotingServer = new RocketMQRemoteServer(this.serverConfig, this.clientHousekeepingService);
         this.delayedMessageService = new ScheduleMessageService(this, serverConfig);
+
+        RopRestServer.start(serverConfig.getRopRestServerPort());
     }
 
     public boolean initialize() throws Exception {
