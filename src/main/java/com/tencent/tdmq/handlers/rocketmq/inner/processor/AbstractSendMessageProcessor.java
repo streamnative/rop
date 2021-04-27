@@ -16,6 +16,7 @@ package com.tencent.tdmq.handlers.rocketmq.inner.processor;
 
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
 import com.tencent.tdmq.handlers.rocketmq.inner.RopClientChannelCnx;
+import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientGroupName;
 import com.tencent.tdmq.handlers.rocketmq.inner.pulsar.PulsarMessageStore;
 import io.netty.channel.ChannelHandlerContext;
 import java.util.List;

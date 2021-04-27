@@ -87,7 +87,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
     private ChannelHandlerContext ctx;
     private SocketAddress remoteAddress;
     private State state;
-    private SystemClock systemClock = new SystemClock();
+    private final SystemClock systemClock = new SystemClock();
     private int localListenPort = 9876;
 
     public RopServerCnx(RocketMQBrokerController brokerController, ChannelHandlerContext ctx) {
@@ -117,8 +117,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         super.channelInactive(ctx);
         log.info("Closed connection from {}", remoteAddress);
         // Connection is gone, close the resources immediately
-        producers.values().forEach((producer) -> producer.closeAsync());
-        readers.values().forEach((reader) -> reader.closeAsync());
+        producers.values().forEach(Producer::closeAsync);
+        readers.values().forEach(Reader::closeAsync);
         producers.clear();
         readers.clear();
     }
@@ -281,6 +281,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             Reader<byte[]> topicReader = this.readers.get(partitionedTopic.hashCode());
             if (topicReader == null) {
                 synchronized (this.readers) {
+                    topicReader = this.readers.get(partitionedTopic.hashCode())
                     if (topicReader == null) {
                         topicReader = service.pulsar().getClient().newReader()
                                 .topic(partitionedTopic)
@@ -320,6 +321,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 try {
                     if (topicReader == null) {
                         synchronized (this.readers) {
+                            topicReader = this.readers.get(pTopic.toString().hashCode())
                             if (topicReader == null) {
                                 topicReader = service.pulsar().getClient()
                                         .newReader()
@@ -358,6 +360,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             Reader<byte[]> topicReader = this.readers.get(partitionedTopic.hashCode());
             if (topicReader == null) {
                 synchronized (this.readers) {
+                    topicReader = this.readers.get(partitionedTopic.hashCode())
                     if (topicReader == null) {
                         topicReader = service.pulsar().getClient().newReader()
                                 .topic(partitionedTopic)
@@ -483,8 +486,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
     }
 
     private long nextOffsetCorrection(long oldOffset, long newOffset) {
-        long nextOffset = oldOffset;
-        return nextOffset;
+        return oldOffset;
     }
 
     private long buildPulsarReaderId(String... tags) {
