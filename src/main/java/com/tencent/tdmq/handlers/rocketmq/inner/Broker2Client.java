@@ -270,7 +270,7 @@ public class Broker2Client {
 
                             consumerStatusTable.put(clientId, body.getMessageQueueTable());
                             log.info("[get-consumer-status] get consumer status success. topic={}, group={}, "
-                                            + "channelRemoteAddr={}", topic, group, clientId);
+                                    + "channelRemoteAddr={}", topic, group, clientId);
                         }
                     }
                 } catch (Exception e) {

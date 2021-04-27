@@ -97,7 +97,7 @@ public class ConsumerGroupInfo {
         final ClientChannelInfo info = this.channelInfoTable.remove(channel);
         if (info != null) {
             log.warn("NETTY EVENT: remove not active channel[{}] from ConsumerGroupInfo groupChannelTable, "
-                            + "consumer group: {}", info.toString(), groupName);
+                    + "consumer group: {}", info.toString(), groupName);
             return true;
         }
 

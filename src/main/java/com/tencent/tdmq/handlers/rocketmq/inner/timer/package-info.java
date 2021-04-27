@@ -14,6 +14,10 @@
  * Timer related classes.
  *
  * <p>The classes under this package are ported from Kafka.
+ *
+ * Timer related classes.
+ *
+ * <p>The classes under this package are ported from Kafka.
  */
 /**
  * Timer related classes.

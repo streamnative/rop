@@ -35,8 +35,8 @@ public class PullRequestHoldService extends ServiceThread {
     private final RocketMQBrokerController brokerController;
     private final SystemClock systemClock = new SystemClock();
 
-     // key       => topicName@partitionId
-     // topicName => tenant/ns/topicName
+    // key       => topicName@partitionId
+    // topicName => tenant/ns/topicName
     private ConcurrentMap<String, ManyPullRequest> pullRequestTable =
             new ConcurrentHashMap<>(1024);
 

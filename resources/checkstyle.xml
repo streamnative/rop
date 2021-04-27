@@ -30,9 +30,9 @@ page at http://checkstyle.sourceforge.net/config.html -->
 
     <module name="RegexpSingleline">
         <!-- Checks that TODOs don't have stuff in parenthesis, e.g., username. -->
-        <property name="format" value="((//.*)|(\*.*))TODO\(" />
-        <property name="message" value="TODO comments must not include usernames." />
-        <property name="severity" value="error" />
+        <property name="format" value="((//.*)|(\*.*))TODO\("/>
+        <property name="message" value="TODO comments must not include usernames."/>
+        <property name="severity" value="error"/>
     </module>
 
     <module name="RegexpSingleline">
@@ -49,7 +49,7 @@ page at http://checkstyle.sourceforge.net/config.html -->
 
     <!-- Prevent *Tests.java as tools may not pick them up -->
     <module name="RegexpOnFilename">
-        <property name="fileNamePattern" value=".*Tests\.java$" />
+        <property name="fileNamePattern" value=".*Tests\.java$"/>
     </module>
 
     <!-- Allow use of comment to suppress javadocstyle -->
@@ -59,7 +59,7 @@ page at http://checkstyle.sourceforge.net/config.html -->
         <property name="checkFormat" value="$1"/>
     </module>
     <module name="SuppressionFilter">
-        <property name="file" value="${checkstyle.suppressions.file}" default="suppressions.xml" />
+        <property name="file" value="${checkstyle.suppressions.file}" default="suppressions.xml"/>
     </module>
 
     <!-- Check that every module has a package-info.java -->
@@ -70,7 +70,7 @@ page at http://checkstyle.sourceforge.net/config.html -->
 
         <module name="TodoComment">
             <!-- Checks that disallowed strings are not used in comments.  -->
-            <property name="format" value="(FIXME)|(XXX)|(@author)" />
+            <property name="format" value="(FIXME)|(XXX)|(@author)"/>
         </module>
 
         <!--
@@ -83,7 +83,7 @@ page at http://checkstyle.sourceforge.net/config.html -->
             <!-- Checks for redundant import statements. -->
             <property name="severity" value="error"/>
             <message key="import.redundancy"
-                     value="Redundant import {0}."/>
+                    value="Redundant import {0}."/>
         </module>
 
         <module name="ImportOrder">
@@ -93,7 +93,7 @@ page at http://checkstyle.sourceforge.net/config.html -->
             <property name="sortStaticImportsAlphabetically" value="true"/>
             <property name="tokens" value="STATIC_IMPORT, IMPORT"/>
             <message key="import.ordering"
-                     value="Import {0} appears after other imports that it should precede"/>
+                    value="Import {0} appears after other imports that it should precede"/>
         </module>
 
         <module name="AvoidStarImport">
@@ -101,14 +101,16 @@ page at http://checkstyle.sourceforge.net/config.html -->
         </module>
 
         <module name="IllegalImport">
-            <property name="illegalPkgs" value="autovalue.shaded, avro.shaded, bk-shade, com.google.api.client.repackaged, com.google.appengine.repackaged, io.netty.util.internal"/>
+            <property name="illegalPkgs"
+                    value="autovalue.shaded, avro.shaded, bk-shade, com.google.api.client.repackaged, com.google.appengine.repackaged, io.netty.util.internal"/>
         </module>
 
         <module name="RedundantModifier">
             <!-- Checks for redundant modifiers on various symbol definitions.
               See: http://checkstyle.sourceforge.net/config_modifier.html#RedundantModifier
             -->
-            <property name="tokens" value="METHOD_DEF, VARIABLE_DEF, ANNOTATION_FIELD_DEF, INTERFACE_DEF, CLASS_DEF, ENUM_DEF"/>
+            <property name="tokens"
+                    value="METHOD_DEF, VARIABLE_DEF, ANNOTATION_FIELD_DEF, INTERFACE_DEF, CLASS_DEF, ENUM_DEF"/>
         </module>
 
         <!--
@@ -116,14 +118,15 @@ page at http://checkstyle.sourceforge.net/config.html -->
             code and some useful code. So we need to fall back to Regexp.
         -->
         <module name="RegexpSinglelineJava">
-            <property name="format" value="com\.google\.api\.client\.util\.(ByteStreams|Charsets|Collections2|Joiner|Lists|Maps|Objects|Preconditions|Sets|Strings|Throwables)"/>
+            <property name="format"
+                    value="com\.google\.api\.client\.util\.(ByteStreams|Charsets|Collections2|Joiner|Lists|Maps|Objects|Preconditions|Sets|Strings|Throwables)"/>
         </module>
 
         <module name="UnusedImports">
             <property name="severity" value="error"/>
             <property name="processJavadoc" value="true"/>
             <message key="import.unused"
-                     value="Unused import: {0}."/>
+                    value="Unused import: {0}."/>
         </module>
 
         <!--
@@ -194,7 +197,7 @@ page at http://checkstyle.sourceforge.net/config.html -->
             <property name="applyToPrivate" value="false"/>
             <property name="format" value="^([A-Z][A-Za-z0-9_]*|FLAG_.*)$"/>
             <message key="name.invalidPattern"
-                     value="Variable ''{0}'' should be in ALL_CAPS (if it is a constant) or be private (otherwise)."/>
+                    value="Variable ''{0}'' should be in ALL_CAPS (if it is a constant) or be private (otherwise)."/>
             <property name="severity" value="error"/>
         </module>
 
@@ -282,7 +285,7 @@ page at http://checkstyle.sourceforge.net/config.html -->
             -->
 
             <property name="ignorePattern"
-                      value="^(package .*;\s*)|(import .*;\s*)|( *\* .*https?://.*)$"/>
+                    value="^(package .*;\s*)|(import .*;\s*)|( *\* .*https?://.*)$"/>
         </module>
 
         <module name="LeftCurly">
@@ -314,7 +317,8 @@ page at http://checkstyle.sourceforge.net/config.html -->
         <!-- Checks for braces around if and else blocks -->
         <module name="NeedBraces">
             <property name="severity" value="error"/>
-            <property name="tokens" value="LITERAL_IF, LITERAL_ELSE, LITERAL_FOR, LITERAL_WHILE, LITERAL_DO"/>
+            <property name="tokens"
+                    value="LITERAL_IF, LITERAL_ELSE, LITERAL_FOR, LITERAL_WHILE, LITERAL_DO"/>
         </module>
 
         <module name="UpperEll">
@@ -329,7 +333,7 @@ page at http://checkstyle.sourceforge.net/config.html -->
             some other variants that we don't publicized to promote consistency).
             -->
             <property name="reliefPattern"
-                      value="fall through|Fall through|fallthru|Fallthru|falls through|Falls through|fallthrough|Fallthrough|No break|NO break|no break|continue on"/>
+                    value="fall through|Fall through|fallthru|Fallthru|falls through|Falls through|fallthrough|Fallthrough|No break|NO break|no break|continue on"/>
             <property name="severity" value="error"/>
         </module>
 

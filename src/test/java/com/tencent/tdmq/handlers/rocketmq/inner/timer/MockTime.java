@@ -33,6 +33,7 @@ public class MockTime implements Time {
     // using this class to detect bugs where this is incorrectly assumed to be true
     private final AtomicLong timeMs;
     private final AtomicLong highResTimeNs;
+
     public MockTime() {
         this(0);
     }

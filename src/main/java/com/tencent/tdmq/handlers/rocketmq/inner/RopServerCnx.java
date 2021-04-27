@@ -82,13 +82,13 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
     private final ConcurrentLongHashMap<Producer> producers;
     private final ConcurrentLongHashMap<Reader> readers;
     private final RopEntryFormatter entryFormatter = new RopEntryFormatter();
+    private final ReentrantLock readLock = new ReentrantLock();
     private RocketMQBrokerController brokerController;
     private ChannelHandlerContext ctx;
     private SocketAddress remoteAddress;
     private State state;
     private SystemClock systemClock = new SystemClock();
     private int localListenPort = 9876;
-    private final ReentrantLock readLock = new ReentrantLock();
 
     public RopServerCnx(RocketMQBrokerController brokerController, ChannelHandlerContext ctx) {
         this.brokerController = brokerController;
@@ -459,7 +459,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 log.warn("retrieve message error, group = [{}], topic = [{}].", consumerGroup, topic);
                 e.printStackTrace();
             } finally {
-               readLock.unlock();
+                readLock.unlock();
             }
 
             List<ByteBuffer> messagesBufferList = this.entryFormatter
