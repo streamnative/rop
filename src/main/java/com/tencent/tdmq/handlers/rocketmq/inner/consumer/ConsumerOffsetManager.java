@@ -215,7 +215,7 @@ public class ConsumerOffsetManager {
                     if (entry.getValue() >= minOffset) {
                         Long offset = queueMinOffset.get(entry.getKey());
                         if (offset == null) {
-                            queueMinOffset.put(entry.getKey(), Math.min(Long.MAX_VALUE, entry.getValue()));
+                            queueMinOffset.put(entry.getKey(), entry.getValue());
                         } else {
                             queueMinOffset.put(entry.getKey(), Math.min(entry.getValue(), offset));
                         }

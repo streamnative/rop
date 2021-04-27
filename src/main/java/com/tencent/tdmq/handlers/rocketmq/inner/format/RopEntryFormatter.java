@@ -56,7 +56,7 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
     private static final ThreadLocal<ByteBuffer> msgStoreItemMemoryThreadLocal = ThreadLocal
             .withInitial(() -> ByteBuffer.allocate(MAX_MESSAGE_SIZE));
 
-    public static MessageExt decodePulsarMessage(Message message) {
+    public static MessageExt decodePulsarMessage(Message<byte[]> message) {
         if (message instanceof TopicMessageImpl) {
             TopicMessageImpl topicMessage = (TopicMessageImpl) message;
             return CommonUtils.decode(ByteBuffer.wrap(message.getData()),
@@ -67,7 +67,7 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
         }
     }
 
-    public static ByteBuffer decodePulsarMessageResBuffer(Message message) {
+    public static ByteBuffer decodePulsarMessageResBuffer(Message<byte[]> message) {
         return CommonUtils.decode(message);
     }
 
@@ -110,7 +110,7 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
     }
 
     @Override
-    public List<MessageExt> decodePulsarMessage(List<Message> messages, Predicate predicate) {//Message in pulsar
+    public List<MessageExt> decodePulsarMessage(List<Message<byte[]>> messages, Predicate predicate) {//Message in pulsar
         if (predicate != null) {
             return messages.stream().filter((Predicate<Message>) predicate).map(RopEntryFormatter::decodePulsarMessage)
                     .collect(Collectors.toList());

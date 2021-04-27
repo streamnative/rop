@@ -201,9 +201,7 @@ public abstract class TopicConfigManager {
                             topicConfig = new TopicConfig(pulsarTopicName);
 
                             int queueNums =
-                                    clientDefaultTopicQueueNums > defaultTopicConfig.getWriteQueueNums()
-                                            ? defaultTopicConfig
-                                            .getWriteQueueNums() : clientDefaultTopicQueueNums;
+                                    Math.min(clientDefaultTopicQueueNums, defaultTopicConfig.getWriteQueueNums());
 
                             if (queueNums < 0) {
                                 queueNums = 0;

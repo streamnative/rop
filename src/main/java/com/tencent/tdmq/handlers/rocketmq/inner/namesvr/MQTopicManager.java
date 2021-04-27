@@ -194,7 +194,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                             + " throwable: ", topicName, waitTimeMs, th);
                     retFuture.complete(null);
                 } else {
-                    log.warn("getBroker for topic failed, will retry in {} ms. throwable: ",
+                    log.warn("getBroker for topic [{}] failed, will retry in [{}] ms. throwable: ",
                             topicName, waitTimeMs, th);
                     pulsarService.getExecutor().schedule(() -> lookupBroker(topicName, backoff, retFuture),
                             waitTimeMs,
@@ -231,7 +231,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
     }
 
     public void loadPersistentTopic(List<String> topics) {
-        topics.stream().forEach(topic -> {
+        topics.forEach(topic -> {
             try {
                 this.brokerService.getTopic(topic, false).whenComplete((t2, throwable) -> {
                     if (throwable != null) {
@@ -290,14 +290,14 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
 
     private void createSysResource() throws Exception {
         String cluster = config.getClusterName();
-        String metaTanant = config.getRocketmqMetadataTenant();
+        String metaTenant = config.getRocketmqMetadataTenant();
         String metaNs = config.getRocketmqMetadataNamespace();
-        String defaultTanant = config.getRocketmqTenant();
+        String defaultTenant = config.getRocketmqTenant();
         String defaultNs = config.getRocketmqNamespace();
 
         //create system namespace & default namespace
-        createPulsarNamespaceIfNeeded(brokerService, cluster, metaTanant, metaNs);
-        createPulsarNamespaceIfNeeded(brokerService, cluster, defaultTanant, defaultNs);
+        createPulsarNamespaceIfNeeded(brokerService, cluster, metaTenant, metaNs);
+        createPulsarNamespaceIfNeeded(brokerService, cluster, defaultTenant, defaultNs);
 
         //for test
         createPulsarNamespaceIfNeeded(brokerService, cluster, "test1", "InstanceTest");
@@ -315,7 +315,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
         }
     }
 
-    // tenant/ns/topicname
+    // tenant/ns/topicName
     public void lookupTopics(String tdmpTopicName) {
         try {
             log.info("pulsar lookup the topic of name = [{}].", tdmpTopicName);

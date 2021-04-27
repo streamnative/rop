@@ -49,7 +49,6 @@ public class DefaultConsumerIdsChangeListener implements ConsumerIdsChangeListen
                 }
                 break;
             case UNREGISTER:
-                break;
             case REGISTER:
                 break;
             default:

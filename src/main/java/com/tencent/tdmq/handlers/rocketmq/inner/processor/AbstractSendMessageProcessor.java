@@ -168,18 +168,18 @@ public abstract class AbstractSendMessageProcessor implements NettyRequestProces
         return response;
     }
 
-    protected RemotingCommand msgCheck(final ChannelHandlerContext ctx,
+    protected void msgCheck(final ChannelHandlerContext ctx,
             final SendMessageRequestHeader requestHeader, final RemotingCommand response) {
         if (!PermName.isWriteable(this.brokerController.getServerConfig().getBrokerPermission())
                 && this.brokerController.getTopicConfigManager().isOrderTopic(requestHeader.getTopic())) {
             response.setCode(ResponseCode.NO_PERMISSION);
             response.setRemark("the broker[" //+ this.brokerController.getBrokerConfig().getBrokerIP1()
                     + "] sending message is forbidden");
-            return response;
+            return;
         }
 
         if (!TopicValidator.validateTopic(requestHeader.getTopic(), response)) {
-            return response;
+            return;
         }
 
         TopicConfig topicConfig =
@@ -214,7 +214,7 @@ public abstract class AbstractSendMessageProcessor implements NettyRequestProces
                 response.setCode(ResponseCode.TOPIC_NOT_EXIST);
                 response.setRemark("topic[" + requestHeader.getTopic() + "] not exist, apply first please!"
                         + FAQUrl.suggestTodo(FAQUrl.APPLY_TOPIC_URL));
-                return response;
+                return;
             }
         }
 
@@ -230,9 +230,7 @@ public abstract class AbstractSendMessageProcessor implements NettyRequestProces
             response.setCode(ResponseCode.SYSTEM_ERROR);
             response.setRemark(errorInfo);
 
-            return response;
         }
-        return response;
     }
 
     public void registerSendMessageHook(List<SendMessageHook> sendMessageHookList) {

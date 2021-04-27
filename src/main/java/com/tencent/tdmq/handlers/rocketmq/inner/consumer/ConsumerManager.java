@@ -76,22 +76,21 @@ public class ConsumerManager {
 
         for (Entry<ClientGroupName, ConsumerGroupInfo> clientGroupNameConsumerGroupInfoEntry : this.consumerTable
                 .entrySet()) {
-            Entry<ClientGroupName, ConsumerGroupInfo> next = clientGroupNameConsumerGroupInfoEntry;
-            ConsumerGroupInfo info = next.getValue();
+            ConsumerGroupInfo info = clientGroupNameConsumerGroupInfoEntry.getValue();
             boolean removed = info.doChannelCloseEvent(remoteAddr, channel);
             if (removed) {
                 if (info.getChannelInfoTable().isEmpty()) {
-                    ConsumerGroupInfo remove = this.consumerTable.remove(next.getKey());
+                    ConsumerGroupInfo remove = this.consumerTable.remove(clientGroupNameConsumerGroupInfoEntry.getKey());
                     if (remove != null) {
                         log.info("unregister consumer ok, no any connection, and remove consumer group, {}",
-                                next.getKey().getPulsarGroupName());
+                                clientGroupNameConsumerGroupInfoEntry.getKey().getPulsarGroupName());
                         this.consumerIdsChangeListener
-                                .handle(ConsumerGroupEvent.UNREGISTER, next.getKey().getRmqGroupName(), new Object[0]);
+                                .handle(ConsumerGroupEvent.UNREGISTER, clientGroupNameConsumerGroupInfoEntry.getKey().getRmqGroupName());
                     }
                 }
 
                 this.consumerIdsChangeListener
-                        .handle(ConsumerGroupEvent.CHANGE, next.getKey().getRmqGroupName(),
+                        .handle(ConsumerGroupEvent.CHANGE, clientGroupNameConsumerGroupInfoEntry.getKey().getRmqGroupName(),
                                 info.getAllChannel());
             }
         }
@@ -180,7 +179,7 @@ public class ConsumerManager {
 
         for (Entry<ClientGroupName, ConsumerGroupInfo> clientGroupNameConsumerGroupInfoEntry : this.consumerTable
                 .entrySet()) {
-            Entry<ClientGroupName, ConsumerGroupInfo> entry = (Entry) clientGroupNameConsumerGroupInfoEntry;
+            Entry<ClientGroupName, ConsumerGroupInfo> entry = clientGroupNameConsumerGroupInfoEntry;
             ConcurrentMap<String, SubscriptionData> subscriptionTable = entry.getValue().getSubscriptionTable();
             if (subscriptionTable.containsKey(topic)) {
                 groups.add(entry.getKey().getRmqGroupName());
