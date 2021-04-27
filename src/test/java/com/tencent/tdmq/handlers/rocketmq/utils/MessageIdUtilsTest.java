@@ -14,10 +14,13 @@
 
 package com.tencent.tdmq.handlers.rocketmq.utils;
 
+import static com.tencent.tdmq.handlers.rocketmq.utils.MessageIdUtils.MAX_ROP_OFFSET;
+import static com.tencent.tdmq.handlers.rocketmq.utils.MessageIdUtils.MIN_ROP_OFFSET;
 import static com.tencent.tdmq.handlers.rocketmq.utils.MessageIdUtils.getMessageId;
 import static com.tencent.tdmq.handlers.rocketmq.utils.MessageIdUtils.getOffset;
 import static org.junit.Assert.assertEquals;
 
+import org.apache.pulsar.client.api.MessageId;
 import org.apache.pulsar.client.impl.MessageIdImpl;
 import org.junit.Test;
 
@@ -29,13 +32,20 @@ public class MessageIdUtilsTest {
     @Test
     public void testGetOffset() {
         long offset = getOffset(1897, -1);
-        assertEquals(124387327, offset);
+        assertEquals(124321792, offset);
         MessageIdImpl messageId = getMessageId(offset);
         assertEquals(1897, messageId.getLedgerId());
-        assertEquals(-1, messageId.getEntryId());
+        assertEquals(0, messageId.getEntryId());
     }
 
+    @Test
     public void testTestGetOffset() {
+        MessageIdImpl messageId = (MessageIdImpl) MessageId.latest;
+        long offset = getOffset(messageId.getLedgerId(), messageId.getEntryId());
+        assertEquals(offset, MAX_ROP_OFFSET);
+        messageId = (MessageIdImpl) MessageId.earliest;
+        offset = getOffset(messageId.getLedgerId(), messageId.getEntryId());
+        assertEquals(offset, MIN_ROP_OFFSET);
     }
 
     public void testGetMessageId() {

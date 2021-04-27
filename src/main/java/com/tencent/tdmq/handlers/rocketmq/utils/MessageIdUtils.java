@@ -14,8 +14,6 @@
 
 package com.tencent.tdmq.handlers.rocketmq.utils;
 
-import static com.google.common.base.Preconditions.checkArgument;
-
 import org.apache.bookkeeper.mledger.impl.PositionImpl;
 import org.apache.pulsar.client.impl.MessageIdImpl;
 
@@ -29,69 +27,30 @@ public class MessageIdUtils {
     // 0 bits for partitionId.
     public static final int LEDGER_BITS = 48;
     public static final int ENTRY_BITS = 16;
-    public static final int PARTITION_BITS = 0;
+    public static final long MAX_LEDGER_ID = (1L << (LEDGER_BITS -1)) - 1;
+    public static final long MAX_ENTRY_ID = (1L << ENTRY_BITS) - 1;
+    public static final long MAX_ROP_OFFSET = (MAX_LEDGER_ID << ENTRY_BITS) | MAX_ENTRY_ID;
+    public static final long MIN_ROP_OFFSET = 0L;
 
     public static final long getOffset(long ledgerId, long entryId) {
-        // Combine ledger id and entry id to form offset
-        checkArgument(ledgerId >= 0, "Expected ledgerId >= 0, but get " + ledgerId);
-        //checkArgument(entryId >= 0, "Expected entryId >= 0, but get " + entryId);
-        entryId = entryId < 0 ? 0 : entryId;
-        long offset = (ledgerId << (ENTRY_BITS + PARTITION_BITS) | (entryId
-                & ((1 << ENTRY_BITS) - 1) << PARTITION_BITS));
+        entryId = entryId < 0L ? 0L : entryId;
+        ledgerId = ledgerId < 0L ? 0L : ledgerId;
+        long offset = ((ledgerId & MAX_LEDGER_ID) << ENTRY_BITS) | (entryId & MAX_ENTRY_ID);
         return offset;
     }
 
     public static final long getOffset(long ledgerId, long entryId, int partitionId) {
-        checkArgument(ledgerId >= 0, "Expected ledgerId >= 0, but get " + ledgerId);
-        //checkArgument(entryId >= 0, "Expected entryId >= 0, but get " + entryId);
-        checkArgument(partitionId >= 0, "Expected batchIndex >= 0, but get " + partitionId);
-        checkArgument(partitionId < (1 << PARTITION_BITS),
-                "Expected batchIndex only take " + PARTITION_BITS + " bits, but it is " + partitionId);
-
-        entryId = entryId < 0 ? 0 : entryId;
-        long offset =
-                (ledgerId << (ENTRY_BITS + PARTITION_BITS) | (entryId & ((1 << ENTRY_BITS) - 1) << PARTITION_BITS))
-                        + partitionId;
-        return offset;
+        return getOffset(ledgerId, entryId);
     }
 
     public static final MessageIdImpl getMessageId(long offset) {
-        // De-multiplex ledgerId and entryId from offset
-        //checkArgument(offset > 0, "Expected Offset > 0, but get " + offset);
-
-        long ledgerId = offset >>> (ENTRY_BITS + PARTITION_BITS);
-        long entryId = (short) ((offset >>> PARTITION_BITS) & ((1 << ENTRY_BITS) - 1));
-        //int partitionId = (int) (offset & 0x2FF);
-
+        long ledgerId = (offset >>> ENTRY_BITS) & MAX_LEDGER_ID;
+        long entryId = offset & MAX_ENTRY_ID;
         return new MessageIdImpl(ledgerId, entryId, -1);
     }
 
     public static final PositionImpl getPosition(long offset) {
-        // De-multiplex ledgerId and entryId from offset
-        //checkArgument(offset >= 0, "Expected Offset >= 0, but get " + offset);
-        long ledgerId = offset >>> (ENTRY_BITS + PARTITION_BITS);
-        long entryId = (short) ((offset >>> PARTITION_BITS) & ((1 << ENTRY_BITS) - 1));
-
-        return new PositionImpl(ledgerId, entryId);
-    }
-
-    // get the batchIndex contained in offset.
-    public static final int getPartitionId(long offset) {
-        checkArgument(offset >= 0, "Expected Offset >= 0, but get " + offset);
-        return (int) (offset & ((1 << PARTITION_BITS) - 1));
-    }
-
-    // get next offset that after partition Id.
-    // In TopicConsumerManager, next read offset is updated after each entry reads,
-    // if it read a batched message previously, the next offset waiting read is next entry.
-    public static final long offsetAfterPartitionId(long offset) {
-        // De-multiplex ledgerId and entryId from offset
-        checkArgument(offset >= 0, "Expected Offset >= 0, but get " + offset);
-        int partitionId = getPartitionId(offset);
-        // this is a for
-        if (partitionId != 0) {
-            return (offset - partitionId) + (1 << PARTITION_BITS);
-        }
-        return offset;
+        MessageIdImpl messageId = getMessageId(offset);
+        return new PositionImpl(messageId.getLedgerId(), messageId.getEntryId());
     }
 }
