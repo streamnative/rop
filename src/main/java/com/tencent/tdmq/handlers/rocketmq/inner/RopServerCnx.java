@@ -182,6 +182,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             if (producer == null) {
                 log.info("putMessage creating producer[id={}] and channl=[{}].", producerId, ctx.channel());
                 synchronized (this.producers) {
+                    producer = this.producers.get(producerId);
                     if (producer == null) {
                         producer = this.service.pulsar().getClient()
                                 .newProducer()
@@ -208,6 +209,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         } catch (Exception ex) {
             PutMessageStatus status = PutMessageStatus.FLUSH_DISK_TIMEOUT;
             AppendMessageResult temp = new AppendMessageResult(AppendMessageStatus.UNKNOWN_ERROR);
+            log.warn("Put message error", ex);
             return new PutMessageResult(status, temp);
         }
     }

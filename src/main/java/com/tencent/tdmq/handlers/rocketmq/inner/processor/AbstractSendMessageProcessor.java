@@ -71,12 +71,15 @@ public abstract class AbstractSendMessageProcessor implements NettyRequestProces
                 .findChlInfo(groupName, ctx.channel());
         if (channelCnx == null) {
             synchronized (ctx) {
-                String clientId = ctx.channel().remoteAddress().toString() + "@" + System.currentTimeMillis();
-                channelCnx = new RopClientChannelCnx(this.brokerController, ctx, clientId, LanguageCode.JAVA, 0);
-                this.brokerController.getProducerManager().registerProducer(groupName, channelCnx);
+                channelCnx = (RopClientChannelCnx) this.brokerController.getProducerManager().findChlInfo(groupName, ctx.channel());
+                if (channelCnx == null) {
+                    String clientId = ctx.channel().remoteAddress().toString() + "@" + System.currentTimeMillis();
+                    channelCnx = new RopClientChannelCnx(this.brokerController, ctx, clientId, LanguageCode.JAVA, 0);
+                    this.brokerController.getProducerManager().registerProducer(groupName, channelCnx);
+                }
             }
         }
-        return channelCnx != null ? channelCnx.getServerCnx() : null;
+        return channelCnx.getServerCnx();
     }
 
     protected SendMessageContext buildMsgContext(ChannelHandlerContext ctx,
