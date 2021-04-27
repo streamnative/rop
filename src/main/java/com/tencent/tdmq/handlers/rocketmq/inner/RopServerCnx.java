@@ -244,11 +244,11 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
 
             List<CompletableFuture<MessageId>> batchMessageFutures = new ArrayList<>();
             List<byte[]> body = this.entryFormatter.encode(batchMessage, 1);
-            AtomicInteger totoalBytesSize = new AtomicInteger(0);
+            AtomicInteger totalBytesSize = new AtomicInteger(0);
             final Producer<byte[]> producer = putMsgProducer;
             body.forEach(item -> {
                 batchMessageFutures.add(producer.sendAsync(item));
-                totoalBytesSize.getAndAdd(item.length);
+                totalBytesSize.getAndAdd(item.length);
             });
             FutureUtil.waitForAll(batchMessageFutures).get(sendTimeoutInSec, TimeUnit.SECONDS);
             StringBuilder sb = new StringBuilder();
@@ -262,7 +262,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             }
             AppendMessageResult appendMessageResult = new AppendMessageResult(AppendMessageStatus.PUT_OK);
             appendMessageResult.setMsgNum(batchMessageFutures.size());
-            appendMessageResult.setWroteBytes(totoalBytesSize.get());
+            appendMessageResult.setWroteBytes(totalBytesSize.get());
             PutMessageResult putMessageResult = new PutMessageResult(PutMessageStatus.PUT_OK, appendMessageResult);
             appendMessageResult.setMsgId(sb.toString());
             return putMessageResult;
