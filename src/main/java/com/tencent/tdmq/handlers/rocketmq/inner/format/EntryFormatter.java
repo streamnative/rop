@@ -37,7 +37,7 @@ public interface EntryFormatter<T> {
 
     List<MessageExt> decodePulsarMessage(final List<Message> entries, Predicate predicate);
 
-    List<ByteBuffer> decodePulsarMessageResBuffer(final List<Message> entries, Predicate predicate);
+    List<ByteBuffer> decodePulsarMessageResBuffer(final List<Message<byte[]>> entries, Predicate predicate);
 
     default int parseNumMessages(final T record) {
         return 1;
