@@ -258,21 +258,17 @@ public abstract class AbstractSendMessageProcessor implements NettyRequestProces
                     final SendMessageRequestHeader requestHeader = parseRequestHeader(request);
 
                     String namespace = NamespaceUtil.getNamespaceFromResource(requestHeader.getTopic());
-                    if (null != requestHeader) {
-                        context.setNamespace(namespace);
-                        context.setProducerGroup(requestHeader.getProducerGroup());
-                        context.setTopic(requestHeader.getTopic());
-                        context.setBodyLength(request.getBody().length);
-                        context.setMsgProps(requestHeader.getProperties());
-                        context.setBornHost(RemotingHelper.parseChannelRemoteAddr(ctx.channel()));
-                        // context.setBrokerAddr(this.brokerController.getBrokerAddr());
-                        context.setQueueId(requestHeader.getQueueId());
-                    }
+                    context.setNamespace(namespace);
+                    context.setProducerGroup(requestHeader.getProducerGroup());
+                    context.setTopic(requestHeader.getTopic());
+                    context.setBodyLength(request.getBody().length);
+                    context.setMsgProps(requestHeader.getProperties());
+                    context.setBornHost(RemotingHelper.parseChannelRemoteAddr(ctx.channel()));
+                    // context.setBrokerAddr(this.brokerController.getBrokerAddr());
+                    context.setQueueId(requestHeader.getQueueId());
 
                     hook.sendMessageBefore(context);
-                    if (requestHeader != null) {
-                        requestHeader.setProperties(context.getMsgProps());
-                    }
+                    requestHeader.setProperties(context.getMsgProps());
                 } catch (Throwable e) {
                     // Ignore
                 }

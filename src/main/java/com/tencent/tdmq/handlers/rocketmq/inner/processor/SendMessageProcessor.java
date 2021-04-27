@@ -347,10 +347,10 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         String clusterName = this.brokerController.getServerConfig().getClusterName();
         MessageAccessor.putProperty(msgInner, MessageConst.PROPERTY_CLUSTER, clusterName);
         msgInner.setPropertiesString(MessageDecoder.messageProperties2String(msgInner.getProperties()));
-        PutMessageResult putMessageResult = null;
+        PutMessageResult putMessageResult;
         Map<String, String> oriProps = MessageDecoder.string2messageProperties(requestHeader.getProperties());
         String traFlag = oriProps.get(MessageConst.PROPERTY_TRANSACTION_PREPARED);
-        if (traFlag != null && Boolean.parseBoolean(traFlag)
+        if (Boolean.parseBoolean(traFlag)
                 && !(msgInner.getReconsumeTimes() > 0
                 && msgInner.getDelayTimeLevel() > 0)) { //For client under version 4.6.1
             putMessageResult = new PutMessageResult(PutMessageStatus.MESSAGE_ILLEGAL, null);

@@ -40,7 +40,7 @@ public class ProducerManager {
     private final ConcurrentHashMap<ClientGroupName, ConcurrentHashMap<Channel, ClientChannelInfo>> groupChannelTable =
             new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Channel> clientIdChannelTable = new ConcurrentHashMap<>();
-    private PositiveAtomicCounter positiveAtomicCounter = new PositiveAtomicCounter();
+    private final PositiveAtomicCounter positiveAtomicCounter = new PositiveAtomicCounter();
 
     public ProducerManager() {
     }
@@ -97,7 +97,7 @@ public class ProducerManager {
     }
 
     public synchronized void registerProducer(final String group, final ClientChannelInfo clientChannelInfo) {
-        ClientChannelInfo clientChannelInfoFound = null;
+        ClientChannelInfo clientChannelInfoFound;
         ClientGroupName clientGroupName = new ClientGroupName(group);
         ConcurrentHashMap<Channel, ClientChannelInfo> channelTable = this.groupChannelTable.get(clientGroupName);
         if (null == channelTable) {
@@ -136,18 +136,16 @@ public class ProducerManager {
         }
     }
 
-    public Channel getAvaliableChannel(String groupName) {
+    public Channel getAvailableChannel(String groupName) {
         if (groupName == null) {
             return null;
         }
         ClientGroupName clientGroupName = new ClientGroupName(groupName);
-        List<Channel> channelList = new ArrayList<>();
+        List<Channel> channelList;
         ConcurrentHashMap<Channel, ClientChannelInfo> channelClientChannelInfoHashMap = groupChannelTable
                 .get(clientGroupName);
         if (channelClientChannelInfoHashMap != null) {
-            for (Channel channel : channelClientChannelInfoHashMap.keySet()) {
-                channelList.add(channel);
-            }
+            channelList = new ArrayList<>(channelClientChannelInfoHashMap.keySet());
         } else {
             log.warn("Check transaction failed, channel table is empty. groupId={}", clientGroupName);
             return null;
