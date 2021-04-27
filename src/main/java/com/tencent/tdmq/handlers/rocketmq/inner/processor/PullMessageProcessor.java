@@ -362,8 +362,8 @@ public class PullMessageProcessor implements NettyRequestProcessor {
                         this.brokerController.getPullRequestHoldService()
                                 .suspendPullRequest(topic, queueId, pullRequest);
                         response = null;
-                        break;
                     }
+                    break;
                 case ResponseCode.PULL_RETRY_IMMEDIATELY:
                     break;
                 case ResponseCode.PULL_OFFSET_MOVED:

@@ -289,6 +289,7 @@ public abstract class AbstractSendMessageProcessor implements NettyRequestProces
                 requestHeaderV2 =
                         (SendMessageRequestHeaderV2) request
                                 .decodeCommandCustomHeader(SendMessageRequestHeaderV2.class);
+                break;
             case RequestCode.SEND_MESSAGE:
                 if (null == requestHeaderV2) {
                     requestHeader =
@@ -297,6 +298,7 @@ public abstract class AbstractSendMessageProcessor implements NettyRequestProces
                 } else {
                     requestHeader = SendMessageRequestHeaderV2.createSendMessageRequestHeaderV1(requestHeaderV2);
                 }
+                break;
             default:
                 break;
         }

@@ -1,4 +1,21 @@
 <?xml version="1.0" encoding="UTF-8"?>
+
+<!--
+
+    Licensed under the Apache License, Version 2.0 (the "License");
+    you may not use this file except in compliance with the License.
+    You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+
+-->
+
 <project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
         xmlns="http://maven.apache.org/POM/4.0.0"
         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
@@ -30,6 +47,7 @@
         <rocketmq.version>4.6.1</rocketmq.version>
         <!-- 目前使用的社区的最新官方版本 -->
         <tdmq.version>2.7.1</tdmq.version>
+        <license-maven-plugin.version>3.0.rc1</license-maven-plugin.version>
         <spotbugs-annotations.version>3.1.8</spotbugs-annotations.version>
         <maven-checkstyle-plugin.version>3.0.0</maven-checkstyle-plugin.version>
         <puppycrawl.checkstyle.version>6.19</puppycrawl.checkstyle.version>
@@ -37,6 +55,14 @@
         <maven.compiler.target>8</maven.compiler.target>
         <commons-lang.version>2.6</commons-lang.version>
     </properties>
+
+    <licenses>
+        <license>
+            <name>Apache License, Version 2.0</name>
+            <url>http://www.apache.org/licenses/LICENSE-2.0.txt</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
 
     <dependencies>
         <dependency>
@@ -316,6 +342,47 @@
             </plugin>
 
             <plugin>
+                <groupId>com.mycila</groupId>
+                <artifactId>license-maven-plugin</artifactId>
+                <version>${license-maven-plugin.version}</version>
+                <configuration>
+                    <header>resources/license.template</header>
+
+                    <excludes>
+                        <exclude>LICENSE</exclude>
+                        <exclude>NOTICE</exclude>
+                        <exclude>Jenkinsfile</exclude>
+                        <exclude>resources/license.template</exclude>
+                        <exclude>**/build/**</exclude>
+                        <exclude>**/ahc.properties</exclude>
+                        <exclude>**/.idea/**</exclude>
+                        <exclude>**/.github/**</exclude>
+                        <exclude>**/data/**</exclude>
+                        <exclude>**/logs/**</exclude>
+                        <exclude>**/test/resources/**</exclude>
+                    </excludes>
+                    <mapping>
+                        <proto>JAVADOC_STYLE</proto>
+                        <go>DOUBLESLASH_STYLE</go>
+                        <conf>SCRIPT_STYLE</conf>
+                        <ini>SCRIPT_STYLE</ini>
+                        <yaml>SCRIPT_STYLE</yaml>
+                        <tf>SCRIPT_STYLE</tf>
+                        <cfg>SCRIPT_STYLE</cfg>
+                        <Makefile>SCRIPT_STYLE</Makefile>
+                        <service>SCRIPT_STYLE</service>
+                        <cc>JAVADOC_STYLE</cc>
+                        <md>XML_STYLE</md>
+                        <txt>SCRIPT_STYLE</txt>
+                        <scss>JAVADOC_STYLE</scss>
+                        <Doxyfile>SCRIPT_STYLE</Doxyfile>
+                        <tfvars>SCRIPT_STYLE</tfvars>
+                        <kop>SCRIPT_STYLE</kop>
+                    </mapping>
+                </configuration>
+            </plugin>
+
+            <plugin>
                 <groupId>pl.project13.maven</groupId>
                 <artifactId>git-commit-id-plugin</artifactId>
                 <version>4.0.0</version>
@@ -342,25 +409,25 @@
                 </configuration>
             </plugin>
 
-            <!-- <plugin>
-                 <groupId>org.apache.maven.plugins</groupId>
-                 <artifactId>maven-antrun-plugin</artifactId>
-                 <executions>
-                     <execution>
-                         <phase>install</phase>
-                         <goals>
-                             <goal>run</goal>
-                         </goals>
-                         <configuration>
-                             <tasks>
-                                 <echo>copy protocol handler</echo>
-                                 <copy file="${basedir}/target/tdmq-protocol-handler-rocketmq-${project.version}.nar"
-                                         tofile="${basedir}/src/test/resources/test-protocol-handler.nar"/>
-                             </tasks>
-                         </configuration>
-                     </execution>
-                 </executions>
-             </plugin>-->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <phase>install</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <tasks>
+                                <echo>copy protocol handler</echo>
+                                <copy file="${basedir}/target/tdmq-protocol-handler-rocketmq-${project.version}.nar"
+                                        tofile="${basedir}/src/test/resources/test-protocol-handler.nar"/>
+                            </tasks>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
         </plugins>
     </build>
 

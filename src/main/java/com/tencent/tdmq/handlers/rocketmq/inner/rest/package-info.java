@@ -12,10 +12,4 @@
  * limitations under the License.
  */
 
-/**
- * Timer related classes.
- *
- * <p>The classes under this package are ported from Kafka.
- */
-
-package com.tencent.tdmq.handlers.rocketmq.inner.timer;
+package com.tencent.tdmq.handlers.rocketmq.inner.rest;

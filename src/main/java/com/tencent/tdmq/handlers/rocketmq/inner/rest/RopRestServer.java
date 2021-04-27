@@ -20,6 +20,9 @@ import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.servlet.ServletContextHandler;
 import org.eclipse.jetty.servlet.ServletHolder;
 
+/**
+ * Rop rest server.
+ */
 @Slf4j
 public class RopRestServer {
 
@@ -40,7 +43,8 @@ public class RopRestServer {
             server.start();
         } catch (Exception e) {
             log.error(
-                    "Failed to start HTTP server at port {}. Use \"-Drocketmq_rest_server_port=1234\" to change port number",
+                    "Failed to start HTTP server at port {}. Use \"-Drocketmq_rest_server_port=1234\" "
+                            + "to change port number",
                     port, e);
             System.exit(0);
         }
