@@ -83,11 +83,11 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
     private final ConcurrentLongHashMap<Reader<byte[]>> readers;
     private final RopEntryFormatter entryFormatter = new RopEntryFormatter();
     private final ReentrantLock readLock = new ReentrantLock();
+    private final SystemClock systemClock = new SystemClock();
     private RocketMQBrokerController brokerController;
     private ChannelHandlerContext ctx;
     private SocketAddress remoteAddress;
     private State state;
-    private final SystemClock systemClock = new SystemClock();
     private int localListenPort = 9876;
 
     public RopServerCnx(RocketMQBrokerController brokerController, ChannelHandlerContext ctx) {
@@ -281,7 +281,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             Reader<byte[]> topicReader = this.readers.get(partitionedTopic.hashCode());
             if (topicReader == null) {
                 synchronized (this.readers) {
-                    topicReader = this.readers.get(partitionedTopic.hashCode())
+                    topicReader = this.readers.get(partitionedTopic.hashCode());
                     if (topicReader == null) {
                         topicReader = service.pulsar().getClient().newReader()
                                 .topic(partitionedTopic)
@@ -321,7 +321,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 try {
                     if (topicReader == null) {
                         synchronized (this.readers) {
-                            topicReader = this.readers.get(pTopic.toString().hashCode())
+                            topicReader = this.readers.get(pTopic.toString().hashCode());
                             if (topicReader == null) {
                                 topicReader = service.pulsar().getClient()
                                         .newReader()
@@ -360,7 +360,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             Reader<byte[]> topicReader = this.readers.get(partitionedTopic.hashCode());
             if (topicReader == null) {
                 synchronized (this.readers) {
-                    topicReader = this.readers.get(partitionedTopic.hashCode())
+                    topicReader = this.readers.get(partitionedTopic.hashCode());
                     if (topicReader == null) {
                         topicReader = service.pulsar().getClient().newReader()
                                 .topic(partitionedTopic)

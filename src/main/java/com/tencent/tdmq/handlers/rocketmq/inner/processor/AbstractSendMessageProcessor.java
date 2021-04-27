@@ -16,7 +16,6 @@ package com.tencent.tdmq.handlers.rocketmq.inner.processor;
 
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
 import com.tencent.tdmq.handlers.rocketmq.inner.RopClientChannelCnx;
-import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientGroupName;
 import com.tencent.tdmq.handlers.rocketmq.inner.pulsar.PulsarMessageStore;
 import io.netty.channel.ChannelHandlerContext;
 import java.util.List;
@@ -72,7 +71,8 @@ public abstract class AbstractSendMessageProcessor implements NettyRequestProces
                 .findChlInfo(groupName, ctx.channel());
         if (channelCnx == null) {
             synchronized (ctx) {
-                channelCnx = (RopClientChannelCnx) this.brokerController.getProducerManager().findChlInfo(groupName, ctx.channel());
+                channelCnx = (RopClientChannelCnx) this.brokerController.getProducerManager()
+                        .findChlInfo(groupName, ctx.channel());
                 if (channelCnx == null) {
                     String clientId = ctx.channel().remoteAddress().toString() + "@" + System.currentTimeMillis();
                     channelCnx = new RopClientChannelCnx(this.brokerController, ctx, clientId, LanguageCode.JAVA, 0);
