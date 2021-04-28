@@ -15,6 +15,7 @@
 package com.tencent.tdmq.handlers.rocketmq.utils;
 
 import com.google.common.base.Preconditions;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.bookkeeper.mledger.impl.PositionImpl;
 import org.apache.pulsar.client.api.MessageId;
 import org.apache.pulsar.client.impl.MessageIdImpl;
@@ -22,14 +23,14 @@ import org.apache.pulsar.client.impl.MessageIdImpl;
 /**
  * MessageID utils class.
  */
+@Slf4j
 public class MessageIdUtils {
 
-    // use 48 bits for ledgerId,
-    // 16 bits for entryId,
+    // use 40 bits for ledgerId,
+    // 24 bits for entryId,
     // 0 bits for partitionId.
-    public static final int LEDGER_BITS = 48;
-    public static final int ENTRY_BITS = 16;
-
+    public static final int LEDGER_BITS = 40;
+    public static final int ENTRY_BITS = 24;
     public static final long MAX_LEDGER_ID = (1L << (LEDGER_BITS - 1)) - 1L;
     public static final long MAX_ENTRY_ID = (1L << ENTRY_BITS) - 1; // 65535 stand for the offset of -1, 65534 stand fo the max offset;
     public static final long MAX_ROP_OFFSET = (MAX_LEDGER_ID << ENTRY_BITS) | MAX_ENTRY_ID;
@@ -42,6 +43,9 @@ public class MessageIdUtils {
             return -1L;
         }else if (entryId == Long.MAX_VALUE && ledgerId == Long.MAX_VALUE) {
             return MAX_ROP_OFFSET;
+        }
+        if (entryId >= MAX_ENTRY_ID) {
+            log.info("=============> {} : {}", ledgerId, entryId);
         }
         Preconditions.checkArgument(ledgerId <= MAX_LEDGER_ID, "ledgerId has overflow in rop.");
         Preconditions.checkArgument(entryId < MAX_ENTRY_ID, "entryId has overflow in rop.");

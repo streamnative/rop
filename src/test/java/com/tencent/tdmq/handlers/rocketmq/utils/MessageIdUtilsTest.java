@@ -37,14 +37,14 @@ public class MessageIdUtilsTest {
         assertEquals(-1, messageId.getLedgerId());
         assertEquals(-1, messageId.getEntryId());
 
-        offset = getOffset(0x7FFFFFFFFFFFL, -1);
+        offset = getOffset(0x7FFFFFFFFFL, -1);
         messageId = getMessageId(offset);
-        assertEquals(0x7FFFFFFFFFFFL, messageId.getLedgerId());
+        assertEquals(0x7FFFFFFFFFL, messageId.getLedgerId());
         assertEquals(-1L, messageId.getEntryId());
 
-        offset = getOffset(0x7FFFFFFFFFFFL, -1);
+        offset = getOffset(0x7FFFFFFFFFL, -1);
         messageId = getMessageId(offset);
-        assertEquals(0x7FFFFFFFFFFFL, messageId.getLedgerId());
+        assertEquals(0x7FFFFFFFFFL, messageId.getLedgerId());
         assertEquals(-1L, messageId.getEntryId());
 
         offset = getOffset(1872L, -1);
