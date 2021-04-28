@@ -37,6 +37,7 @@ import org.apache.bookkeeper.mledger.ManagedLedgerException;
 import org.apache.bookkeeper.mledger.impl.PositionImpl;
 import org.apache.pulsar.broker.service.persistent.PersistentSubscription;
 import org.apache.pulsar.broker.service.persistent.PersistentTopic;
+import org.apache.pulsar.client.impl.Backoff;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandSubscribe.InitialPosition;
 import org.apache.pulsar.common.naming.TopicName;
 import org.apache.rocketmq.common.UtilAll;
@@ -269,36 +270,32 @@ public class ConsumerOffsetManager {
             synchronized (this) {
                 CompletableFuture<PersistentTopic> feature = new CompletableFuture<>();
                 TopicName pulsarTopicName = TopicName.get(groupAndTopic.getClientTopicName().getPulsarTopicName());
+
+                Backoff backoff = new Backoff(
+                        100, TimeUnit.MILLISECONDS,
+                        10, TimeUnit.SECONDS,
+                        10, TimeUnit.SECONDS
+                );
+                long waitTimeMs = backoff.next();
                 try {
-                    this.brokerController.getBrokerService().pulsar().getAdminClient().lookups()
-                            .lookupTopicAsync(pulsarTopicName.getPartition(partitionId).toString())
-                            .whenComplete((serviceUrl, throwable) -> {
-                                if (throwable != null) {
-                                    log.warn("getPulsarPersistentTopic error, topic=[{}].", pulsarTopicName.toString());
-                                    feature.complete(null);
-                                    return;
-                                }
-                                this.brokerController.getBrokerService().getTopic(pulsarTopicName.toString(), false)
-                                        .whenComplete((topic, throwable2) -> {
-                                            if (throwable2 != null) {
-                                                log.warn("getPulsarPersistentTopic error, topic=[{}].",
-                                                        pulsarTopicName.toString());
-                                                feature.complete(null);
-                                                return;
+                    if (backoff.isMandatoryStopMade()) {
+                        log.warn("Retry lookup topic {} failed, retried too many times {}, return null.",
+                                pulsarTopicName, waitTimeMs);
+                        retryLookup(pulsarTopicName, feature, groupAndTopic, partitionId);
+                    } else {
+                        log.warn("getBroker for topic [{}] failed, will retry in [{}] ms",
+                                pulsarTopicName, waitTimeMs);
+                        this.brokerController.getBrokerService().getPulsar().getExecutor()
+                                .schedule(() -> {
+                                            try {
+                                                retryLookup(pulsarTopicName, feature, groupAndTopic, partitionId);
+                                            } catch (Exception e) {
+                                                e.printStackTrace();
                                             }
-                                            if (topic.isPresent()) {
-                                                PersistentTopic pTopic = (PersistentTopic) topic.get();
-                                                if (!this.pulsarTopicCache.containsKey(groupAndTopic)) {
-                                                    this.pulsarTopicCache
-                                                            .putIfAbsent(groupAndTopic.getClientTopicName(),
-                                                                    new ConcurrentHashMap<>());
-                                                }
-                                                this.pulsarTopicCache.get(groupAndTopic)
-                                                        .putIfAbsent(partitionId, pTopic);
-                                                feature.complete(pTopic);
-                                            }
-                                        });
-                            });
+                                        },
+                                        waitTimeMs,
+                                        TimeUnit.MILLISECONDS);
+                    }
                     return feature.get(3, TimeUnit.SECONDS);
                 } catch (Exception e) {
                     log.warn("lookup PersistentTopic[{}] error.", pulsarTopicName.getPartition(partitionId));
@@ -306,6 +303,45 @@ public class ConsumerOffsetManager {
             }
         }
         return null;
+    }
+
+    private void retryLookup(TopicName pulsarTopicName,
+            CompletableFuture<PersistentTopic> feature, ClientGroupAndTopicName groupAndTopic, int partitionId)
+            throws Exception {
+
+        this.brokerController.getBrokerService().pulsar().getAdminClient().lookups()
+                .lookupTopicAsync(pulsarTopicName.getPartition(partitionId).toString())
+                .whenComplete((serviceUrl, throwable) -> {
+                    if (throwable != null) {
+                        log.warn("getPulsarPersistentTopic error, topic=[{}].",
+                                pulsarTopicName.toString());
+                        feature.complete(null);
+                        return;
+                    }
+                    this.brokerController.getBrokerService().getTopic(pulsarTopicName.toString(), false)
+                            .whenComplete((topic, throwable2) -> {
+                                if (throwable2 != null) {
+                                    log.warn("getPulsarPersistentTopic error, topic=[{}].",
+                                            pulsarTopicName.toString());
+                                    feature.complete(null);
+                                    return;
+                                }
+                                if (topic.isPresent()) {
+                                    PersistentTopic pTopic = (PersistentTopic) topic.get();
+                                    if (!this.pulsarTopicCache.containsKey(groupAndTopic)) {
+                                        this.pulsarTopicCache
+                                                .putIfAbsent(groupAndTopic.getClientTopicName(),
+                                                        new ConcurrentHashMap<>());
+                                    }
+                                    this.pulsarTopicCache.get(groupAndTopic)
+                                            .putIfAbsent(partitionId, pTopic);
+                                    feature.complete(pTopic);
+                                } else {
+                                    log.error("[{}] Topic not exist when get topic from BookKeeper.",
+                                            topic);
+                                }
+                            });
+                });
     }
 
     private boolean isSystemGroup(String groupName) {

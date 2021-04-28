@@ -424,6 +424,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                         .topic(pTopic)
                         .receiverQueueSize(maxMsgNums)
                         .startMessageId(startOffset)
+                        .startMessageIdInclusive()
                         .readerName(consumerGroup + readerId)
                         .create();
                 Reader<byte[]> oldReader = this.readers.put(readerId, reader);
@@ -462,10 +463,6 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         getResult.setStatus(status);
         getResult.setNextBeginOffset(nextBeginOffset);
         return getResult;
-    }
-
-    private long nextOffsetCorrection(long oldOffset, long newOffset) {
-        return oldOffset;
     }
 
     private long buildPulsarReaderId(String... tags) {
