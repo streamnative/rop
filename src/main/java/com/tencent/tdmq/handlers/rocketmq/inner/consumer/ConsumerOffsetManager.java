@@ -14,6 +14,7 @@
 
 package com.tencent.tdmq.handlers.rocketmq.inner.consumer;
 
+import com.google.common.util.concurrent.Uninterruptibles;
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
 import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientGroupAndTopicName;
 import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientGroupName;
@@ -276,29 +277,25 @@ public class ConsumerOffsetManager {
                         10, TimeUnit.SECONDS,
                         10, TimeUnit.SECONDS
                 );
-                long waitTimeMs = backoff.next();
-                try {
+
+                while (true) {
+                    long waitTimeMs = backoff.next();
+
                     if (backoff.isMandatoryStopMade()) {
                         log.warn("Retry lookup topic {} failed, retried too many times {}, return null.",
                                 pulsarTopicName, waitTimeMs);
-                        retryLookup(pulsarTopicName, feature, groupAndTopic, partitionId);
+                        break;
                     } else {
-                        log.warn("getBroker for topic [{}] failed, will retry in [{}] ms",
-                                pulsarTopicName, waitTimeMs);
-                        this.brokerController.getBrokerService().getPulsar().getExecutor()
-                                .schedule(() -> {
-                                            try {
-                                                retryLookup(pulsarTopicName, feature, groupAndTopic, partitionId);
-                                            } catch (Exception e) {
-                                                e.printStackTrace();
-                                            }
-                                        },
-                                        waitTimeMs,
-                                        TimeUnit.MILLISECONDS);
+                        try {
+                            retryLookup(pulsarTopicName, feature, groupAndTopic, partitionId);
+                            return feature.get(3, TimeUnit.SECONDS);
+                        } catch (Exception e) {
+                            log.warn("getBroker for topic [{}] failed, will retry in [{}] ms",
+                                    pulsarTopicName, waitTimeMs);
+                            Uninterruptibles.sleepUninterruptibly(waitTimeMs, TimeUnit.MILLISECONDS);
+                            e.printStackTrace();
+                        }
                     }
-                    return feature.get(3, TimeUnit.SECONDS);
-                } catch (Exception e) {
-                    log.warn("lookup PersistentTopic[{}] error.", pulsarTopicName.getPartition(partitionId));
                 }
             }
         }
