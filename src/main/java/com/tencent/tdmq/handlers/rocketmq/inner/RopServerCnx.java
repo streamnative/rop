@@ -20,7 +20,6 @@ import com.tencent.tdmq.handlers.rocketmq.RocketMQProtocolHandler;
 import com.tencent.tdmq.handlers.rocketmq.inner.consumer.RopGetMessageResult;
 import com.tencent.tdmq.handlers.rocketmq.inner.format.RopEntryFormatter;
 import com.tencent.tdmq.handlers.rocketmq.inner.format.RopMessageFilter;
-import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientGroupAndTopicName;
 import com.tencent.tdmq.handlers.rocketmq.inner.pulsar.PulsarMessageStore;
 import com.tencent.tdmq.handlers.rocketmq.utils.CommonUtils;
 import com.tencent.tdmq.handlers.rocketmq.utils.MessageIdUtils;
@@ -182,8 +181,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             if (producer == null) {
                 log.info("putMessage creating producer[id={}] and channl=[{}].", producerId, ctx.channel());
                 synchronized (this.producers) {
-                    producer = this.producers.get(producerId);
-                    if (producer == null) {
+                    if (this.producers.get(producerId) == null) {
                         producer = this.service.pulsar().getClient()
                                 .newProducer()
                                 .topic(pTopic)
@@ -304,31 +302,30 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
     }
 
     @Override
-    public MessageExt lookMessageByMessageId(String partitionedTopic, long offset) {
-        Preconditions.checkNotNull(partitionedTopic, "topic mustn't be null");
-        MessageIdImpl messageId = MessageIdUtils.getMessageId(offset);
+    public MessageExt lookMessageByMessageId(String nonPartitionedTopic, long offset) {
+        Preconditions.checkNotNull(nonPartitionedTopic, "topic mustn't be null");
+        MessageIdImpl messageId = MessageIdUtils.getMessageId(offset - 1);
         try {
-            RocketMQTopic rocketMQTopic = new RocketMQTopic(partitionedTopic);
+            RocketMQTopic rocketMQTopic = new RocketMQTopic(nonPartitionedTopic);
             TopicName tempTopic = rocketMQTopic.getPulsarTopicName();
             Map<Integer, InetSocketAddress> brokerAddr = this.brokerController.getTopicConfigManager()
                     .getTopicBrokerAddr(tempTopic);
 
             AtomicReference<Message<byte[]>> reference = new AtomicReference<>(null);
-
             for (Integer partitionId : brokerAddr.keySet()) {
                 TopicName pTopic = tempTopic.getPartition(partitionId);
-                Reader<byte[]> topicReader = this.readers.get(pTopic.toString().hashCode());
+                int readerId = pTopic.toString().hashCode();
+                Reader<byte[]> topicReader = this.readers.get(readerId);
                 try {
                     if (topicReader == null) {
                         synchronized (this.readers) {
-                            topicReader = this.readers.get(pTopic.toString().hashCode());
-                            if (topicReader == null) {
+                            if (this.readers.get(readerId) == null) {
                                 topicReader = service.pulsar().getClient()
                                         .newReader()
-                                        .startMessageId(MessageId.latest)
+                                        .startMessageId(messageId)
                                         .topic(pTopic.toString())
                                         .create();
-                                this.readers.put(pTopic.toString().hashCode(), topicReader);
+                                this.readers.put(readerId, topicReader);
                             }
                         }
                     }
@@ -336,7 +333,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                     synchronized (topicReader) {
                         topicReader.seek(messageId);
                         Message<byte[]> message = topicReader.readNext(1000, TimeUnit.MILLISECONDS);
-                        if (message != null) {
+                        if (message != null && message.getMessageId().equals(messageId)) {
                             reference.set(message);
                             break;
                         }
@@ -349,7 +346,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 return this.entryFormatter.decodePulsarMessage(Collections.singletonList(reference.get()), null).get(0);
             }
         } catch (Exception ex) {
-            log.warn("lookMessageByMessageId message[topic={}, msgId={}] error.", partitionedTopic, messageId);
+            log.warn("lookMessageByMessageId message[topic={}, msgId={}] error.", nonPartitionedTopic, messageId);
         }
         return null;
     }
@@ -403,14 +400,11 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             return getResult;
         }
 
-        ClientGroupAndTopicName clientGroupName = new ClientGroupAndTopicName(consumerGroup, topic);
         MessageIdImpl startOffset;
         GetMessageStatus status = GetMessageStatus.NO_MESSAGE_IN_QUEUE;
         if (queueOffset <= MessageIdUtils.MIN_ROP_OFFSET) {
-            status = GetMessageStatus.NO_MESSAGE_IN_QUEUE;
             startOffset = (MessageIdImpl) MessageId.earliest;
-        } else if (queueOffset >= MessageIdUtils.MIN_ROP_OFFSET) {
-            status = GetMessageStatus.OFFSET_OVERFLOW_ONE;
+        } else if (queueOffset >= MessageIdUtils.MAX_ROP_OFFSET) {
             startOffset = (MessageIdImpl) MessageId.latest;
         } else {
             startOffset = MessageIdUtils.getMessageId(queueOffset);
@@ -429,11 +423,10 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 Reader<byte[]> reader = this.service.pulsar().getClient().newReader()
                         .topic(pTopic)
                         .receiverQueueSize(100)
-                        .startMessageId(MessageId.latest)
+                        .startMessageId(startOffset)
                         .readerName(consumerGroup + readerId)
                         .create();
                 Reader oldReader = this.readers.put(readerId, reader);
-                reader.seek(startOffset);
                 if (oldReader != null) {
                     oldReader.closeAsync();
                 }
@@ -444,13 +437,10 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 Message message = reader.readNext(200, TimeUnit.MILLISECONDS);
                 if (message != null) {
                     messageList.add(message);
+                    nextBeginOffset = MessageIdUtils.getOffset((MessageIdImpl) message.getMessageId());
                 } else {
                     break;
                 }
-            }
-            if (!messageList.isEmpty()) {
-                MessageIdImpl lastMsgId = (MessageIdImpl) messageList.get(messageList.size() - 1).getMessageId();
-                nextBeginOffset = MessageIdUtils.getOffset(lastMsgId.getLedgerId(), lastMsgId.getEntryId() + 1);
             }
         } catch (Exception e) {
             log.warn("retrieve message error, group = [{}], topic = [{}].", consumerGroup, topic);
@@ -467,9 +457,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         } else {
             status = GetMessageStatus.OFFSET_FOUND_NULL;
         }
-
         getResult.setMaxOffset(MessageIdUtils.MAX_ROP_OFFSET);
-        getResult.setMinOffset(MessageIdUtils.MIN_ROP_OFFSET);
+        getResult.setMinOffset(requestHeader.getCommitOffset());
         getResult.setStatus(status);
         getResult.setNextBeginOffset(nextBeginOffset);
         return getResult;
