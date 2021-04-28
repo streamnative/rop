@@ -80,17 +80,20 @@ public class ConsumerManager {
             boolean removed = info.doChannelCloseEvent(remoteAddr, channel);
             if (removed) {
                 if (info.getChannelInfoTable().isEmpty()) {
-                    ConsumerGroupInfo remove = this.consumerTable.remove(clientGroupNameConsumerGroupInfoEntry.getKey());
+                    ConsumerGroupInfo remove =
+                            this.consumerTable.remove(clientGroupNameConsumerGroupInfoEntry.getKey());
                     if (remove != null) {
                         log.info("unregister consumer ok, no any connection, and remove consumer group, {}",
                                 clientGroupNameConsumerGroupInfoEntry.getKey().getPulsarGroupName());
                         this.consumerIdsChangeListener
-                                .handle(ConsumerGroupEvent.UNREGISTER, clientGroupNameConsumerGroupInfoEntry.getKey().getRmqGroupName());
+                                .handle(ConsumerGroupEvent.UNREGISTER,
+                                        clientGroupNameConsumerGroupInfoEntry.getKey().getRmqGroupName());
                     }
                 }
 
                 this.consumerIdsChangeListener
-                        .handle(ConsumerGroupEvent.CHANGE, clientGroupNameConsumerGroupInfoEntry.getKey().getRmqGroupName(),
+                        .handle(ConsumerGroupEvent.CHANGE,
+                                clientGroupNameConsumerGroupInfoEntry.getKey().getRmqGroupName(),
                                 info.getAllChannel());
             }
         }

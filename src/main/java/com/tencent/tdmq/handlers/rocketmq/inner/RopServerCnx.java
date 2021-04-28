@@ -428,20 +428,19 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             if (!this.readers.containsKey(readerId)) {
                 Reader<byte[]> reader = this.service.pulsar().getClient().newReader()
                         .topic(pTopic)
-                        .receiverQueueSize(100)
-                        .startMessageId(MessageId.latest)
+                        .receiverQueueSize(maxMsgNums)
+                        .startMessageId(startOffset)
                         .readerName(consumerGroup + readerId)
                         .create();
-                Reader oldReader = this.readers.put(readerId, reader);
-                reader.seek(startOffset);
+                Reader<byte[]> oldReader = this.readers.put(readerId, reader);
                 if (oldReader != null) {
                     oldReader.closeAsync();
                 }
             }
 
-            Reader reader = this.readers.get(readerId);
+            Reader<byte[]> reader = this.readers.get(readerId);
             for (int i = 0; i < maxMsgNums; i++) {
-                Message message = reader.readNext(200, TimeUnit.MILLISECONDS);
+                Message<byte[]> message = reader.readNext(200, TimeUnit.MILLISECONDS);
                 if (message != null) {
                     messageList.add(message);
                 } else {

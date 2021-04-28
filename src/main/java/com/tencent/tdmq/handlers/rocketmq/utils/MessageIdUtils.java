@@ -27,7 +27,7 @@ public class MessageIdUtils {
     // 0 bits for partitionId.
     public static final int LEDGER_BITS = 48;
     public static final int ENTRY_BITS = 16;
-    public static final long MAX_LEDGER_ID = (1L << (LEDGER_BITS -1)) - 1;
+    public static final long MAX_LEDGER_ID = (1L << (LEDGER_BITS - 1)) - 1;
     public static final long MAX_ENTRY_ID = (1L << ENTRY_BITS) - 1;
     public static final long MAX_ROP_OFFSET = (MAX_LEDGER_ID << ENTRY_BITS) | MAX_ENTRY_ID;
     public static final long MIN_ROP_OFFSET = 0L;

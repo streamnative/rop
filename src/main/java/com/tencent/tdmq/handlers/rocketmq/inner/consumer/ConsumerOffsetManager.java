@@ -315,7 +315,6 @@ public class ConsumerOffsetManager {
 
     public synchronized void persist() {
         offsetTable.forEach((groupAndTopic, offsetMap) -> {
-            String pulsarTopic = groupAndTopic.getClientTopicName().getPulsarTopicName();
             String pulsarGroup = groupAndTopic.getClientGroupName().getPulsarGroupName();
             if (!isSystemGroup(pulsarGroup)) {
                 offsetMap.forEach((partitionId, offset) -> {
