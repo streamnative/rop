@@ -234,7 +234,7 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
             category = CATEGORY_ROCKETMQ,
             doc = "Whether enable auto create topic, the default is true.\n"
     )
-    private boolean autoCreateTopicEnable = true;
+    private boolean autoCreateTopicEnable = false;
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
             doc = "Number of default topics queue.\n"
@@ -290,7 +290,7 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
             category = CATEGORY_ROCKETMQ,
             doc = "Whether enable auto create subscription group function.\n"
     )
-    private boolean autoCreateSubscriptionGroup = true;
+    private boolean autoCreateSubscriptionGroup = false;
 
     @FieldContext(
             category = CATEGORY_ROCKETMQ,

@@ -275,9 +275,11 @@ public class ScheduleMessageService {
                                 }
                                 producer.send(formatter.encode(msgInner, 1).get(0));
                                 delayedConsumer.acknowledge(message.getMessageId());
-                                log.info("DeliverDelayedMessageTimerTask[{}] send message [{}] to topic[{}] successfully.", new Object[]{
-                                        delayLevel, JSON.toJSONString(msgInner, true),pTopic
-                                });
+                                log.info(
+                                        "DeliverDelayedMessageTimerTask[{}] send message [{}] to topic[{}] "
+                                                + "successfully.",
+                                        delayLevel, JSON.toJSONString(msgInner, true),
+                                        pTopic);
                             } catch (Exception ex) {
                                 log.warn("create delayedMessageSender error.", ex);
                                 delayedConsumer.negativeAcknowledge(message.getMessageId());

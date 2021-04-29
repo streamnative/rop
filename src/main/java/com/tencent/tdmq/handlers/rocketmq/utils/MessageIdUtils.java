@@ -58,7 +58,8 @@ public class MessageIdUtils {
         entryId = entryId + 1L;
         partitionId = partitionId + 1;
         long offset =
-                ((ledgerId & MAX_LEDGER_ID) << (ENTRY_BITS + PARTITION_BITS)) | ((entryId & MAX_ENTRY_ID) << PARTITION_BITS) | (partitionId
+                ((ledgerId & MAX_LEDGER_ID) << (ENTRY_BITS + PARTITION_BITS)) | ((entryId & MAX_ENTRY_ID)
+                        << PARTITION_BITS) | (partitionId
                         & MAX_PARTITION_ID);
         return offset;
     }

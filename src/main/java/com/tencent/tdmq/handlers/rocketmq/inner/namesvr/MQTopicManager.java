@@ -324,7 +324,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
         }
     }
 
-    private String createPulsarTopic(TopicConfig tc) {
+    private void createPulsarTopic(TopicConfig tc) {
         String fullTopicName = tc.getTopicName();
         try {
             PartitionedTopicMetadata topicMetadata =
@@ -342,9 +342,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
             loadSysTopics(tc);
         } catch (Exception e) {
             log.warn("Topic {} concurrent creating and cause e: ", fullTopicName, e);
-            return fullTopicName;
         }
-        return fullTopicName;
     }
 
     private void createPulsarNamespaceIfNeeded(BrokerService service, String cluster, String tenant, String ns)
