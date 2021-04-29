@@ -297,39 +297,32 @@ public class ConsumerOffsetManager {
             CompletableFuture<PersistentTopic> feature, ClientGroupAndTopicName groupAndTopic)
             throws Exception {
         this.brokerController.getBrokerService().pulsar().getAdminClient().lookups()
-                .lookupTopicAsync(partitionTopicName.toString())
-                .whenComplete((serviceUrl, throwable) -> {
-                    if (throwable != null) {
+                .lookupTopic(partitionTopicName.toString());
+
+        this.brokerController.getBrokerService().getTopic(partitionTopicName.toString(), false)
+                .whenComplete((topic, throwable2) -> {
+                    if (throwable2 != null) {
                         log.warn("getPulsarPersistentTopic error, topic=[{}].",
                                 partitionTopicName.toString());
                         feature.complete(null);
                         return;
                     }
-                    this.brokerController.getBrokerService().getTopic(partitionTopicName.toString(), false)
-                            .whenComplete((topic, throwable2) -> {
-                                if (throwable2 != null) {
-                                    log.warn("getPulsarPersistentTopic error, topic=[{}].",
-                                            partitionTopicName.toString());
-                                    feature.complete(null);
-                                    return;
-                                }
-                                if (topic.isPresent()) {
-                                    PersistentTopic pTopic = (PersistentTopic) topic.get();
-                                    ClientTopicName clientTopicName = groupAndTopic.getClientTopicName();
-                                    if (!this.pulsarTopicCache.containsKey(clientTopicName)) {
-                                        this.pulsarTopicCache
-                                                .putIfAbsent(clientTopicName,
-                                                        new ConcurrentHashMap<>());
-                                    }
-                                    this.pulsarTopicCache.get(clientTopicName)
-                                            .putIfAbsent(partitionTopicName.getPartitionIndex(), pTopic);
-                                    feature.complete(pTopic);
-                                } else {
-                                    log.error("[{}] Topic not exist when get topic from BookKeeper.",
-                                            topic);
-                                    feature.complete(null);
-                                }
-                            });
+                    if (topic.isPresent()) {
+                        PersistentTopic pTopic = (PersistentTopic) topic.get();
+                        ClientTopicName clientTopicName = groupAndTopic.getClientTopicName();
+                        if (!this.pulsarTopicCache.containsKey(clientTopicName)) {
+                            this.pulsarTopicCache
+                                    .putIfAbsent(clientTopicName,
+                                            new ConcurrentHashMap<>());
+                        }
+                        this.pulsarTopicCache.get(clientTopicName)
+                                .putIfAbsent(partitionTopicName.getPartitionIndex(), pTopic);
+                        feature.complete(pTopic);
+                    } else {
+                        log.error("[{}] Topic not exist when get topic from BookKeeper.",
+                                topic);
+                        feature.complete(null);
+                    }
                 });
     }
 

@@ -290,7 +290,7 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
             category = CATEGORY_ROCKETMQ,
             doc = "Whether enable auto create subscription group function.\n"
     )
-    private boolean autoCreateSubscriptionGroup = false;
+    private boolean autoCreateSubscriptionGroup = true;
 
     @FieldContext(
             category = CATEGORY_ROCKETMQ,

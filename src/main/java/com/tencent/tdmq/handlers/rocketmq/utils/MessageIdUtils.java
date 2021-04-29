@@ -26,9 +26,9 @@ import org.apache.pulsar.client.impl.MessageIdImpl;
 @Slf4j
 public class MessageIdUtils {
 
-    // use 40 bits for ledgerId,
+    // use 32 bits for ledgerId,
     // 24 bits for entryId,
-    // 0 bits for partitionId.
+    // 8 bits for partitionId.
     public static final int LEDGER_BITS = 32;
     public static final int ENTRY_BITS = 24;
     public static final int PARTITION_BITS = 8;
@@ -57,11 +57,9 @@ public class MessageIdUtils {
         Preconditions.checkArgument(partitionId < MAX_PARTITION_ID, "entryId has overflow in rop.");
         entryId = entryId + 1L;
         partitionId = partitionId + 1;
-        long offset =
-                ((ledgerId & MAX_LEDGER_ID) << (ENTRY_BITS + PARTITION_BITS)) | ((entryId & MAX_ENTRY_ID)
-                        << PARTITION_BITS) | (partitionId
-                        & MAX_PARTITION_ID);
-        return offset;
+        return ((ledgerId & MAX_LEDGER_ID) << (ENTRY_BITS + PARTITION_BITS))
+                | ((entryId & MAX_ENTRY_ID) << PARTITION_BITS)
+                | (partitionId & MAX_PARTITION_ID);
     }
 
     public static final long getOffset(MessageIdImpl messageId) {
