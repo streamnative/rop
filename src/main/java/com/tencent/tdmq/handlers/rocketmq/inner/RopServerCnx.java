@@ -26,17 +26,14 @@ import com.tencent.tdmq.handlers.rocketmq.utils.MessageIdUtils;
 import com.tencent.tdmq.handlers.rocketmq.utils.RocketMQTopic;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
-import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
@@ -80,6 +77,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
     private final BrokerService service;
     private final ConcurrentLongHashMap<Producer<byte[]>> producers;
     private final ConcurrentLongHashMap<Reader<byte[]>> readers;
+    private final ConcurrentLongHashMap<Reader<byte[]>> lookupIdReaders;
     private final RopEntryFormatter entryFormatter = new RopEntryFormatter();
     private final ReentrantLock readLock = new ReentrantLock();
     private final SystemClock systemClock = new SystemClock();
@@ -97,8 +95,9 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         this.ctx = ctx;
         this.remoteAddress = ctx.channel().remoteAddress();
         this.state = State.Connected;
-        this.producers = new ConcurrentLongHashMap(8, 1);
-        this.readers = new ConcurrentLongHashMap(8, 1);
+        this.producers = new ConcurrentLongHashMap(2, 1);
+        this.readers = new ConcurrentLongHashMap(2, 1);
+        this.lookupIdReaders = new ConcurrentLongHashMap(2, 1);
         synchronized (ctx) {
             if (ctx.pipeline().get(ropHandlerName) == null) {
                 ctx.pipeline().addLast(ropHandlerName, this);
@@ -202,7 +201,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             appendMessageResult.setMsgNum(1);
             appendMessageResult.setWroteBytes(body.get(0).length);
             appendMessageResult.setMsgId(CommonUtils.createMessageId(this.ctx.channel().localAddress(), localListenPort,
-                    MessageIdUtils.getOffset(messageId.getLedgerId(), messageId.getEntryId())));
+                    MessageIdUtils.getOffset(messageId.getLedgerId(), messageId.getEntryId(), partitionId)));
             return new PutMessageResult(PutMessageStatus.PUT_OK, appendMessageResult);
         } catch (Exception ex) {
             PutMessageStatus status = PutMessageStatus.FLUSH_DISK_TIMEOUT;
@@ -255,7 +254,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 long ledgerId = messageId.getLedgerId();
                 long entryId = messageId.getEntryId();
                 String msgId = CommonUtils.createMessageId(this.ctx.channel().localAddress(), localListenPort,
-                        MessageIdUtils.getOffset(ledgerId, entryId));
+                        MessageIdUtils.getOffset(ledgerId, entryId, partitionId));
                 sb.append(msgId).append(",");
             }
             AppendMessageResult appendMessageResult = new AppendMessageResult(AppendMessageStatus.PUT_OK);
@@ -303,47 +302,42 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
 
     @Override
     public MessageExt lookMessageByMessageId(String nonPartitionedTopic, long offset) {
+        log.info("====================> topic=[{}], offset=[{}]", nonPartitionedTopic, offset);
         Preconditions.checkNotNull(nonPartitionedTopic, "topic mustn't be null");
-        MessageIdImpl messageId = MessageIdUtils.getMessageId(offset - 1);
-        try {
-            RocketMQTopic rocketMQTopic = new RocketMQTopic(nonPartitionedTopic);
-            TopicName tempTopic = rocketMQTopic.getPulsarTopicName();
-            Map<Integer, InetSocketAddress> brokerAddr = this.brokerController.getTopicConfigManager()
-                    .getTopicBrokerAddr(tempTopic);
+        MessageIdImpl messageId = MessageIdUtils.getMessageId(offset);
 
-            AtomicReference<Message<byte[]>> reference = new AtomicReference<>(null);
-            for (Integer partitionId : brokerAddr.keySet()) {
-                TopicName pTopic = tempTopic.getPartition(partitionId);
-                int readerId = pTopic.toString().hashCode();
-                Reader<byte[]> topicReader = this.readers.get(readerId);
-                try {
-                    if (topicReader == null) {
-                        synchronized (this.readers) {
-                            if (this.readers.get(readerId) == null) {
-                                topicReader = service.pulsar().getClient()
-                                        .newReader()
-                                        .startMessageId(messageId)
-                                        .topic(pTopic.toString())
-                                        .create();
-                                this.readers.put(readerId, topicReader);
-                            }
-                        }
+        RocketMQTopic rocketMQTopic = new RocketMQTopic(nonPartitionedTopic);
+        TopicName pTopic = rocketMQTopic.getPulsarTopicName().getPartition(messageId.getPartitionIndex());
+
+        Message<byte[]> message = null;
+        int readerId = pTopic.toString().hashCode();
+        Reader<byte[]> topicReader = this.lookupIdReaders.get(readerId);
+        try {
+            if (topicReader == null) {
+                synchronized (this.lookupIdReaders) {
+                    if (this.lookupIdReaders.get(readerId) == null) {
+                        topicReader = service.pulsar().getClient()
+                                .newReader()
+                                .startMessageId(messageId)
+                                .startMessageIdInclusive()
+                                .topic(pTopic.toString())
+                                .create();
+                        this.lookupIdReaders.put(readerId, topicReader);
                     }
-                    Preconditions.checkNotNull(topicReader);
-                    synchronized (topicReader) {
-                        topicReader.seek(messageId);
-                        Message<byte[]> message = topicReader.readNext(1000, TimeUnit.MILLISECONDS);
-                        if (message != null && message.getMessageId().equals(messageId)) {
-                            reference.set(message);
-                            break;
-                        }
-                    }
-                } catch (Exception ex) {
-                    log.warn("lookMessageByMessageId create topicReader error.");
                 }
             }
-            if (reference.get() != null) {
-                return this.entryFormatter.decodePulsarMessage(Collections.singletonList(reference.get()), null).get(0);
+            Preconditions.checkNotNull(topicReader);
+            synchronized (topicReader) {
+                message = topicReader.readNext(200, TimeUnit.MILLISECONDS);
+                if (message != null && MessageIdUtils.isMessageEquals(messageId, message.getMessageId())) {
+                    return this.entryFormatter.decodePulsarMessage(Collections.singletonList(message), null).get(0);
+                } else {
+                    topicReader.seek(messageId);
+                    message = topicReader.readNext(200, TimeUnit.MILLISECONDS);
+                    if (message != null && MessageIdUtils.isMessageEquals(messageId, message.getMessageId())) {
+                        return this.entryFormatter.decodePulsarMessage(Collections.singletonList(message), null).get(0);
+                    }
+                }
             }
         } catch (Exception ex) {
             log.warn("lookMessageByMessageId message[topic={}, msgId={}] error.", nonPartitionedTopic, messageId);

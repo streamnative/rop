@@ -299,7 +299,7 @@ public class CommonUtils {
                 int msgIDLength = storehostIPLength + 4 + 8;
                 ByteBuffer byteBufferMsgId = ByteBuffer.allocate(msgIDLength);
                 String msgId = createMessageId(byteBufferMsgId, msgExt.getStoreHostBytes(),
-                        MessageIdUtils.getOffset(messageId.getLedgerId(), messageId.getEntryId()));
+                        MessageIdUtils.getOffset(messageId.getLedgerId(), messageId.getEntryId(), queueId));
                 msgExt.setMsgId(msgId);
             }
 
@@ -315,7 +315,8 @@ public class CommonUtils {
         // 去除 tags 标记位的 8 个字节之后，将原先的 byteBuffer 返回
         ByteBuffer wrap = ByteBuffer.wrap(message.getData());
         MessageIdImpl messageId = (MessageIdImpl) message.getMessageId();
-        Long pysicalOffset = MessageIdUtils.getOffset(messageId.getLedgerId(), messageId.getEntryId());
+        Long pysicalOffset = MessageIdUtils
+                .getOffset(messageId.getLedgerId(), messageId.getEntryId(), messageId.getPartitionIndex());
         wrap.putLong(8 + 4 + 4 + 4 + 4 + 4 + 8, pysicalOffset);
         long tag = wrap.getLong();
         return wrap.slice();

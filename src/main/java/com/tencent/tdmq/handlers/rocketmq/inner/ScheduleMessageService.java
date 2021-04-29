@@ -14,6 +14,7 @@
 
 package com.tencent.tdmq.handlers.rocketmq.inner;
 
+import com.alibaba.fastjson.JSON;
 import com.google.common.base.Preconditions;
 import com.tencent.tdmq.handlers.rocketmq.RocketMQServiceConfiguration;
 import com.tencent.tdmq.handlers.rocketmq.inner.format.RopEntryFormatter;
@@ -55,9 +56,9 @@ import org.apache.rocketmq.store.MessageExtBrokerInner;
 public class ScheduleMessageService {
 
     private static final long FIRST_DELAY_TIME = 1000L;
-    private static final long DELAY_FOR_A_WHILE = 1000L;
+    private static final long DELAY_FOR_A_WHILE = 200L;
     private static final long DELAY_FOR_A_PERIOD = 10000L;
-    private static final int MAX_FETCH_MESSAGE_NUM = 20;
+    private static final int MAX_FETCH_MESSAGE_NUM = 100;
     private static final int PRODUCER_EXPIRED_TIME_SEC = 60 * 60;
     private static final int PRODUCER_CACHE_SIZE = 200;
     /*  key is delayed level  value is delay timeMillis */
@@ -94,7 +95,7 @@ public class ScheduleMessageService {
                 Preconditions.checkNotNull(deliverDelayedMessageManager);
                 while (!this.isStopped()) {
                     deliverDelayedMessageManager.stream().forEach((i) -> {
-                        i.advanceClock(200);
+                        i.advanceClock(DELAY_FOR_A_WHILE);
                     });
                 }
             }
@@ -178,8 +179,8 @@ public class ScheduleMessageService {
 
     class DeliverDelayedMessageTimerTask extends TimerTask {
 
-        private static final int PULL_MESSAGE_TIMEOUT_MS = 200;
-        private static final int MAX_BATCH_SIZE = 2000;
+        private static final int PULL_MESSAGE_TIMEOUT_MS = 500;
+        private static final int MAX_BATCH_SIZE = 500;
         private final PulsarService pulsarService;
         private final long delayLevel;
         private final String delayTopic;
@@ -232,7 +233,7 @@ public class ScheduleMessageService {
                         break;
                     }
                     MessageExt messageExt = this.formatter.decodePulsarMessage(message);
-                    long deliveryTime = computeDeliverTimestamp(this.delayLevel, messageExt.getStoreTimestamp());
+                    long deliveryTime = computeDeliverTimestamp(this.delayLevel, messageExt.getBornTimestamp());
                     long diff = deliveryTime - Instant.now().toEpochMilli();
                     diff = diff < 0 ? 0 : diff;
                     timeoutTimer.add(new com.tencent.tdmq.handlers.rocketmq.inner.timer.TimerTask(diff) {
@@ -258,7 +259,7 @@ public class ScheduleMessageService {
                                                         .topic(pTopic)
                                                         .producerName(pTopic + "_delayedMessageSender")
                                                         .enableBatching(true)
-                                                        .sendTimeout(3000, TimeUnit.MILLISECONDS)
+                                                        .sendTimeout(1000, TimeUnit.MILLISECONDS)
                                                         .create();
                                             } catch (Exception e) {
                                                 log.warn("create delayedMessageSender error.", e);
@@ -274,6 +275,9 @@ public class ScheduleMessageService {
                                 }
                                 producer.send(formatter.encode(msgInner, 1).get(0));
                                 delayedConsumer.acknowledge(message.getMessageId());
+                                log.info("DeliverDelayedMessageTimerTask[{}] send message [{}] to topic[{}] successfully.", new Object[]{
+                                        delayLevel, JSON.toJSONString(msgInner, true),pTopic
+                                });
                             } catch (Exception ex) {
                                 log.warn("create delayedMessageSender error.", ex);
                                 delayedConsumer.negativeAcknowledge(message.getMessageId());
@@ -314,7 +318,6 @@ public class ScheduleMessageService {
             String queueIdStr = msgInner.getProperty(MessageConst.PROPERTY_REAL_QUEUE_ID);
             int queueId = Integer.parseInt(queueIdStr);
             msgInner.setQueueId(queueId);
-
             return msgInner;
         }
     }

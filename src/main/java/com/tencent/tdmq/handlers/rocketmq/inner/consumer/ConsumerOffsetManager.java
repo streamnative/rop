@@ -86,7 +86,7 @@ public class ConsumerOffsetManager {
                     offsetTable.putIfAbsent(groupAtTopic, new ConcurrentHashMap<>());
                 }
                 offsetTable.get(groupAtTopic).putIfAbsent(partitionId,
-                        MessageIdUtils.getOffset(readPosition.getLedgerId(), readPosition.getEntryId()));
+                        MessageIdUtils.getOffset(readPosition.getLedgerId(), readPosition.getEntryId(), partitionId));
             }
         });
     }
@@ -246,7 +246,7 @@ public class ConsumerOffsetManager {
         if (persistentTopic != null) {
             try {
                 PositionImpl firstPosition = persistentTopic.getFirstPosition();
-                return MessageIdUtils.getOffset(firstPosition.getLedgerId(), firstPosition.getEntryId());
+                return MessageIdUtils.getOffset(firstPosition.getLedgerId(), firstPosition.getEntryId(), partitionId);
             } catch (ManagedLedgerException e) {
                 log.warn("getMinOffsetInQueue error, ClientGroupAndTopicName=[{}], partitionId=[{}].", groupAndTopic,
                         partitionId);
@@ -259,7 +259,7 @@ public class ConsumerOffsetManager {
         PersistentTopic persistentTopic = getPulsarPersistentTopic(groupAndTopic, partitionId);
         if (persistentTopic != null) {
             PositionImpl lastPosition = (PositionImpl) persistentTopic.getLastPosition();
-            return MessageIdUtils.getOffset(lastPosition.getLedgerId(), lastPosition.getEntryId());
+            return MessageIdUtils.getOffset(lastPosition.getLedgerId(), lastPosition.getEntryId(), partitionId);
         }
         return 0L;
     }

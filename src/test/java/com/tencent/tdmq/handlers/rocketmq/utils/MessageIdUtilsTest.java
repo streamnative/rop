@@ -31,38 +31,38 @@ public class MessageIdUtilsTest {
 
     @Test
     public void testGetOffset() {
-        long offset = getOffset(-1, -1);
+        long offset = getOffset(-1, -1, -1);
         assertEquals(-1, offset);
         MessageIdImpl messageId = getMessageId(offset);
         assertEquals(-1, messageId.getLedgerId());
         assertEquals(-1, messageId.getEntryId());
 
-        offset = getOffset(0x7FFFFFFFFFL, -1);
+        offset = getOffset(0x7FFFFFFFL, -1, -1);
         messageId = getMessageId(offset);
-        assertEquals(0x7FFFFFFFFFL, messageId.getLedgerId());
+        assertEquals(0x7FFFFFFFL, messageId.getLedgerId());
         assertEquals(-1L, messageId.getEntryId());
 
-        offset = getOffset(0x7FFFFFFFFFL, -1);
+        offset = getOffset(0x7FFFFFFFL, -1, -1);
         messageId = getMessageId(offset);
-        assertEquals(0x7FFFFFFFFFL, messageId.getLedgerId());
+        assertEquals(0x7FFFFFFFL, messageId.getLedgerId());
         assertEquals(-1L, messageId.getEntryId());
 
-        offset = getOffset(1872L, -1);
+        offset = getOffset(1872L, -1, -1);
         messageId = getMessageId(offset);
         assertEquals(1872L, messageId.getLedgerId());
         assertEquals(-1L, messageId.getEntryId());
 
-        offset = getOffset(1872L, 65534L);
+        offset = getOffset(1872L, 65534L, -1);
         messageId = getMessageId(offset);
         assertEquals(1872L, messageId.getLedgerId());
         assertEquals(65534L, messageId.getEntryId());
 
-        offset = getOffset(1872L, 0L);
+        offset = getOffset(1872L, 0L, -1);
         messageId = getMessageId(offset);
         assertEquals(1872L, messageId.getLedgerId());
         assertEquals(0L, messageId.getEntryId());
 
-        offset = getOffset(Long.MAX_VALUE, Long.MAX_VALUE);
+        offset = getOffset(Long.MAX_VALUE, Long.MAX_VALUE, 12);
         assertEquals(Long.MAX_VALUE, offset);
         messageId = getMessageId(offset);
         assertEquals(Long.MAX_VALUE, messageId.getLedgerId());
@@ -92,6 +92,19 @@ public class MessageIdUtilsTest {
         MessageIdImpl messageId1 = getMessageId(offset);
         assertEquals(1234L, messageId.getLedgerId());
         assertEquals(-1L, messageId.getEntryId());
+
+        messageId = new MessageIdImpl(1234L, 0L, -1);
+        offset = getOffset(messageId);
+        messageId1 = getMessageId(offset);
+        assertEquals(1234L, messageId.getLedgerId());
+        assertEquals(0L, messageId.getEntryId());
+
+        messageId = new MessageIdImpl(1234L, 123L, 254);
+        offset = getOffset(messageId);
+        messageId1 = getMessageId(offset);
+        assertEquals(1234L, messageId.getLedgerId());
+        assertEquals(123L, messageId.getEntryId());
+        assertEquals(254, messageId.getPartitionIndex());
     }
 
     public void testGetPosition() {

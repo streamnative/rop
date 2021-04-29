@@ -408,7 +408,8 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
                         } else {
                             finalPosition = (PositionImpl) position;
                             long offset = MessageIdUtils
-                                    .getOffset(finalPosition.getLedgerId(), finalPosition.getEntryId());
+                                    .getOffset(finalPosition.getLedgerId(), finalPosition.getEntryId(),
+                                            requestHeader.getQueueId());
                             finalOffset.complete(offset);
                         }
                     }
@@ -457,7 +458,8 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
             if (optionalTopic.isPresent()) {
                 PersistentTopic persistentTopic = (PersistentTopic) optionalTopic.get();
                 PositionImpl lastPosition = (PositionImpl) persistentTopic.getLastPosition();
-                long offset = MessageIdUtils.getOffset(lastPosition.getLedgerId(), lastPosition.getEntryId());
+                long offset = MessageIdUtils
+                        .getOffset(lastPosition.getLedgerId(), lastPosition.getEntryId(), requestHeader.getQueueId());
 
                 responseHeader.setOffset(offset);
                 response.setCode(ResponseCode.SUCCESS);
@@ -489,7 +491,8 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
             if (optionalTopic.isPresent()) {
                 PersistentTopic persistentTopic = (PersistentTopic) optionalTopic.get();
                 PositionImpl lastPosition = persistentTopic.getFirstPosition();
-                long offset = MessageIdUtils.getOffset(lastPosition.getLedgerId(), lastPosition.getEntryId());
+                long offset = MessageIdUtils
+                        .getOffset(lastPosition.getLedgerId(), lastPosition.getEntryId(), requestHeader.getQueueId());
 
                 responseHeader.setOffset(offset);
 

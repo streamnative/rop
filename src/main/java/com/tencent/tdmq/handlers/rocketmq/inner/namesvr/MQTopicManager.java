@@ -170,7 +170,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
             putPulsarTopic2Config(topicName, partitionedMetadata.partitions);
             lookupCache.put(topicName, partitionedTopicAddr);
         } catch (Exception e) {
-            log.error("getTopicBroker info error for the topic[{}].", topicName, e);
+            log.warn("getTopicBroker info error for the topic[{}].", topicName);
         }
 
         return partitionedTopicAddr;

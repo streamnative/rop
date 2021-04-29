@@ -163,8 +163,14 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             response.setRemark(String.format("the topic[%s] sending message is forbidden", newTopic));
             return response;
         }
+
         MessageExt msgExt = this.getServerCnxMsgStore(ctx, requestHeader.getGroup())
-                .lookMessageByMessageId(requestHeader.getOriginTopic(), requestHeader.getOffset());
+                .lookMessageByMessageId(MixAll.getRetryTopic(requestHeader.getGroup()), requestHeader.getOffset());
+        if (msgExt == null) {
+            msgExt = this.getServerCnxMsgStore(ctx, requestHeader.getGroup())
+                    .lookMessageByMessageId(requestHeader.getOriginTopic(), requestHeader.getOffset());
+        }
+
         if (null == msgExt) {
             response.setCode(ResponseCode.SYSTEM_ERROR);
             response.setRemark("look message by offset failed, " + requestHeader.getOffset());
@@ -178,7 +184,6 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         msgExt.setWaitStoreMsgOK(false);
 
         int delayLevel = requestHeader.getDelayLevel();
-
         int maxReconsumeTimes = subscriptionGroupConfig.getRetryMaxTimes();
         if (request.getVersion() >= MQVersion.Version.V3_4_9.ordinal()) {
             maxReconsumeTimes = requestHeader.getMaxReconsumeTimes() == null ? maxReconsumeTimes

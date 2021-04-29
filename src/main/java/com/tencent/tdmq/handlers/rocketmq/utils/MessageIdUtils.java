@@ -29,17 +29,21 @@ public class MessageIdUtils {
     // use 40 bits for ledgerId,
     // 24 bits for entryId,
     // 0 bits for partitionId.
-    public static final int LEDGER_BITS = 40;
+    public static final int LEDGER_BITS = 32;
     public static final int ENTRY_BITS = 24;
+    public static final int PARTITION_BITS = 8;
     public static final long MAX_LEDGER_ID = (1L << (LEDGER_BITS - 1)) - 1L;
-    public static final long MAX_ENTRY_ID =
-            (1L << ENTRY_BITS) - 1; // 65535 stand for the offset of -1, 65534 stand fo the max offset;
-    public static final long MAX_ROP_OFFSET = (MAX_LEDGER_ID << ENTRY_BITS) | MAX_ENTRY_ID;
+
+    public static final long MAX_ENTRY_ID = (1L << ENTRY_BITS) - 1L;
+    public static final long MAX_PARTITION_ID = (1L << PARTITION_BITS) - 1L;
+    public static final long MAX_ROP_OFFSET =
+            (MAX_LEDGER_ID << (ENTRY_BITS + PARTITION_BITS)) | (MAX_ENTRY_ID << PARTITION_BITS) | MAX_PARTITION_ID;
     public static final long MIN_ROP_OFFSET = -1L;
 
-    public static final long getOffset(long ledgerId, long entryId) {
+    public static final long getOffset(long ledgerId, long entryId, long partitionId) {
         entryId = entryId < 0L ? -1L : entryId;
         ledgerId = ledgerId < 0L ? -1L : ledgerId;
+        partitionId = partitionId < 0L ? -1L : partitionId;
         if (entryId == -1 && ledgerId == -1) {
             return -1L;
         } else if (entryId == Long.MAX_VALUE && ledgerId == Long.MAX_VALUE) {
@@ -50,17 +54,17 @@ public class MessageIdUtils {
         }
         Preconditions.checkArgument(ledgerId <= MAX_LEDGER_ID, "ledgerId has overflow in rop.");
         Preconditions.checkArgument(entryId < MAX_ENTRY_ID, "entryId has overflow in rop.");
+        Preconditions.checkArgument(partitionId < MAX_PARTITION_ID, "entryId has overflow in rop.");
         entryId = entryId + 1L;
-        long offset = ((ledgerId & MAX_LEDGER_ID) << ENTRY_BITS) | (entryId & MAX_ENTRY_ID);
+        partitionId = partitionId + 1;
+        long offset =
+                ((ledgerId & MAX_LEDGER_ID) << (ENTRY_BITS + PARTITION_BITS)) | ((entryId & MAX_ENTRY_ID) << PARTITION_BITS) | (partitionId
+                        & MAX_PARTITION_ID);
         return offset;
     }
 
-    public static final long getOffset(long ledgerId, long entryId, int partitionId) {
-        return getOffset(ledgerId, entryId);
-    }
-
     public static final long getOffset(MessageIdImpl messageId) {
-        return getOffset(messageId.getLedgerId(), messageId.getEntryId());
+        return getOffset(messageId.getLedgerId(), messageId.getEntryId(), messageId.getPartitionIndex());
     }
 
     public static final MessageIdImpl getMessageId(long offset) {
@@ -69,10 +73,11 @@ public class MessageIdUtils {
         } else if (offset == MAX_ROP_OFFSET) {
             return (MessageIdImpl) MessageId.latest;
         }
-        long ledgerId = (offset >>> ENTRY_BITS) & MAX_LEDGER_ID;
-        long entryId = offset & MAX_ENTRY_ID;
-        entryId -= 1;
-        return new MessageIdImpl(ledgerId, entryId, -1);
+        long ledgerId = (offset >>> (ENTRY_BITS + PARTITION_BITS)) & MAX_LEDGER_ID;
+        long entryId = (offset >>> PARTITION_BITS) & MAX_ENTRY_ID;
+        entryId -= 1L;
+        int partitionId = (int) ((offset & MAX_PARTITION_ID)) - 1;
+        return new MessageIdImpl(ledgerId, entryId, partitionId);
     }
 
     public static final PositionImpl getPosition(long offset) {
@@ -80,11 +85,16 @@ public class MessageIdUtils {
         return new PositionImpl(messageId.getLedgerId(), messageId.getEntryId());
     }
 
-    public boolean isMinOffset(long offset) {
+    public static boolean isMinOffset(long offset) {
         return offset <= MIN_ROP_OFFSET;
     }
 
-    public boolean isMaxOffset(long offset) {
+    public static boolean isMaxOffset(long offset) {
         return offset == MAX_ROP_OFFSET;
+    }
+
+    public static boolean isMessageEquals(MessageId left, MessageId right) {
+        return ((MessageIdImpl) left).getLedgerId() == ((MessageIdImpl) right).getLedgerId()
+                && ((MessageIdImpl) left).getEntryId() == ((MessageIdImpl) right).getEntryId();
     }
 }
