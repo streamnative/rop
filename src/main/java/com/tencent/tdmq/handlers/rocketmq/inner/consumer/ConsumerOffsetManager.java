@@ -14,7 +14,6 @@
 
 package com.tencent.tdmq.handlers.rocketmq.inner.consumer;
 
-import com.google.common.util.concurrent.Uninterruptibles;
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
 import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientGroupAndTopicName;
 import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientGroupName;
@@ -267,75 +266,68 @@ public class ConsumerOffsetManager {
     public PersistentTopic getPulsarPersistentTopic(ClientGroupAndTopicName groupAndTopic, int partitionId) {
         if (isPulsarTopicCached(groupAndTopic, partitionId)) {
             return this.pulsarTopicCache.get(groupAndTopic.getClientTopicName()).get(partitionId);
-        } else {
-            synchronized (this) {
-                CompletableFuture<PersistentTopic> feature = new CompletableFuture<>();
-                TopicName pulsarTopicName = TopicName.get(groupAndTopic.getClientTopicName().getPulsarTopicName());
+        }
+        synchronized (this.pulsarTopicCache) {
+            CompletableFuture<PersistentTopic> feature = new CompletableFuture<>();
+            TopicName pulsarTopicName = TopicName.get(groupAndTopic.getClientTopicName().getPulsarTopicName());
+            TopicName partitionTopicName = pulsarTopicName.getPartition(partitionId);
+            Backoff backoff = new Backoff(
+                    100, TimeUnit.MILLISECONDS,
+                    10, TimeUnit.SECONDS,
+                    10, TimeUnit.SECONDS
+            );
 
-                Backoff backoff = new Backoff(
-                        100, TimeUnit.MILLISECONDS,
-                        10, TimeUnit.SECONDS,
-                        10, TimeUnit.SECONDS
-                );
-
-                while (true) {
-                    long waitTimeMs = backoff.next();
-
-                    if (backoff.isMandatoryStopMade()) {
-                        log.warn("Retry lookup topic {} failed, retried too many times {}, return null.",
-                                pulsarTopicName, waitTimeMs);
-                        break;
-                    } else {
-                        try {
-                            retryLookup(pulsarTopicName, feature, groupAndTopic, partitionId);
-                            return feature.get(3, TimeUnit.SECONDS);
-                        } catch (Exception e) {
-                            log.warn("getBroker for topic [{}] failed, will retry in [{}] ms",
-                                    pulsarTopicName, waitTimeMs);
-                            Uninterruptibles.sleepUninterruptibly(waitTimeMs, TimeUnit.MILLISECONDS);
-                            e.printStackTrace();
-                        }
-                    }
+            while (!backoff.isMandatoryStopMade()) {
+                long waitTimeMs = backoff.next();
+                try {
+                    retryLookup(partitionTopicName, feature, groupAndTopic);
+                    return feature.get(3, TimeUnit.SECONDS);
+                } catch (Exception e) {
+                    log.info("getBroker for topic [{}] failed, will retry in [{}] ms",
+                            partitionTopicName.toString(), waitTimeMs);
                 }
             }
+            log.warn("getBroker for topic [{}] failed, have retried [{}] ms",
+                    partitionTopicName.toString(), backoff.getMax());
         }
-        return null;
+        return this.pulsarTopicCache.get(groupAndTopic.getClientTopicName()).get(partitionId);
     }
 
-    private void retryLookup(TopicName pulsarTopicName,
-            CompletableFuture<PersistentTopic> feature, ClientGroupAndTopicName groupAndTopic, int partitionId)
+    private void retryLookup(TopicName partitionTopicName,
+            CompletableFuture<PersistentTopic> feature, ClientGroupAndTopicName groupAndTopic)
             throws Exception {
-
         this.brokerController.getBrokerService().pulsar().getAdminClient().lookups()
-                .lookupTopicAsync(pulsarTopicName.getPartition(partitionId).toString())
+                .lookupTopicAsync(partitionTopicName.toString())
                 .whenComplete((serviceUrl, throwable) -> {
                     if (throwable != null) {
                         log.warn("getPulsarPersistentTopic error, topic=[{}].",
-                                pulsarTopicName.toString());
+                                partitionTopicName.toString());
                         feature.complete(null);
                         return;
                     }
-                    this.brokerController.getBrokerService().getTopic(pulsarTopicName.toString(), false)
+                    this.brokerController.getBrokerService().getTopic(partitionTopicName.toString(), false)
                             .whenComplete((topic, throwable2) -> {
                                 if (throwable2 != null) {
                                     log.warn("getPulsarPersistentTopic error, topic=[{}].",
-                                            pulsarTopicName.toString());
+                                            partitionTopicName.toString());
                                     feature.complete(null);
                                     return;
                                 }
                                 if (topic.isPresent()) {
                                     PersistentTopic pTopic = (PersistentTopic) topic.get();
-                                    if (!this.pulsarTopicCache.containsKey(groupAndTopic)) {
+                                    ClientTopicName clientTopicName = groupAndTopic.getClientTopicName();
+                                    if (!this.pulsarTopicCache.containsKey(clientTopicName)) {
                                         this.pulsarTopicCache
-                                                .putIfAbsent(groupAndTopic.getClientTopicName(),
+                                                .putIfAbsent(clientTopicName,
                                                         new ConcurrentHashMap<>());
                                     }
-                                    this.pulsarTopicCache.get(groupAndTopic)
-                                            .putIfAbsent(partitionId, pTopic);
+                                    this.pulsarTopicCache.get(clientTopicName)
+                                            .putIfAbsent(partitionTopicName.getPartitionIndex(), pTopic);
                                     feature.complete(pTopic);
                                 } else {
                                     log.error("[{}] Topic not exist when get topic from BookKeeper.",
                                             topic);
+                                    feature.complete(null);
                                 }
                             });
                 });
