@@ -407,15 +407,15 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                 adminClient.topics().createPartitionedTopic(
                         fullTopicName,
                         tc.getWriteQueueNums());
-                for (int i = 0; i < tc.getWriteQueueNums(); i++) {
-                    adminClient.topics().createNonPartitionedTopic(fullTopicName + PARTITIONED_TOPIC_SUFFIX + i);
-                }
+//                for (int i = 0; i < tc.getWriteQueueNums(); i++) {
+//                    adminClient.topics().createNonPartitionedTopic(fullTopicName + PARTITIONED_TOPIC_SUFFIX + i);
+//                }
                 loadSysTopics(tc);
             } else if (topicMetadata.partitions < tc.getWriteQueueNums()) {
                 adminClient.topics().updatePartitionedTopic(fullTopicName, tc.getWriteQueueNums());
-                for (int i = topicMetadata.partitions; i < tc.getWriteQueueNums(); i++) {
-                    adminClient.topics().createNonPartitionedTopic(fullTopicName + PARTITIONED_TOPIC_SUFFIX + i);
-                }
+//                for (int i = topicMetadata.partitions; i < tc.getWriteQueueNums(); i++) {
+//                    adminClient.topics().createNonPartitionedTopic(fullTopicName + PARTITIONED_TOPIC_SUFFIX + i);
+//                }
                 loadSysTopics(tc);
             }
         } catch (Exception e) {
