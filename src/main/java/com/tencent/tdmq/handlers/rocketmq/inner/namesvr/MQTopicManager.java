@@ -141,21 +141,32 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
             String noDomainTopicName = TopicNameUtils.getNoDomainTopicName(topicName);
             PartitionedTopicMetadata partitionedMetadata = adminClient.topics()
                     .getPartitionedTopicMetadata(noDomainTopicName);
-
             CompletableFuture<InetSocketAddress> resultFuture = new CompletableFuture<>();
-            IntStream.range(0, partitionedMetadata.partitions).forEach(i -> {
-                try {
-                    Backoff backoff = new Backoff(
-                            100, TimeUnit.MILLISECONDS,
-                            15, TimeUnit.SECONDS,
-                            15, TimeUnit.SECONDS
-                    );
-                    lookupBroker(topicName.getPartition(i), backoff, resultFuture);
-                    partitionedTopicAddr.put(i, resultFuture.get());
-                } catch (Exception e) {
-                    log.warn("getTopicBrokerAddr error.", e);
-                }
-            });
+            //non-partitioned topic
+            if (partitionedMetadata.partitions <= 0) {
+                Backoff backoff = new Backoff(
+                        100, TimeUnit.MILLISECONDS,
+                        15, TimeUnit.SECONDS,
+                        15, TimeUnit.SECONDS
+                );
+                lookupBroker(topicName, backoff, resultFuture);
+                partitionedTopicAddr.put(0, resultFuture.get());
+            } else {
+                IntStream.range(0, partitionedMetadata.partitions).forEach(i -> {
+                    try {
+                        Backoff backoff = new Backoff(
+                                100, TimeUnit.MILLISECONDS,
+                                15, TimeUnit.SECONDS,
+                                15, TimeUnit.SECONDS
+                        );
+                        lookupBroker(topicName.getPartition(i), backoff, resultFuture);
+                        partitionedTopicAddr.put(i, resultFuture.get());
+                    } catch (Exception e) {
+                        log.warn("getTopicBrokerAddr error.", e);
+                    }
+                });
+                putPulsarTopic2Config(topicName, partitionedMetadata.partitions);
+            }
             putPulsarTopic2Config(topicName, partitionedMetadata.partitions);
             lookupCache.put(topicName, partitionedTopicAddr);
         } catch (Exception e) {
