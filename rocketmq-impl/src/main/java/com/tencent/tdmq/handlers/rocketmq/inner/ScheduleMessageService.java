@@ -110,6 +110,13 @@ public class ScheduleMessageService {
         return rocketMQTopic.getPulsarFullName();
     }
 
+    public String getDelayedTopicName(int timeDelayedLevel, int partitionId) {
+        String delayedTopicName = ScheduleMessageService.this.scheduleTopicPrefix + CommonUtils.UNDERSCORE_CHAR
+                + delayLevelArray[timeDelayedLevel - 1];
+        RocketMQTopic rocketMQTopic = RocketMQTopic.getRocketMQMetaTopic(delayedTopicName);
+        return rocketMQTopic.getPartitionTopicName(partitionId).toString();
+    }
+
     public String getDelayedTopicConsumerName(int timeDelayedLevel) {
         String delayedTopicName = ScheduleMessageService.this.scheduleTopicPrefix + CommonUtils.UNDERSCORE_CHAR
                 + delayLevelArray[timeDelayedLevel - 1];

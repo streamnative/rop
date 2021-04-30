@@ -165,7 +165,6 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                         log.warn("getTopicBrokerAddr error.", e);
                     }
                 });
-                putPulsarTopic2Config(topicName, partitionedMetadata.partitions);
             }
             putPulsarTopic2Config(topicName, partitionedMetadata.partitions);
             lookupCache.put(topicName, partitionedTopicAddr);
@@ -316,12 +315,16 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
 
     // tenant/ns/topicName
     public void lookupTopics(String tdmpTopicName) {
-        try {
-            log.info("pulsar lookup the topic of name = [{}].", tdmpTopicName);
-            adminClient.lookups().lookupTopic(tdmpTopicName);
-        } catch (Exception e) {
-            log.warn("lookup topic [{}] error.", tdmpTopicName);
-        }
+        log.info("pulsar lookup the topic of name = [{}].", tdmpTopicName);
+        adminClient.lookups().lookupTopicAsync(tdmpTopicName)
+                .whenComplete((serviceUrl, throwable1) -> {
+                    if (throwable1 != null) {
+                        log.warn("lookupTopicAsync topic[{}] exception.", tdmpTopicName);
+                        return;
+                    }
+                    log.info("lookupTopics topic[{}] successfully.", tdmpTopicName);
+                });
+
     }
 
     private void createPulsarTopic(TopicConfig tc) {

@@ -383,8 +383,7 @@ public class PullMessageProcessor implements NettyRequestProcessor {
             response.setCode(ResponseCode.SYSTEM_ERROR);
             response.setRemark("store getMessage return null");
         }
-        boolean storeOffsetEnable = brokerAllowSuspend;
-        storeOffsetEnable = storeOffsetEnable && hasCommitOffsetFlag;
+        boolean storeOffsetEnable = brokerAllowSuspend && hasCommitOffsetFlag;
         if (storeOffsetEnable) {
             this.brokerController.getConsumerOffsetManager().commitOffset(
                     RemotingHelper.parseChannelRemoteAddr(channel),
