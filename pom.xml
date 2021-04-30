@@ -19,7 +19,15 @@
 <project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
         xmlns="http://maven.apache.org/POM/4.0.0"
         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <parent>
+        <groupId>org.apache</groupId>
+        <artifactId>apache</artifactId>
+        <version>18</version>
+    </parent>
     <modelVersion>4.0.0</modelVersion>
+
+    <packaging>pom</packaging>
 
     <groupId>com.tencent.tdmq.handlers</groupId>
     <artifactId>tdmq-protocol-handler-rocketmq</artifactId>
@@ -55,6 +63,12 @@
         <maven.compiler.target>8</maven.compiler.target>
         <commons-lang.version>2.6</commons-lang.version>
     </properties>
+
+    <modules>
+        <module>rocketmq-impl</module>
+        <module>examples</module>
+        <module>tests</module>
+    </modules>
 
     <licenses>
         <license>
@@ -309,25 +323,6 @@
             </plugin>
 
             <plugin>
-                <groupId>org.apache.nifi</groupId>
-                <artifactId>nifi-nar-maven-plugin</artifactId>
-                <version>1.2.0</version>
-                <extensions>true</extensions>
-                <configuration>
-                    <finalName>${project.artifactId}-${project.version}</finalName>
-                </configuration>
-                <executions>
-                    <execution>
-                        <id>default-nar</id>
-                        <phase>package</phase>
-                        <goals>
-                            <goal>nar</goal>
-                        </goals>
-                    </execution>
-                </executions>
-            </plugin>
-
-            <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>templating-maven-plugin</artifactId>
                 <version>1.0.0</version>
@@ -407,26 +402,6 @@
                     </includeOnlyProperties>
                     <commitIdGenerationMode>full</commitIdGenerationMode>
                 </configuration>
-            </plugin>
-
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-antrun-plugin</artifactId>
-                <executions>
-                    <execution>
-                        <phase>install</phase>
-                        <goals>
-                            <goal>run</goal>
-                        </goals>
-                        <configuration>
-                            <tasks>
-                                <echo>copy protocol handler</echo>
-                                <copy file="${basedir}/target/tdmq-protocol-handler-rocketmq-${project.version}.nar"
-                                        tofile="${basedir}/src/test/resources/test-protocol-handler.nar"/>
-                            </tasks>
-                        </configuration>
-                    </execution>
-                </executions>
             </plugin>
         </plugins>
     </build>
