@@ -32,7 +32,6 @@ import com.tencent.tdmq.handlers.rocketmq.inner.processor.PullMessageProcessor;
 import com.tencent.tdmq.handlers.rocketmq.inner.processor.QueryMessageProcessor;
 import com.tencent.tdmq.handlers.rocketmq.inner.processor.SendMessageProcessor;
 import com.tencent.tdmq.handlers.rocketmq.inner.producer.ProducerManager;
-import com.tencent.tdmq.handlers.rocketmq.inner.rest.RopRestServer;
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.List;

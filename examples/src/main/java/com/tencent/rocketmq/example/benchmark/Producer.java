@@ -62,7 +62,8 @@ public class Producer {
         final boolean aclEnable = commandLine.hasOption('a') && Boolean.parseBoolean(commandLine.getOptionValue('a'));
 
         System.out
-                .printf("topic: %s threadCount: %d messageSize: %d keyEnable: %s propertySize: %d tagCount: %d traceEnable: %s aclEnable: %s%n",
+                .printf("topic: %s threadCount: %d messageSize: %d keyEnable: %s propertySize: %d "
+                                + "tagCount: %d traceEnable: %s aclEnable: %s%n",
                         topic, threadCount, messageSize, keyEnable, propertySize, tagCount, msgTraceEnable, aclEnable);
 
         final InternalLogger log = ClientLogger.getLog();
@@ -95,7 +96,8 @@ public class Producer {
                     final double averageRT = (end[5] - begin[5]) / (double) (end[3] - begin[3]);
 
                     System.out
-                            .printf("Current Time: %s Send TPS: %d Max RT(ms): %d Average RT(ms): %7.3f Send Failed: %d Response Failed: %d%n",
+                            .printf("Current Time: %s Send TPS: %d Max RT(ms): %d Average RT(ms): %7.3f "
+                                            + "Send Failed: %d Response Failed: %d%n",
                                     System.currentTimeMillis(), sendTps, statsBenchmark.getSendMessageMaxRT().get(),
                                     averageRT, end[2], end[4]);
                 }

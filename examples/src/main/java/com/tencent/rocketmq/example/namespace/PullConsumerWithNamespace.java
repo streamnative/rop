@@ -29,7 +29,9 @@ public class PullConsumerWithNamespace {
     private static final Map<MessageQueue, Long> OFFSE_TABLE = new HashMap<MessageQueue, Long>();
 
     public static void main(String[] args) throws Exception {
-        DefaultMQPullConsumer pullConsumer = new DefaultMQPullConsumer("test1|InstanceTest", "cidTest");
+        DefaultMQPullConsumer pullConsumer = new DefaultMQPullConsumer(
+                "test1|InstanceTest",
+                "cidTest");
         pullConsumer.setNamesrvAddr("127.0.0.1:9876");
         pullConsumer.start();
 
@@ -40,7 +42,8 @@ public class PullConsumerWithNamespace {
             while (true) {
                 try {
                     PullResult pullResult =
-                            pullConsumer.pullBlockIfNotFound(mq, null, getMessageQueueOffset(mq), 32);
+                            pullConsumer.pullBlockIfNotFound(mq, null,
+                                    getMessageQueueOffset(mq), 32);
                     System.out.printf("%s%n", pullResult);
 
                     putMessageQueueOffset(mq, pullResult.getNextBeginOffset());

@@ -24,7 +24,8 @@ import org.apache.rocketmq.client.consumer.listener.MessageListenerConcurrently;
 public class PushConsumerWithNamespace {
 
     public static void main(String[] args) throws Exception {
-        DefaultMQPushConsumer defaultMQPushConsumer = new DefaultMQPushConsumer("test1|InstanceTest", "cidTest");
+        DefaultMQPushConsumer defaultMQPushConsumer = new DefaultMQPushConsumer(
+                "test1|InstanceTest", "cidTest");
         defaultMQPushConsumer.setNamesrvAddr("127.0.0.1:9876");
         defaultMQPushConsumer.subscribe("topicTest", "*");
         defaultMQPushConsumer.registerMessageListener((MessageListenerConcurrently) (msgs, context) -> {

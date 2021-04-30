@@ -71,10 +71,10 @@ import org.apache.rocketmq.store.PutMessageStatus;
 @Getter
 public class RopServerCnx extends ChannelInboundHandlerAdapter implements PulsarMessageStore {
 
+    private static final int sendTimeoutInSec = 300;
+    private static final int maxBatchMessageNum = 20;
+    private static final int fetchTimeoutInMs = 200;
     public static String ropHandlerName = "RopServerCnxHandler";
-    private final static int sendTimeoutInSec = 300;
-    private final static int maxBatchMessageNum = 20;
-    private final static int fetchTimeoutInMs = 200;
     private final BrokerService service;
     private final ConcurrentLongHashMap<Producer<byte[]>> producers;
     private final ConcurrentLongHashMap<Reader<byte[]>> readers;

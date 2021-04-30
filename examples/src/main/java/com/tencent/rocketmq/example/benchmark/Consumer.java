@@ -70,7 +70,8 @@ public class Consumer {
         }
 
         System.out
-                .printf("topic: %s, threadCount %d, group: %s, suffix: %s, filterType: %s, expression: %s, msgTraceEnable: %s, aclEnable: %s%n",
+                .printf("topic: %s, threadCount %d, group: %s, suffix: %s, filterType: %s, expression: %s, "
+                                + "msgTraceEnable: %s, aclEnable: %s%n",
                         topic, threadCount, group, isSuffixEnable, filterType, expression, msgTraceEnable, aclEnable);
 
         final StatsBenchmarkConsumer statsBenchmarkConsumer = new StatsBenchmarkConsumer();
@@ -107,7 +108,8 @@ public class Consumer {
                     statsBenchmarkConsumer.getStore2ConsumerMaxRT().set(0);
 
                     System.out
-                            .printf("Current Time: %s TPS: %d FAIL: %d AVG(B2C) RT(ms): %7.3f AVG(S2C) RT(ms): %7.3f MAX(B2C) RT(ms): %d MAX(S2C) RT(ms): %d%n",
+                            .printf("Current Time: %s TPS: %d FAIL: %d AVG(B2C) RT(ms): %7.3f AVG(S2C) "
+                                            + "RT(ms): %7.3f MAX(B2C) RT(ms): %d MAX(S2C) RT(ms): %d%n",
                                     System.currentTimeMillis(), consumeTps, failCount, averageB2CRT, averageS2CRT,
                                     b2cMax, s2cMax
                             );
