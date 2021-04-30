@@ -130,5 +130,13 @@ public class RocketMQTopic {
         return this.pulsarTopicName.getPartition(partition);
     }
 
+    public boolean isDLQTopic() {
+        return Strings.isNotBlank(pulsarTopicName.getLocalName()) && NamespaceUtil.isDLQTopic(pulsarTopicName.getLocalName());
+    }
+
+    public boolean isRetryTopic() {
+        return Strings.isNotBlank(pulsarTopicName.getLocalName()) && NamespaceUtil.isRetryTopic(pulsarTopicName.getLocalName());
+    }
+
 }
 
