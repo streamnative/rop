@@ -43,12 +43,10 @@ import org.apache.pulsar.broker.namespace.NamespaceBundleOwnershipListener;
 import org.apache.pulsar.broker.service.BrokerService;
 import org.apache.pulsar.broker.service.persistent.PersistentTopic;
 import org.apache.pulsar.client.admin.PulsarAdmin;
-import org.apache.pulsar.client.admin.PulsarAdminException;
 import org.apache.pulsar.client.admin.PulsarAdminException.ConflictException;
 import org.apache.pulsar.client.impl.Backoff;
 import org.apache.pulsar.client.impl.PulsarClientImpl;
 import org.apache.pulsar.common.naming.NamespaceBundle;
-import org.apache.pulsar.common.naming.NamespaceName;
 import org.apache.pulsar.common.naming.TopicName;
 import org.apache.pulsar.common.partition.PartitionedTopicMetadata;
 import org.apache.pulsar.common.policies.data.ClusterData;
@@ -69,20 +67,16 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
     private final Cache<TopicName, Map<Integer, InetSocketAddress>> lookupCache = CacheBuilder
             .newBuilder()
             .initialCapacity(maxCacheSize)
+            .expireAfterWrite(maxCacheTimeInSec, TimeUnit.SECONDS)
             .build();
     private final int servicePort;
     private PulsarService pulsarService;
     private BrokerService brokerService;
     private PulsarAdmin adminClient;
-    private NamespaceName rocketmqMetaNs;
-    private NamespaceName rocketmqTopicNs;
 
     public MQTopicManager(RocketMQBrokerController brokerController) {
         super(brokerController);
         this.servicePort = RocketMQProtocolHandler.getListenerPort(config.getRocketmqListeners());
-        this.rocketmqMetaNs = NamespaceName
-                .get(config.getRocketmqMetadataTenant(), config.getRocketmqMetadataNamespace());
-        this.rocketmqTopicNs = NamespaceName.get(config.getRocketmqTenant(), config.getRocketmqNamespace());
     }
 
     @Override
@@ -96,18 +90,17 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
 
         try {
             createPulsarNamespaceIfNeeded(brokerService, cluster, tenant, ns);
+            createPulsarTopic(tc);
         } catch (Exception e) {
             log.warn("createPulsarPartitionedTopic tenant=[{}] and namespace=[{}] error.", tenant, ns);
         }
-        createPulsarTopic(tc);
     }
 
     public void start() throws Exception {
         this.pulsarService = brokerController.getBrokerService().pulsar();
         this.brokerService = pulsarService.getBrokerService();
         this.adminClient = this.pulsarService.getAdminClient();
-
-        createSysResource();
+        this.createSysResource();
         this.pulsarService.getNamespaceService().addNamespaceBundleOwnershipListener(this);
     }
 
@@ -117,9 +110,8 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
         if (topicConfig == null) {
             try {
                 String lookupTopic = RocketMQTopic.getPulsarOrigNoDomainTopic(rmqTopicName);
-                adminClient.lookups().lookupTopic(lookupTopic);
                 getTopicBrokerAddr(TopicName.get(lookupTopic));
-            } catch (PulsarAdminException e) {
+            } catch (Exception e) {
                 log.info("selectTopicConfig rocketmq topic [{}].", rmqTopicName);
             }
         }
@@ -127,7 +119,6 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
     }
 
     public void shutdown() {
-        this.lookupCache.cleanUp();
     }
 
     // call pulsarClient.lookup.getBroker to get and own a topic.
@@ -136,42 +127,35 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
         if (lookupCache.getIfPresent(topicName) != null) {
             return lookupCache.getIfPresent(topicName);
         }
+
         Map<Integer, InetSocketAddress> partitionedTopicAddr = new HashMap<>();
         try {
-            String noDomainTopicName = TopicNameUtils.getNoDomainTopicName(topicName);
-            PartitionedTopicMetadata partitionedMetadata = adminClient.topics()
-                    .getPartitionedTopicMetadata(noDomainTopicName);
-            CompletableFuture<InetSocketAddress> resultFuture = new CompletableFuture<>();
-            //non-partitioned topic
-            if (partitionedMetadata.partitions <= 0) {
-                Backoff backoff = new Backoff(
-                        100, TimeUnit.MILLISECONDS,
-                        15, TimeUnit.SECONDS,
-                        15, TimeUnit.SECONDS
-                );
-                lookupBroker(topicName, backoff, resultFuture);
-                partitionedTopicAddr.put(0, resultFuture.get());
-            } else {
-                IntStream.range(0, partitionedMetadata.partitions).forEach(i -> {
-                    try {
-                        Backoff backoff = new Backoff(
-                                100, TimeUnit.MILLISECONDS,
-                                15, TimeUnit.SECONDS,
-                                15, TimeUnit.SECONDS
-                        );
-                        lookupBroker(topicName.getPartition(i), backoff, resultFuture);
-                        partitionedTopicAddr.put(i, resultFuture.get());
-                    } catch (Exception e) {
-                        log.warn("getTopicBrokerAddr error.", e);
-                    }
-                });
+            //String lookupName = TopicNameUtils.getNoDomainTopicName(topicName);
+            //adminClient.lookups().lookupTopic(lookupName);
+            PartitionedTopicMetadata pTopicMeta = adminClient.topics()
+                    .getPartitionedTopicMetadata(topicName.toString());
+            int num = pTopicMeta.partitions <= 0 ? 1 : pTopicMeta.partitions;
+            IntStream.range(0, num).forEach((i) -> {
+                try {
+                    Backoff backoff = new Backoff(
+                            100, TimeUnit.MILLISECONDS,
+                            15, TimeUnit.SECONDS,
+                            15, TimeUnit.SECONDS
+                    );
+                    CompletableFuture<InetSocketAddress> resultFuture = new CompletableFuture<>();
+                    lookupBroker(topicName.getPartition(i), backoff, resultFuture);
+                    partitionedTopicAddr.put(i, resultFuture.get());
+                } catch (Exception e) {
+                    log.warn("getTopicBrokerAddr error.", e);
+                }
+            });
+            if (!partitionedTopicAddr.isEmpty()) {
+                lookupCache.put(topicName, partitionedTopicAddr);
+                putPulsarTopic2Config(topicName, partitionedTopicAddr.size());
             }
-            putPulsarTopic2Config(topicName, partitionedMetadata.partitions);
-            lookupCache.put(topicName, partitionedTopicAddr);
         } catch (Exception e) {
             log.warn("getTopicBroker info error for the topic[{}].", topicName);
         }
-
         return partitionedTopicAddr;
     }
 
@@ -214,12 +198,20 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                 .whenComplete((topics, ex) -> {
                     if (ex == null) {
                         log.info("get owned topic list when onLoad bundle {}, topic size {} ", bundle, topics.size());
-                        for (String topic : topics) {
-                            log.info("NamespaceBundle onLoad topic = [{}].", topic);
-                            TopicName name = TopicName.get(TopicName.get(topic).getPartitionedTopicName());
-                            getTopicBrokerAddr(name);
+                        try {
+                            for (String topic : topics) {
+                                log.info("NamespaceBundle onLoad topic = [{}].", topic);
+                                TopicName name = TopicName.get(TopicName.get(topic).getPartitionedTopicName());
+                                getTopicBrokerAddr(name);
+                            }
+                        } catch (Exception e) {
+                            log.warn("NamespaceBundle loading broker address error. topics=[{}].", topics);
                         }
-                        loadPersistentTopic(topics);
+                        try {
+                            loadPersistentTopic(topics);
+                        } catch (Exception e) {
+                            log.warn("NamespaceBundle loading persistent topic error. topics=[{}].", topics);
+                        }
                     } else {
                         log.error("Failed to get owned topic list for "
                                         + "OffsetAndTopicListener when triggering on-loading bundle {}.",
@@ -261,15 +253,8 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                                 topics.size());
                         for (String topic : topics) {
                             TopicName partitionedTopic = TopicName.get(topic);
-                            TopicName name = TopicName.get(partitionedTopic.getPartitionedTopicName());
-                            Map<Integer, InetSocketAddress> lookupBrokerCache = lookupCache.getIfPresent(name);
-                            if (lookupBrokerCache != null) {
-                                lookupBrokerCache.remove(partitionedTopic.getPartitionIndex());
-                            }
-                            if (lookupBrokerCache == null || lookupBrokerCache.isEmpty()) {
-                                this.topicConfigTable.remove(RocketMQTopic.getPulsarOrigNoDomainTopic(topic));
-                            }
-                            ClientTopicName clientTopicName = new ClientTopicName(name);
+                            ClientTopicName clientTopicName = new ClientTopicName(
+                                    partitionedTopic.getPartitionedTopicName());
                             this.brokerController.getConsumerOffsetManager()
                                     .removePulsarTopic(clientTopicName, partitionedTopic.getPartitionIndex());
                         }
@@ -299,52 +284,48 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
 
         //for test
         createPulsarNamespaceIfNeeded(brokerService, cluster, "test1", "InstanceTest");
-
         this.topicConfigTable.values().forEach(this::createPulsarTopic);
     }
 
-    private void loadSysTopics(TopicConfig tc) {
-        String fullTopicName = tc.getTopicName();
-        try {
-            log.info("pulsar lookup the topic of name = [{}].", fullTopicName);
-            adminClient.lookups().lookupTopic(fullTopicName);
-        } catch (Exception e) {
-            log.warn("load system topic [{}] error.", fullTopicName, e);
-        }
+    private void lookupTopics(TopicConfig tc) {
+        lookupTopics(tc.getTopicName());
     }
 
     // tenant/ns/topicName
-    public void lookupTopics(String tdmpTopicName) {
-        log.info("pulsar lookup the topic of name = [{}].", tdmpTopicName);
-        adminClient.lookups().lookupTopicAsync(tdmpTopicName)
-                .whenComplete((serviceUrl, throwable1) -> {
-                    if (throwable1 != null) {
-                        log.warn("lookupTopicAsync topic[{}] exception.", tdmpTopicName);
-                        return;
-                    }
-                    log.info("lookupTopics topic[{}] successfully.", tdmpTopicName);
-                });
-
+    public void lookupTopics(String pulsarTopicName) {
+        try {
+            adminClient.lookups().lookupTopicAsync(pulsarTopicName)
+                    .whenComplete((serviceUrl, throwable1) -> {
+                        if (throwable1 != null) {
+                            log.warn("lookupTopicAsync topic[{}] exception.", pulsarTopicName);
+                            return;
+                        }
+                        log.info("lookupTopics topic[{}] successfully.", pulsarTopicName);
+                    }).get();
+        } catch (Exception e) {
+            log.error("lookupTopics pulsar topic=[{}] error.", pulsarTopicName, e);
+        }
     }
 
     private void createPulsarTopic(TopicConfig tc) {
         String fullTopicName = tc.getTopicName();
         try {
-            PartitionedTopicMetadata topicMetadata =
-                    adminClient.topics().getPartitionedTopicMetadata(fullTopicName);
-            if (topicMetadata.partitions <= 0) {
+            PartitionedTopicMetadata pTopicMeta = adminClient.topics()
+                    .getPartitionedTopicMetadata(fullTopicName);
+            if (pTopicMeta.partitions <= 0) {
                 log.info("RocketMQ metadata topic {} doesn't exist. Creating it ...", fullTopicName);
                 adminClient.topics().createPartitionedTopic(
                         fullTopicName,
                         tc.getWriteQueueNums());
                 for (int i = 0; i < tc.getWriteQueueNums(); i++) {
                     adminClient.topics()
-                            .createNonPartitionedTopic(fullTopicName + PARTITIONED_TOPIC_SUFFIX + i);
+                            .createNonPartitionedTopic(
+                                    fullTopicName + PARTITIONED_TOPIC_SUFFIX + i);
                 }
             }
-            loadSysTopics(tc);
+            lookupTopics(tc);
         } catch (Exception e) {
-            log.warn("Topic {} concurrent creating and cause e: ", fullTopicName, e);
+            log.error("createPulsarTopic topic=[{}] error.", tc, e);
         }
     }
 
@@ -413,13 +394,13 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
 //                for (int i = 0; i < tc.getWriteQueueNums(); i++) {
 //                    adminClient.topics().createNonPartitionedTopic(fullTopicName + PARTITIONED_TOPIC_SUFFIX + i);
 //                }
-                loadSysTopics(tc);
+                lookupTopics(tc);
             } else if (topicMetadata.partitions < tc.getWriteQueueNums()) {
                 adminClient.topics().updatePartitionedTopic(fullTopicName, tc.getWriteQueueNums());
 //                for (int i = topicMetadata.partitions; i < tc.getWriteQueueNums(); i++) {
 //                    adminClient.topics().createNonPartitionedTopic(fullTopicName + PARTITIONED_TOPIC_SUFFIX + i);
 //                }
-                loadSysTopics(tc);
+                lookupTopics(tc);
             }
         } catch (Exception e) {
             log.warn("Topic {} create or update partition failed", fullTopicName, e);

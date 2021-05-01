@@ -165,17 +165,14 @@ public class NameserverProcessor implements NettyRequestProcessor {
         String requestTopic = requestHeader.getTopic();
         if (Strings.isNotBlank(requestTopic)) {
             RocketMQTopic mqTopic = new RocketMQTopic(requestTopic);
-            mqTopicManager.lookupTopics(mqTopic.getOrigNoDomainTopicName());
             Map<Integer, InetSocketAddress> topicBrokerAddr = mqTopicManager
                     .getTopicBrokerAddr(mqTopic.getPulsarTopicName());
-            int partitionNum = topicBrokerAddr.size();
-            if (partitionNum > 0) {
-                mqTopicManager.getTopicBrokerAddr(mqTopic.getPulsarTopicName()).forEach((i, addr) -> {
+            if (topicBrokerAddr!=null && topicBrokerAddr.size() > 0) {
+                topicBrokerAddr.forEach((i, addr) -> {
                     String ownerBrokerAddress = addr.toString();
                     String hostName = addr.getHostName();
                     String brokerAddress = parseBrokerAddress(ownerBrokerAddress,
                             brokerController.getRemotingServer().getPort());
-                    // long brokerID = Math.abs(addr.hashCode());
 
                     HashMap<Long, String> brokerAddrs = new HashMap<>();
                     brokerAddrs.put(0L, brokerAddress);
@@ -185,20 +182,20 @@ public class NameserverProcessor implements NettyRequestProcessor {
 
                     QueueData queueData = new QueueData();
                     queueData.setBrokerName(hostName);
-                    queueData.setReadQueueNums(partitionNum);
-                    queueData.setWriteQueueNums(partitionNum);
+                    queueData.setReadQueueNums(topicBrokerAddr.size());
+                    queueData.setWriteQueueNums(topicBrokerAddr.size());
                     queueData.setPerm(PERM_WRITE | PERM_READ);
                     queueDatas.add(queueData);
                     topicRouteData.setQueueDatas(queueDatas);
 
                 });
-
-                byte[] content = topicRouteData.encode();
-                response.setBody(content);
-                response.setCode(ResponseCode.SUCCESS);
-                response.setRemark(null);
-                return response;
             }
+
+            byte[] content = topicRouteData.encode();
+            response.setBody(content);
+            response.setCode(ResponseCode.SUCCESS);
+            response.setRemark(null);
+            return response;
         }
 
         response.setCode(ResponseCode.TOPIC_NOT_EXIST);

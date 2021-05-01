@@ -174,7 +174,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             }
         }
 
-        long producerId = buildPulsarProducerId(producerGroup, pTopic, this.remoteAddress.toString());
+        long producerId = buildPulsarProducerId(producerGroup, pTopic, ctx.channel().remoteAddress().toString());
         try {
             Producer<byte[]> producer = this.producers.get(producerId);
             if (producer == null) {
@@ -184,7 +184,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                         producer = this.service.pulsar().getClient()
                                 .newProducer()
                                 .topic(pTopic)
-                                .maxPendingMessages(5000)
+                                .maxPendingMessages(500)
                                 .producerName(producerGroup + CommonUtils.UNDERSCORE_CHAR + producerId)
                                 .sendTimeout(sendTimeoutInSec, TimeUnit.MILLISECONDS)
                                 .enableBatching(false)
@@ -220,9 +220,9 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         long producerId = buildPulsarProducerId(producerGroup, pTopic, this.remoteAddress.toString());
         try {
             Producer<byte[]> putMsgProducer = this.producers.get(producerId);
-            if (putMsgProducer == null || !putMsgProducer.isConnected()) {
+            if (putMsgProducer == null) {
                 synchronized (this.producers) {
-                    if (putMsgProducer == null || !putMsgProducer.isConnected()) {
+                    if (this.producers.get(producerId) == null) {
                         log.info("putMessages create producer[id={}] successfully.", producerId);
                         putMsgProducer = this.service.pulsar().getClient().newProducer()
                                 .topic(pTopic)
@@ -417,7 +417,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                         .topic(pTopic)
                         .receiverQueueSize(maxMsgNums)
                         .startMessageId(startOffset)
-                        //.startMessageIdInclusive()
+                        .startMessageIdInclusive()
                         .readerName(consumerGroup + readerId)
                         .create();
                 Reader<byte[]> oldReader = this.readers.put(readerId, reader);
@@ -427,14 +427,20 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             }
 
             Reader<byte[]> reader = this.readers.get(readerId);
+            if (startOffset != MessageId.earliest && startOffset != MessageId.latest) {
+                Message<byte[]> message = reader.readNext(fetchTimeoutInMs, TimeUnit.MILLISECONDS);
+                if (message != null && !MessageIdUtils.isMessageEquals(startOffset, message.getMessageId())) {
+                    reader.seek(startOffset);
+                }
+            }
+
             for (int i = 0; i < maxMsgNums; i++) {
                 Message<byte[]> message = reader.readNext(fetchTimeoutInMs, TimeUnit.MILLISECONDS);
-                if (message != null) {
-                    messageList.add(message);
-                    nextBeginOffset = MessageIdUtils.getOffset((MessageIdImpl) message.getMessageId());
-                } else {
+                if (message == null) {
                     break;
                 }
+                messageList.add(message);
+                nextBeginOffset = MessageIdUtils.getOffset((MessageIdImpl) message.getMessageId());
             }
         } catch (Exception e) {
             log.warn("retrieve message error, group = [{}], topic = [{}].", consumerGroup, topic);
@@ -459,11 +465,11 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
     }
 
     private long buildPulsarReaderId(String... tags) {
-        return Math.abs(Joiner.on("/").join(tags).hashCode());
+        return (Joiner.on("/").join(tags)).hashCode();
     }
 
     private long buildPulsarProducerId(String... tags) {
-        return Math.abs(Joiner.on("/").join(tags).hashCode());
+        return (Joiner.on("/").join(tags)).hashCode();
     }
 
     enum State {
