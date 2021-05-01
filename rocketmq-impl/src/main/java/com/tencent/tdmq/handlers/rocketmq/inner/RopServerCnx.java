@@ -184,6 +184,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                         producer = this.service.pulsar().getClient()
                                 .newProducer()
                                 .topic(pTopic)
+                                .maxPendingMessages(5000)
                                 .producerName(producerGroup + CommonUtils.UNDERSCORE_CHAR + producerId)
                                 .sendTimeout(sendTimeoutInSec, TimeUnit.MILLISECONDS)
                                 .enableBatching(false)
