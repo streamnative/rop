@@ -434,14 +434,6 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
     public void deleteTopic(final String topic) {
         String fullTopicName = RocketMQTopic.getPulsarOrigNoDomainTopic(topic);
         try {
-            PartitionedTopicMetadata topicMetadata = adminClient.topics().getPartitionedTopicMetadata(fullTopicName);
-            if (topicMetadata.partitions > 0) {
-                for (int i = 0; i < topicMetadata.partitions; i++) {
-                    adminClient.topics().delete(fullTopicName + PARTITIONED_TOPIC_SUFFIX + i);
-                }
-            } else {
-                log.warn("Topic {} not exist.", fullTopicName);
-            }
             // 删除分区主题源主题，否者再次创建的主题的时候会查询到分区主题的一些元数据
             adminClient.topics().deletePartitionedTopic(fullTopicName, true);
         } catch (Exception e) {
