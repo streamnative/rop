@@ -30,7 +30,7 @@ import org.apache.rocketmq.remoting.exception.RemotingException;
 /**
  * Order message producer example.
  */
-public class Producer {
+public class OrderProducer {
 
     public static void main(String[] args) throws UnsupportedEncodingException {
         try {

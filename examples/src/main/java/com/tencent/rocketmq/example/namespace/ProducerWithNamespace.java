@@ -29,7 +29,7 @@ public class ProducerWithNamespace {
         producer.setNamesrvAddr("127.0.0.1:9876");
         producer.start();
         for (int i = 0; i < 100; i++) {
-            Message message = new Message("topicTest", "tagTest", "Hello world".getBytes());
+            Message message = new Message("topicTest", "TagA", "Hello world".getBytes());
             try {
                 SendResult result = producer.send(message);
                 System.out.printf("Topic:%s send success, misId is:%s%n", message.getTopic(), result.getMsgId());

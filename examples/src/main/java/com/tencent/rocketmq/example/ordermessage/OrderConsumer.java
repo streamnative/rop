@@ -27,7 +27,7 @@ import org.apache.rocketmq.common.message.MessageExt;
 /**
  * Order message consumer example.
  */
-public class Consumer {
+public class OrderConsumer {
 
     public static void main(String[] args) throws MQClientException {
         DefaultMQPushConsumer consumer = new DefaultMQPushConsumer("please_rename_unique_group_name_3");
