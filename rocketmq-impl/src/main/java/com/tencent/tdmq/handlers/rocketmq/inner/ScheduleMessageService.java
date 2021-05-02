@@ -25,11 +25,13 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.locks.ReentrantLock;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.pulsar.broker.PulsarService;
 import org.apache.pulsar.broker.service.BrokerService;
@@ -39,7 +41,6 @@ import org.apache.pulsar.client.api.Producer;
 import org.apache.pulsar.client.api.SubscriptionInitialPosition;
 import org.apache.pulsar.client.api.SubscriptionMode;
 import org.apache.pulsar.client.api.SubscriptionType;
-import org.apache.pulsar.common.util.collections.ConcurrentLongHashMap;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.ServiceThread;
 import org.apache.rocketmq.common.TopicFilterType;
@@ -59,16 +60,15 @@ public class ScheduleMessageService {
     private static final long DELAY_FOR_A_WHILE = 200L;
     private static final long DELAY_FOR_A_PERIOD = 10000L;
     private static final int MAX_FETCH_MESSAGE_NUM = 100;
-    private static final int PRODUCER_EXPIRED_TIME_SEC = 60 * 60;
-    private static final int PRODUCER_CACHE_SIZE = 200;
     /*  key is delayed level  value is delay timeMillis */
-    private final ConcurrentLongHashMap<Long> delayLevelTable;
+    private final Map<Integer, Long> delayLevelTable;
     private final AtomicBoolean started = new AtomicBoolean(false);
     private final RocketMQServiceConfiguration config;
     private final RocketMQBrokerController rocketBroker;
     private final ServiceThread expirationReaper;
     private final Timer timer = new Timer();
-    private final ConcurrentHashMap<String, Producer<byte[]>> sendBackProdcuer;
+    private final ConcurrentHashMap<String, Producer<byte[]>> sendBackProdcuers;
+    private final ReentrantLock producerLock = new ReentrantLock(true);
     private String scheduleTopicPrefix;
     private int maxDelayLevel;
     private String[] delayLevelArray;
@@ -79,10 +79,10 @@ public class ScheduleMessageService {
         this.config = config;
         this.rocketBroker = rocketBroker;
         this.scheduleTopicPrefix = config.getRmqScheduleTopic();
-        this.delayLevelTable = new ConcurrentLongHashMap<>(config.getMaxDelayLevelNum(), 1);
+        this.delayLevelTable = new HashMap<>(config.getMaxDelayLevelNum());
         this.maxDelayLevel = config.getMaxDelayLevelNum();
         this.parseDelayLevel();
-        this.sendBackProdcuer = new ConcurrentHashMap<>();
+        this.sendBackProdcuers = new ConcurrentHashMap<>();
         this.expirationReaper = new ServiceThread() {
             @Override
             public String getServiceName() {
@@ -135,7 +135,7 @@ public class ScheduleMessageService {
     public void start() {
         if (started.compareAndSet(false, true)) {
             this.pulsarBroker = rocketBroker.getBrokerService();
-            this.deliverDelayedMessageManager = delayLevelTable.keys().stream()
+            this.deliverDelayedMessageManager = delayLevelTable.keySet().stream()
                     .collect(ArrayList::new, (arr, level) -> {
                         arr.add(new DeliverDelayedMessageTimerTask(level));
                     }, ArrayList::addAll);
@@ -149,7 +149,7 @@ public class ScheduleMessageService {
         if (this.started.compareAndSet(true, false)) {
             expirationReaper.shutdown();
             deliverDelayedMessageManager.forEach(DeliverDelayedMessageTimerTask::close);
-            sendBackProdcuer.values().stream().forEach(Producer::closeAsync);
+            sendBackProdcuers.values().stream().forEach(Producer::closeAsync);
             timer.cancel();
         }
     }
@@ -175,7 +175,7 @@ public class ScheduleMessageService {
                 int level = i + 1;
                 long num = Long.parseLong(value.substring(0, value.length() - 1));
                 long delayTimeMillis = tu * num;
-                this.delayLevelTable.putIfAbsent(level, delayTimeMillis);
+                this.delayLevelTable.put(level, delayTimeMillis);
             }
         } catch (Exception e) {
             log.error("parseDelayLevel exception, evelString String = {}", levelString, e);
@@ -187,6 +187,7 @@ public class ScheduleMessageService {
     class DeliverDelayedMessageTimerTask extends TimerTask {
 
         private static final int PULL_MESSAGE_TIMEOUT_MS = 500;
+        private static final int SEND_MESSAGE_TIMEOUT_MS = 3000;
         private static final int MAX_BATCH_SIZE = 500;
         private final PulsarService pulsarService;
         private final long delayLevel;
@@ -255,29 +256,29 @@ public class ScheduleMessageService {
                                 }
 
                                 RocketMQTopic rmqTopic = new RocketMQTopic(msgInner.getTopic());
-                                int partitionId = msgInner.getQueueId();
-                                String pTopic = rmqTopic.getPartitionName(partitionId);
-                                Producer<byte[]> producer = sendBackProdcuer.get(pTopic);
-                                if (producer == null || !producer.isConnected()) {
-                                    synchronized (sendBackProdcuer) {
-                                        if (producer == null || !producer.isConnected()) {
-                                            try {
-                                                producer = pulsarService.getClient().newProducer()
-                                                        .topic(pTopic)
-                                                        .producerName(pTopic + "_delayedMessageSender")
-                                                        .enableBatching(true)
-                                                        .sendTimeout(1000, TimeUnit.MILLISECONDS)
-                                                        .create();
-                                            } catch (Exception e) {
-                                                log.warn("create delayedMessageSender error.", e);
-                                            }
-                                        }
-                                        if (producer != null) {
-                                            Producer<byte[]> oldProducer = sendBackProdcuer.put(pTopic, producer);
+                                String pTopic = rmqTopic.getPartitionName(msgInner.getQueueId());
+                                Producer<byte[]> producer = sendBackProdcuers.get(pTopic);
+                                if (producer == null) {
+                                    try {
+                                        producerLock.lock();
+                                        if (sendBackProdcuers.get(pTopic) == null) {
+                                            producer = pulsarService.getClient().newProducer()
+                                                    .topic(pTopic)
+                                                    .producerName(pTopic + "_delayedMessageSender")
+                                                    .enableBatching(true)
+                                                    .sendTimeout(SEND_MESSAGE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+                                                    .create();
+                                            Producer<byte[]> oldProducer = sendBackProdcuers.put(pTopic, producer);
                                             if (oldProducer != null) {
                                                 oldProducer.closeAsync();
                                             }
+                                        } else {
+                                            producer = sendBackProdcuers.get(pTopic);
                                         }
+                                    } catch (Exception e) {
+                                        log.warn("create delayedMessageSender error.", e);
+                                    } finally {
+                                        producerLock.unlock();
                                     }
                                 }
                                 producer.send(formatter.encode(msgInner, 1).get(0));
@@ -288,7 +289,7 @@ public class ScheduleMessageService {
                                         delayLevel, JSON.toJSONString(msgInner, true),
                                         pTopic);
                             } catch (Exception ex) {
-                                log.warn("create delayedMessageSender error.", ex);
+                                log.warn("delayedMessageSender send message[{}] error.", message.getMessageId(), ex);
                                 delayedConsumer.negativeAcknowledge(message.getMessageId());
                             }
                         }

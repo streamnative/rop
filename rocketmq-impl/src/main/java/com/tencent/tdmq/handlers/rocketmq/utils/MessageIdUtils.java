@@ -93,10 +93,13 @@ public class MessageIdUtils {
     }
 
     public static boolean isMessageEquals(MessageId left, MessageId right) {
-        MessageIdImpl leftMsgId = (MessageIdImpl) left;
-        MessageIdImpl rightMsgId = (MessageIdImpl) right;
-        return (leftMsgId.getLedgerId() == rightMsgId.getLedgerId())
-                && (leftMsgId.getEntryId() == rightMsgId.getEntryId())
-                && (leftMsgId.getPartitionIndex() == rightMsgId.getPartitionIndex());
+        if (left != null && right != null) {
+            MessageIdImpl leftMsgId = (MessageIdImpl) left;
+            MessageIdImpl rightMsgId = (MessageIdImpl) right;
+            return (leftMsgId.getLedgerId() == rightMsgId.getLedgerId())
+                    && (leftMsgId.getEntryId() == rightMsgId.getEntryId())
+                    && (leftMsgId.getPartitionIndex() == rightMsgId.getPartitionIndex());
+        }
+        return false;
     }
 }

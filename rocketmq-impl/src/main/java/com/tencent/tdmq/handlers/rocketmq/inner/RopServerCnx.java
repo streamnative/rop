@@ -18,6 +18,7 @@ import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
 import com.tencent.tdmq.handlers.rocketmq.RocketMQProtocolHandler;
 import com.tencent.tdmq.handlers.rocketmq.inner.consumer.RopGetMessageResult;
+import com.tencent.tdmq.handlers.rocketmq.inner.exception.RopPullMessageException;
 import com.tencent.tdmq.handlers.rocketmq.inner.format.RopEntryFormatter;
 import com.tencent.tdmq.handlers.rocketmq.inner.format.RopMessageFilter;
 import com.tencent.tdmq.handlers.rocketmq.inner.pulsar.PulsarMessageStore;
@@ -431,6 +432,10 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 Message<byte[]> message = reader.readNext(fetchTimeoutInMs, TimeUnit.MILLISECONDS);
                 if (message != null && !MessageIdUtils.isMessageEquals(startOffset, message.getMessageId())) {
                     reader.seek(startOffset);
+                    message = reader.readNext(fetchTimeoutInMs, TimeUnit.MILLISECONDS);
+                    if (message != null && !MessageIdUtils.isMessageEquals(startOffset, message.getMessageId())) {
+                        throw new RopPullMessageException("couldn't find start-offset matched message");
+                    }
                 }
             }
 
@@ -443,7 +448,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 nextBeginOffset = MessageIdUtils.getOffset((MessageIdImpl) message.getMessageId());
             }
         } catch (Exception e) {
-            log.warn("retrieve message error, group = [{}], topic = [{}].", consumerGroup, topic);
+            log.warn("retrieve message error, group = [{}], topic = [{}], startOffset=[{}].",
+                    new Object[]{consumerGroup, topic, startOffset});
             e.printStackTrace();
         } finally {
             readLock.unlock();

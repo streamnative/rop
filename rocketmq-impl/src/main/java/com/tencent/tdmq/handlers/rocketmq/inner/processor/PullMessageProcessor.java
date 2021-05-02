@@ -444,10 +444,6 @@ public class PullMessageProcessor implements NettyRequestProcessor {
             }
         } finally {
         }
-
-        // TODO: brokerController.getMessageStore() 需要实现 MessageStore 的逻辑
-        /*this.brokerController.getBrokerStatsManager().recordDiskFallBehindTime(group, topic, queueId,
-                this.brokerController.getMessageStore().now() - storeTimestamp);*/
         return byteBuffer.array();
     }
 
