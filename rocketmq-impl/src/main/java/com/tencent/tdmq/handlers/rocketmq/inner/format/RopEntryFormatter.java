@@ -307,7 +307,7 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
         // 5 FLAG
         msgStoreItemMemory.putInt(msgInner.getFlag());
         // 6 QUEUEOFFSET
-        msgStoreItemMemory.putLong(msgInner.getQueueId());
+        msgStoreItemMemory.putLong(0L);
         // 7 PHYSICALOFFSET
         msgStoreItemMemory.putLong(0L);
         // 8 SYSFLAG

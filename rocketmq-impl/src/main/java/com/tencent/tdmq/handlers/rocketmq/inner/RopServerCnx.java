@@ -197,7 +197,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 }
             }
             List<byte[]> body = this.entryFormatter.encode(messageInner, 1);
-            MessageIdImpl messageId = (MessageIdImpl) producer.send(body.get(0));
+            MessageIdImpl messageId = (MessageIdImpl) this.producers.get(producerId).send(body.get(0));
             AppendMessageResult appendMessageResult = new AppendMessageResult(AppendMessageStatus.PUT_OK);
             appendMessageResult.setMsgNum(1);
             appendMessageResult.setWroteBytes(body.get(0).length);
@@ -243,9 +243,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             List<CompletableFuture<MessageId>> batchMessageFutures = new ArrayList<>();
             List<byte[]> body = this.entryFormatter.encode(batchMessage, 1);
             AtomicInteger totalBytesSize = new AtomicInteger(0);
-            final Producer<byte[]> producer = putMsgProducer;
             body.forEach(item -> {
-                batchMessageFutures.add(producer.sendAsync(item));
+                batchMessageFutures.add(this.producers.get(producerId).sendAsync(item));
                 totalBytesSize.getAndAdd(item.length);
             });
             FutureUtil.waitForAll(batchMessageFutures).get(sendTimeoutInSec, TimeUnit.MILLISECONDS);
@@ -326,6 +325,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                     }
                 }
             }
+            topicReader = this.lookupIdReaders.get(readerId);
             synchronized (topicReader) {
                 message = topicReader.readNext(fetchTimeoutInMs, TimeUnit.MILLISECONDS);
                 if (message != null && MessageIdUtils.isMessageEquals(messageId, message.getMessageId())) {

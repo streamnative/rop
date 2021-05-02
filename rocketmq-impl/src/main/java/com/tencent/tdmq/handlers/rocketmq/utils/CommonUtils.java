@@ -311,13 +311,17 @@ public class CommonUtils {
         return null;
     }
 
+    private static final int ROP_QUEUE_OFFSET_INDEX = 8 + 4 + 4 + 4 + 4 + 4;
+    private static final int ROP_PHYSICAL_OFFSET_INDEX = 8 + 4 + 4 + 4 + 4 + 4 + 8;
     public static ByteBuffer decode(Message<byte[]> message) {
         // 去除 tags 标记位的 8 个字节之后，将原先的 byteBuffer 返回
         ByteBuffer wrap = ByteBuffer.wrap(message.getData());
         MessageIdImpl messageId = (MessageIdImpl) message.getMessageId();
-        Long pysicalOffset = MessageIdUtils
+        Long physicalOffset = MessageIdUtils
                 .getOffset(messageId.getLedgerId(), messageId.getEntryId(), messageId.getPartitionIndex());
-        wrap.putLong(8 + 4 + 4 + 4 + 4 + 4 + 8, pysicalOffset);
+
+        wrap.putLong(ROP_QUEUE_OFFSET_INDEX, physicalOffset);
+        wrap.putLong(ROP_PHYSICAL_OFFSET_INDEX, physicalOffset);
         long tag = wrap.getLong();
         return wrap.slice();
     }

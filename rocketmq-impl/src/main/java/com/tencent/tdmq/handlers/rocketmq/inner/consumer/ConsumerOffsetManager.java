@@ -162,6 +162,9 @@ public class ConsumerOffsetManager {
 
     private void commitOffset(final String clientHost, final ClientGroupAndTopicName clientGroupAndTopicName,
             final int queueId, final long offset) {
+        log.info("commitOffset =======> ClientGroupAndTopicName=[{}], queueId=[{}], offset=[{}].",
+                new Object[]{clientGroupAndTopicName,
+                        queueId, offset});
         ConcurrentMap<Integer, Long> map = this.offsetTable.get(clientGroupAndTopicName);
         if (null == map) {
             map = new ConcurrentHashMap<>(32);
@@ -346,6 +349,9 @@ public class ConsumerOffsetManager {
                             }
                             ManagedCursor cursor = subscription.getCursor();
                             cursor.markDelete(MessageIdUtils.getPosition(offset));
+                            log.info("markDelete =======> groupAndTopic=[{}], partitionId=[{}],  position=[{}].",
+                                    new Object[]{groupAndTopic, partitionId,
+                                            MessageIdUtils.getPosition(offset)});
                         }
                     } catch (Exception e) {
                         log.warn("persist topic[{}] offset[{}] error.", groupAndTopic, offset);
@@ -377,7 +383,6 @@ public class ConsumerOffsetManager {
             if (persistentTopic != null) {
                 String pulsarGroup = groupAndTopicName.getClientGroupName().getPulsarGroupName();
                 ManagedLedger managedLedger = persistentTopic.getManagedLedger();
-
 
                 PositionImpl position = (PositionImpl) persistentTopic.getSubscription(pulsarGroup).getCursor()
                         .getMarkDeletedPosition();
