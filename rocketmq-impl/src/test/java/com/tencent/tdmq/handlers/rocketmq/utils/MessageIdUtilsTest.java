@@ -105,6 +105,13 @@ public class MessageIdUtilsTest {
         assertEquals(1234L, messageId.getLedgerId());
         assertEquals(123L, messageId.getEntryId());
         assertEquals(254, messageId.getPartitionIndex());
+
+
+        messageId1 = getMessageId(880471879682L);
+        assertEquals(1234L, messageId.getLedgerId());
+        assertEquals(123L, messageId.getEntryId());
+        assertEquals(254, messageId.getPartitionIndex());
+
     }
 
     public void testGetPosition() {

@@ -40,6 +40,7 @@ import org.apache.pulsar.broker.namespace.LookupOptions;
 import org.apache.pulsar.broker.service.Topic;
 import org.apache.pulsar.broker.service.persistent.PersistentSubscription;
 import org.apache.pulsar.broker.service.persistent.PersistentTopic;
+import org.apache.pulsar.client.impl.MessageIdImpl;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandSubscribe.InitialPosition;
 import org.apache.pulsar.common.naming.TopicName;
 import org.apache.rocketmq.common.UtilAll;
@@ -157,7 +158,13 @@ public class ConsumerOffsetManager {
     public void commitOffset(final String clientHost, final String group, final String topic, final int queueId,
             final long offset) {
         ClientGroupAndTopicName clientGroupAndTopicName = new ClientGroupAndTopicName(group, topic);
-        this.commitOffset(clientHost, clientGroupAndTopicName, queueId, offset);
+        long fixedOffset = offset;
+        MessageIdImpl messageId = MessageIdUtils.getMessageId(offset);
+        // rocketmq client will add 1 to commitOffset sometimes, it break down pulsar offset management,so fix it
+        if (messageId.getPartitionIndex() != queueId) {
+            fixedOffset = MessageIdUtils.getOffset(messageId.getLedgerId(), messageId.getEntryId(), queueId);
+        }
+        this.commitOffset(clientHost, clientGroupAndTopicName, queueId, fixedOffset);
     }
 
     private void commitOffset(final String clientHost, final ClientGroupAndTopicName clientGroupAndTopicName,

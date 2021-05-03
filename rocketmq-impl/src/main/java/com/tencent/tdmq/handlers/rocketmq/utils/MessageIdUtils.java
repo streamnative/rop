@@ -49,9 +49,7 @@ public class MessageIdUtils {
         } else if (entryId == Long.MAX_VALUE && ledgerId == Long.MAX_VALUE) {
             return MAX_ROP_OFFSET;
         }
-        if (entryId >= MAX_ENTRY_ID) {
-            log.error("The entryID has overflow in [{} : {}]", ledgerId, entryId);
-        }
+
         Preconditions.checkArgument(ledgerId <= MAX_LEDGER_ID, "ledgerId has overflow in rop.");
         Preconditions.checkArgument(entryId < MAX_ENTRY_ID, "entryId has overflow in rop.");
         Preconditions.checkArgument(partitionId < MAX_PARTITION_ID, "entryId has overflow in rop.");
