@@ -25,7 +25,6 @@ import com.tencent.tdmq.handlers.rocketmq.RocketMQProtocolHandler;
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
 import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientTopicName;
 import com.tencent.tdmq.handlers.rocketmq.utils.RocketMQTopic;
-import com.tencent.tdmq.handlers.rocketmq.utils.TopicNameUtils;
 import java.net.InetSocketAddress;
 import java.util.HashMap;
 import java.util.List;
@@ -108,12 +107,9 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
     public TopicConfig selectTopicConfig(String rmqTopicName) {
         TopicConfig topicConfig = super.selectTopicConfig(rmqTopicName);
         if (topicConfig == null) {
-            try {
-                String lookupTopic = RocketMQTopic.getPulsarOrigNoDomainTopic(rmqTopicName);
-                getTopicBrokerAddr(TopicName.get(lookupTopic));
-            } catch (Exception e) {
-                log.info("selectTopicConfig rocketmq topic [{}].", rmqTopicName);
-            }
+            //load from pulsar server
+            String lookupTopic = RocketMQTopic.getPulsarOrigNoDomainTopic(rmqTopicName);
+            getTopicBrokerAddr(TopicName.get(lookupTopic));
         }
         return super.selectTopicConfig(rmqTopicName);
     }
@@ -134,21 +130,22 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
             //adminClient.lookups().lookupTopic(lookupName);
             PartitionedTopicMetadata pTopicMeta = adminClient.topics()
                     .getPartitionedTopicMetadata(topicName.toString());
-            int num = pTopicMeta.partitions <= 0 ? 1 : pTopicMeta.partitions;
-            IntStream.range(0, num).forEach((i) -> {
-                try {
-                    Backoff backoff = new Backoff(
-                            100, TimeUnit.MILLISECONDS,
-                            15, TimeUnit.SECONDS,
-                            15, TimeUnit.SECONDS
-                    );
-                    CompletableFuture<InetSocketAddress> resultFuture = new CompletableFuture<>();
-                    lookupBroker(topicName.getPartition(i), backoff, resultFuture);
-                    partitionedTopicAddr.put(i, resultFuture.get());
-                } catch (Exception e) {
-                    log.warn("getTopicBrokerAddr error.", e);
-                }
-            });
+            if (pTopicMeta.partitions > 0) {
+                IntStream.range(0, pTopicMeta.partitions).forEach((i) -> {
+                    try {
+                        Backoff backoff = new Backoff(
+                                100, TimeUnit.MILLISECONDS,
+                                15, TimeUnit.SECONDS,
+                                15, TimeUnit.SECONDS
+                        );
+                        CompletableFuture<InetSocketAddress> resultFuture = new CompletableFuture<>();
+                        lookupBroker(topicName.getPartition(i), backoff, resultFuture);
+                        partitionedTopicAddr.put(i, resultFuture.get());
+                    } catch (Exception e) {
+                        log.warn("getTopicBrokerAddr error.", e);
+                    }
+                });
+            }
             if (!partitionedTopicAddr.isEmpty()) {
                 lookupCache.put(topicName, partitionedTopicAddr);
                 putPulsarTopic2Config(topicName, partitionedTopicAddr.size());

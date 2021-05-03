@@ -34,7 +34,7 @@ public class OrderProducer {
 
     public static void main(String[] args) throws UnsupportedEncodingException {
         try {
-            DefaultMQProducer producer = new DefaultMQProducer("please_rename_unique_group_name");
+            DefaultMQProducer producer = new DefaultMQProducer("test1|InstanceTest","please_rename_unique_group_name");
             producer.setNamesrvAddr("127.0.0.1:9876");
             producer.start();
 
@@ -42,7 +42,7 @@ public class OrderProducer {
             for (int i = 0; i < 100; i++) {
                 int orderId = i % 10;
                 Message msg =
-                        new Message("TopicTestjjj", tags[i % tags.length], "KEY" + i,
+                        new Message("OrderTopic", tags[i % tags.length], "KEY" + i,
                                 ("Hello RocketMQ " + i).getBytes(RemotingHelper.DEFAULT_CHARSET));
                 SendResult sendResult = producer.send(msg, new MessageQueueSelector() {
                     @Override

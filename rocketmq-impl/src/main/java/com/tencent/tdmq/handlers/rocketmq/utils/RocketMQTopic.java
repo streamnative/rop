@@ -88,6 +88,10 @@ public class RocketMQTopic {
         return new RocketMQTopic(RocketMQTopic.metaTenant, RocketMQTopic.metaNamespace, rmqTopic);
     }
 
+    public static final RocketMQTopic getRocketMQDefaultTopic(String rmqTopic) {
+        return new RocketMQTopic(RocketMQTopic.metaTenant, RocketMQTopic.metaNamespace, rmqTopic);
+    }
+
     public String getRocketDLQTopic() {
         if (Strings.isBlank(rocketmqTenant) && Strings.isBlank(rocketmqNs)) {
             return MixAll.DLQ_GROUP_TOPIC_PREFIX + pulsarTopicName.getLocalName();

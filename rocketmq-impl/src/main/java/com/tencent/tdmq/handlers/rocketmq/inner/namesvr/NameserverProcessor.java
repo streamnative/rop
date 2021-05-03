@@ -36,6 +36,7 @@ import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.logging.log4j.util.Strings;
 import org.apache.pulsar.client.admin.PulsarAdmin;
+import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.help.FAQUrl;
 import org.apache.rocketmq.common.protocol.RequestCode;
 import org.apache.rocketmq.common.protocol.ResponseCode;
@@ -164,10 +165,13 @@ public class NameserverProcessor implements NettyRequestProcessor {
         // 根据传入的请求获取指定的topic
         String requestTopic = requestHeader.getTopic();
         if (Strings.isNotBlank(requestTopic)) {
-            RocketMQTopic mqTopic = new RocketMQTopic(requestTopic);
+            RocketMQTopic mqTopic =
+                    requestTopic.equals(MixAll.AUTO_CREATE_TOPIC_KEY_TOPIC) ? RocketMQTopic
+                            .getRocketMQMetaTopic(requestTopic)
+                            : new RocketMQTopic(requestTopic);
             Map<Integer, InetSocketAddress> topicBrokerAddr = mqTopicManager
                     .getTopicBrokerAddr(mqTopic.getPulsarTopicName());
-            if (topicBrokerAddr!=null && topicBrokerAddr.size() > 0) {
+            if (topicBrokerAddr != null && topicBrokerAddr.size() > 0) {
                 topicBrokerAddr.forEach((i, addr) -> {
                     String ownerBrokerAddress = addr.toString();
                     String hostName = addr.getHostName();
@@ -189,13 +193,12 @@ public class NameserverProcessor implements NettyRequestProcessor {
                     topicRouteData.setQueueDatas(queueDatas);
 
                 });
+                byte[] content = topicRouteData.encode();
+                response.setBody(content);
+                response.setCode(ResponseCode.SUCCESS);
+                response.setRemark(null);
+                return response;
             }
-
-            byte[] content = topicRouteData.encode();
-            response.setBody(content);
-            response.setCode(ResponseCode.SUCCESS);
-            response.setRemark(null);
-            return response;
         }
 
         response.setCode(ResponseCode.TOPIC_NOT_EXIST);
