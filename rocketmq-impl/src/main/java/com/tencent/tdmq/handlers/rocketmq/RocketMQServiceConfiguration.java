@@ -264,7 +264,7 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
             category = CATEGORY_ROCKETMQ,
             doc = "Whether enable long polling function in consumer.\n"
     )
-    private boolean longPollingEnable = true;
+    private boolean longPollingEnable = false;
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
             doc = "The time of short polling.\n"

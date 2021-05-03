@@ -241,9 +241,12 @@ public class ScheduleMessageService {
                         break;
                     }
                     MessageExt messageExt = this.formatter.decodePulsarMessage(message);
-                    long deliveryTime = computeDeliverTimestamp(this.delayLevel, messageExt.getStoreTimestamp());
+                    long deliveryTime = computeDeliverTimestamp(this.delayLevel, messageExt.getBornTimestamp());
                     long diff = deliveryTime - Instant.now().toEpochMilli();
                     diff = diff < 0 ? 0 : diff;
+                    log.info("retry delayedTime ======> delayLeve=[{}], delayTime=[{}], bornTime=[{}], storeTime=[{}], diff=[{}].",
+                            new Object[]{delayLevel, delayLevelTable.get(delayLevel), messageExt.getBornTimestamp(),
+                            messageExt.getStoreTimestamp(), diff});
                     timeoutTimer.add(new com.tencent.tdmq.handlers.rocketmq.inner.timer.TimerTask(diff) {
                         @Override
                         public void run() {
