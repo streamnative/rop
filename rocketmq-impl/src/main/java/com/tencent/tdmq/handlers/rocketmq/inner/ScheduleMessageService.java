@@ -84,6 +84,7 @@ public class ScheduleMessageService {
         this.parseDelayLevel();
         this.sendBackProdcuers = new ConcurrentHashMap<>();
         this.expirationReaper = new ServiceThread() {
+            private final long advanceTimeInterval = 100L;
             @Override
             public String getServiceName() {
                 return "ScheduleMessageService-expirationReaper-thread";
@@ -94,8 +95,8 @@ public class ScheduleMessageService {
                 log.info(getServiceName() + " service started.");
                 Preconditions.checkNotNull(deliverDelayedMessageManager);
                 while (!this.isStopped()) {
-                    deliverDelayedMessageManager.stream().forEach((i) -> {
-                        i.advanceClock(DELAY_FOR_A_WHILE);
+                    deliverDelayedMessageManager.parallelStream().forEach((i) -> {
+                        i.advanceClock(advanceTimeInterval);
                     });
                 }
             }
@@ -244,13 +245,16 @@ public class ScheduleMessageService {
                     long deliveryTime = computeDeliverTimestamp(this.delayLevel, messageExt.getBornTimestamp());
                     long diff = deliveryTime - Instant.now().toEpochMilli();
                     diff = diff < 0 ? 0 : diff;
-                    log.info("retry delayedTime ======> delayLeve=[{}], delayTime=[{}], bornTime=[{}], storeTime=[{}], diff=[{}].",
+                    log.debug(
+                            "retry delayedTime ======> delayLeve=[{}], delayTime=[{}], bornTime=[{}], storeTime=[{}], deliveryTime=[{}].",
                             new Object[]{delayLevel, delayLevelTable.get(delayLevel), messageExt.getBornTimestamp(),
-                            messageExt.getStoreTimestamp(), diff});
+                                    messageExt.getStoreTimestamp(), deliveryTime});
                     timeoutTimer.add(new com.tencent.tdmq.handlers.rocketmq.inner.timer.TimerTask(diff) {
                         @Override
                         public void run() {
                             try {
+                                log.info("retry delayedTime ======> needDelayMs=[{}],real diff =[{}].", this.delayMs,
+                                        deliveryTime - Instant.now().toEpochMilli());
                                 MessageExtBrokerInner msgInner = messageTimeup(messageExt);
                                 if (MixAll.RMQ_SYS_TRANS_HALF_TOPIC.equals(messageExt.getTopic())) {
                                     log.error("[BUG] the real topic of schedule msg is {}, discard the msg. msg={}",
