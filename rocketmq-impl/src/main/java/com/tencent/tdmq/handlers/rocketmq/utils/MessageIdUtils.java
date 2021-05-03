@@ -32,32 +32,33 @@ public class MessageIdUtils {
     public static final int LEDGER_BITS = 32;
     public static final int ENTRY_BITS = 24;
     public static final int PARTITION_BITS = 8;
-    public static final long MAX_LEDGER_ID = (1L << (LEDGER_BITS - 1)) - 1L;
-
-    public static final long MAX_ENTRY_ID = (1L << ENTRY_BITS) - 1L;
-    public static final long MAX_PARTITION_ID = (1L << PARTITION_BITS) - 1L;
+    private static final long MASK_LEDGER_ID = (1L << (LEDGER_BITS - 1)) - 1L;
+    public static final long MAX_LEDGER_ID = (1L << (LEDGER_BITS - 1)) - 2L;
+    private static final long MASK_ENTRY_ID = (1L << ENTRY_BITS) - 1L;
+    public static final long MAX_ENTRY_ID = (1L << ENTRY_BITS) - 2L;
+    private static final long MASK_PARTITION_ID = (1L << PARTITION_BITS) - 1L;
+    public static final long MAX_PARTITION_ID = (1L << PARTITION_BITS) - 2L;
     public static final long MAX_ROP_OFFSET =
-            (MAX_LEDGER_ID << (ENTRY_BITS + PARTITION_BITS)) | (MAX_ENTRY_ID << PARTITION_BITS) | MAX_PARTITION_ID;
-    public static final long MIN_ROP_OFFSET = -1L;
+            (MASK_LEDGER_ID << (ENTRY_BITS + PARTITION_BITS)) | (MASK_ENTRY_ID << PARTITION_BITS) | MASK_PARTITION_ID;
+    public static final long MIN_ROP_OFFSET = 0L;
 
     public static final long getOffset(long ledgerId, long entryId, long partitionId) {
         entryId = entryId < 0L ? -1L : entryId;
         ledgerId = ledgerId < 0L ? -1L : ledgerId;
         partitionId = partitionId < 0L ? -1L : partitionId;
-        if (entryId == -1 && ledgerId == -1) {
-            return -1L;
-        } else if (entryId == Long.MAX_VALUE && ledgerId == Long.MAX_VALUE) {
+        if (entryId == Long.MAX_VALUE && ledgerId == Long.MAX_VALUE) {
             return MAX_ROP_OFFSET;
         }
 
         Preconditions.checkArgument(ledgerId <= MAX_LEDGER_ID, "ledgerId has overflow in rop.");
-        Preconditions.checkArgument(entryId < MAX_ENTRY_ID, "entryId has overflow in rop.");
-        Preconditions.checkArgument(partitionId < MAX_PARTITION_ID, "entryId has overflow in rop.");
+        Preconditions.checkArgument(entryId <= MAX_ENTRY_ID, "entryId has overflow in rop.");
+        Preconditions.checkArgument(partitionId <= MAX_PARTITION_ID, "entryId has overflow in rop.");
+        ledgerId = ledgerId + 1L;
         entryId = entryId + 1L;
         partitionId = partitionId + 1;
-        return ((ledgerId & MAX_LEDGER_ID) << (ENTRY_BITS + PARTITION_BITS))
-                | ((entryId & MAX_ENTRY_ID) << PARTITION_BITS)
-                | (partitionId & MAX_PARTITION_ID);
+        return ((ledgerId & MASK_LEDGER_ID) << (ENTRY_BITS + PARTITION_BITS))
+                | ((entryId & MASK_ENTRY_ID) << PARTITION_BITS)
+                | (partitionId & MASK_PARTITION_ID);
     }
 
     public static final long getOffset(MessageIdImpl messageId) {
@@ -65,15 +66,16 @@ public class MessageIdUtils {
     }
 
     public static final MessageIdImpl getMessageId(long offset) {
-        if (offset < 0) {
+        if (offset <= MIN_ROP_OFFSET) {
             return (MessageIdImpl) MessageId.earliest;
         } else if (offset == MAX_ROP_OFFSET) {
             return (MessageIdImpl) MessageId.latest;
         }
-        long ledgerId = (offset >>> (ENTRY_BITS + PARTITION_BITS)) & MAX_LEDGER_ID;
-        long entryId = (offset >>> PARTITION_BITS) & MAX_ENTRY_ID;
+        long ledgerId = (offset >>> (ENTRY_BITS + PARTITION_BITS)) & MASK_LEDGER_ID;
+        long entryId = (offset >>> PARTITION_BITS) & MASK_ENTRY_ID;
+        ledgerId -= 1L;
         entryId -= 1L;
-        int partitionId = (int) ((offset & MAX_PARTITION_ID)) - 1;
+        int partitionId = (int) ((offset & MASK_PARTITION_ID)) - 1;
         return new MessageIdImpl(ledgerId, entryId, partitionId);
     }
 

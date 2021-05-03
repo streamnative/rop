@@ -14,6 +14,9 @@
 
 package com.tencent.tdmq.handlers.rocketmq.utils;
 
+import static com.tencent.tdmq.handlers.rocketmq.utils.MessageIdUtils.MAX_ENTRY_ID;
+import static com.tencent.tdmq.handlers.rocketmq.utils.MessageIdUtils.MAX_LEDGER_ID;
+import static com.tencent.tdmq.handlers.rocketmq.utils.MessageIdUtils.MAX_PARTITION_ID;
 import static com.tencent.tdmq.handlers.rocketmq.utils.MessageIdUtils.MAX_ROP_OFFSET;
 import static com.tencent.tdmq.handlers.rocketmq.utils.MessageIdUtils.MIN_ROP_OFFSET;
 import static com.tencent.tdmq.handlers.rocketmq.utils.MessageIdUtils.getMessageId;
@@ -32,20 +35,29 @@ public class MessageIdUtilsTest {
     @Test
     public void testGetOffset() {
         long offset = getOffset(-1, -1, -1);
-        assertEquals(-1, offset);
+        assertEquals(MIN_ROP_OFFSET, offset);
         MessageIdImpl messageId = getMessageId(offset);
         assertEquals(-1, messageId.getLedgerId());
         assertEquals(-1, messageId.getEntryId());
+        assertEquals(-1, messageId.getPartitionIndex());
 
-        offset = getOffset(0x7FFFFFFFL, -1, -1);
+        offset = getOffset(MAX_LEDGER_ID, -1, -1);
         messageId = getMessageId(offset);
-        assertEquals(0x7FFFFFFFL, messageId.getLedgerId());
+        assertEquals(MAX_LEDGER_ID, messageId.getLedgerId());
         assertEquals(-1L, messageId.getEntryId());
+        assertEquals(-1L, messageId.getPartitionIndex());
 
-        offset = getOffset(0x7FFFFFFFL, -1, -1);
+        offset = getOffset(-1, MAX_ENTRY_ID, -1);
         messageId = getMessageId(offset);
-        assertEquals(0x7FFFFFFFL, messageId.getLedgerId());
+        assertEquals(-1L, messageId.getLedgerId());
+        assertEquals(MAX_ENTRY_ID, messageId.getEntryId());
+        assertEquals(-1, messageId.getPartitionIndex());
+
+        offset = getOffset(-1, -1, MAX_PARTITION_ID);
+        messageId = getMessageId(offset);
+        assertEquals(-1L, messageId.getLedgerId());
         assertEquals(-1L, messageId.getEntryId());
+        assertEquals(MAX_PARTITION_ID, messageId.getPartitionIndex());
 
         offset = getOffset(1872L, -1, -1);
         messageId = getMessageId(offset);
@@ -89,28 +101,27 @@ public class MessageIdUtilsTest {
 
         MessageIdImpl messageId = new MessageIdImpl(1234L, -1L, -1);
         long offset = getOffset(messageId);
-        MessageIdImpl messageId1 = getMessageId(offset);
+        messageId = getMessageId(offset);
         assertEquals(1234L, messageId.getLedgerId());
         assertEquals(-1L, messageId.getEntryId());
 
         messageId = new MessageIdImpl(1234L, 0L, -1);
         offset = getOffset(messageId);
-        messageId1 = getMessageId(offset);
+        messageId = getMessageId(offset);
         assertEquals(1234L, messageId.getLedgerId());
         assertEquals(0L, messageId.getEntryId());
 
         messageId = new MessageIdImpl(1234L, 123L, 254);
         offset = getOffset(messageId);
-        messageId1 = getMessageId(offset);
+        messageId = getMessageId(offset);
         assertEquals(1234L, messageId.getLedgerId());
         assertEquals(123L, messageId.getEntryId());
         assertEquals(254, messageId.getPartitionIndex());
 
-
-        messageId1 = getMessageId(880471879682L);
-        assertEquals(1234L, messageId.getLedgerId());
-        assertEquals(123L, messageId.getEntryId());
-        assertEquals(254, messageId.getPartitionIndex());
+        messageId = getMessageId(0L);
+        assertEquals(-1L, messageId.getLedgerId());
+        assertEquals(-1L, messageId.getEntryId());
+        assertEquals(-1L, messageId.getPartitionIndex());
 
     }
 
