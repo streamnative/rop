@@ -199,11 +199,14 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             }
             List<byte[]> body = this.entryFormatter.encode(messageInner, 1);
             MessageIdImpl messageId = (MessageIdImpl) this.producers.get(producerId).send(body.get(0));
+            long offset = MessageIdUtils.getOffset(messageId.getLedgerId(), messageId.getEntryId(), partitionId);
             AppendMessageResult appendMessageResult = new AppendMessageResult(AppendMessageStatus.PUT_OK);
             appendMessageResult.setMsgNum(1);
             appendMessageResult.setWroteBytes(body.get(0).length);
             appendMessageResult.setMsgId(CommonUtils.createMessageId(this.ctx.channel().localAddress(), localListenPort,
-                    MessageIdUtils.getOffset(messageId.getLedgerId(), messageId.getEntryId(), partitionId)));
+                    offset));
+            appendMessageResult.setLogicsOffset(offset);
+            appendMessageResult.setWroteOffset(offset);
             return new PutMessageResult(PutMessageStatus.PUT_OK, appendMessageResult);
         } catch (Exception ex) {
             PutMessageStatus status = PutMessageStatus.FLUSH_DISK_TIMEOUT;
@@ -261,8 +264,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             AppendMessageResult appendMessageResult = new AppendMessageResult(AppendMessageStatus.PUT_OK);
             appendMessageResult.setMsgNum(batchMessageFutures.size());
             appendMessageResult.setWroteBytes(totalBytesSize.get());
-            PutMessageResult putMessageResult = new PutMessageResult(PutMessageStatus.PUT_OK, appendMessageResult);
             appendMessageResult.setMsgId(sb.toString());
+            PutMessageResult putMessageResult = new PutMessageResult(PutMessageStatus.PUT_OK, appendMessageResult);
             return putMessageResult;
         } catch (Exception ex) {
             log.warn("putMessages batchMessage fail.", ex);
@@ -406,9 +409,9 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         long nextBeginOffset = queueOffset;
 
         String ctxId = this.ctx.channel().id().asLongText();
-        long readerId = buildPulsarReaderId(consumerGroup, topic, ctxId);
         RocketMQTopic rmqTopic = new RocketMQTopic(requestHeader.getTopic());
         String pTopic = rmqTopic.getPartitionName(partitionId);
+        long readerId = buildPulsarReaderId(consumerGroup, pTopic, ctxId);
         // 通过offset来取出要开始消费的messageId的位置
         List<Message<byte[]>> messageList = new ArrayList<>();
         try {
@@ -428,7 +431,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             }
 
             Reader<byte[]> reader = this.readers.get(readerId);
-            if (startOffset != MessageId.earliest && startOffset != MessageId.latest) {
+            if (startOffset != MessageId.earliest && startOffset != MessageId.latest
+                    && startOffset.getEntryId() != -1L) {//skip the first position of ledger (non-message)
                 Message<byte[]> message = reader.readNext(fetchTimeoutInMs, TimeUnit.MILLISECONDS);
                 if (message != null && !MessageIdUtils.isMessageEquals(startOffset, message.getMessageId())) {
                     reader.seek(startOffset);
