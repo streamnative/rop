@@ -124,8 +124,8 @@ public class ScheduleMessageService {
         return rocketMQTopic.getOrigNoDomainTopicName() + CommonUtils.UNDERSCORE_CHAR + "consumer";
     }
 
-    public long computeDeliverTimestamp(final long delayLevel, final long storeTimestamp) {
-        Long time = this.delayLevelTable.get(delayLevel);
+    public long computeDeliverTimestamp(final int delayLevel, final long storeTimestamp) {
+        Long time = this.delayLevelTable.get(Integer.valueOf(delayLevel));
         if (time != null) {
             return time + storeTimestamp;
         }
@@ -190,13 +190,13 @@ public class ScheduleMessageService {
         private static final int SEND_MESSAGE_TIMEOUT_MS = 3000;
         private static final int MAX_BATCH_SIZE = 500;
         private final PulsarService pulsarService;
-        private final long delayLevel;
+        private final int delayLevel;
         private final String delayTopic;
         private final Consumer<byte[]> delayedConsumer;
         private RopEntryFormatter formatter = new RopEntryFormatter();
         private SystemTimer timeoutTimer;
 
-        public DeliverDelayedMessageTimerTask(long delayLevel) {
+        public DeliverDelayedMessageTimerTask(int delayLevel) {
             this.delayLevel = delayLevel;
             this.delayTopic = getDelayedTopicName((int) delayLevel);
             this.pulsarService = ScheduleMessageService.this.pulsarBroker.pulsar();
@@ -241,7 +241,7 @@ public class ScheduleMessageService {
                         break;
                     }
                     MessageExt messageExt = this.formatter.decodePulsarMessage(message);
-                    long deliveryTime = computeDeliverTimestamp(this.delayLevel, messageExt.getBornTimestamp());
+                    long deliveryTime = computeDeliverTimestamp(this.delayLevel, messageExt.getStoreTimestamp());
                     long diff = deliveryTime - Instant.now().toEpochMilli();
                     diff = diff < 0 ? 0 : diff;
                     timeoutTimer.add(new com.tencent.tdmq.handlers.rocketmq.inner.timer.TimerTask(diff) {
@@ -283,7 +283,7 @@ public class ScheduleMessageService {
                                 }
                                 producer.send(formatter.encode(msgInner, 1).get(0));
                                 delayedConsumer.acknowledge(message.getMessageId());
-                                log.info(
+                                log.debug(
                                         "DeliverDelayedMessageTimerTask[{}] send message [{}] to topic[{}] "
                                                 + "successfully.",
                                         delayLevel, JSON.toJSONString(msgInner, true),

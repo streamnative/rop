@@ -169,7 +169,7 @@ public class ConsumerOffsetManager {
 
     private void commitOffset(final String clientHost, final ClientGroupAndTopicName clientGroupAndTopicName,
             final int queueId, final long offset) {
-        log.info("commitOffset =======> ClientGroupAndTopicName=[{}], queueId=[{}], offset=[{}].",
+        log.debug("commitOffset =======> ClientGroupAndTopicName=[{}], queueId=[{}], offset=[{}].",
                 new Object[]{clientGroupAndTopicName,
                         queueId, offset});
         ConcurrentMap<Integer, Long> map = this.offsetTable.get(clientGroupAndTopicName);
@@ -356,7 +356,7 @@ public class ConsumerOffsetManager {
                             }
                             ManagedCursor cursor = subscription.getCursor();
                             cursor.markDelete(MessageIdUtils.getPosition(offset));
-                            log.info("markDelete =======> groupAndTopic=[{}], partitionId=[{}],  position=[{}].",
+                            log.debug("markDelete =======> groupAndTopic=[{}], partitionId=[{}],  position=[{}].",
                                     new Object[]{groupAndTopic, partitionId,
                                             MessageIdUtils.getPosition(offset)});
                         }
