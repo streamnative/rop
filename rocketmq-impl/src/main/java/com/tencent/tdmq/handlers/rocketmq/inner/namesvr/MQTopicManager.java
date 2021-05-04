@@ -385,19 +385,17 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
             // 如果分区小于0，主题不存在，创建主题
             if (topicMetadata.partitions <= 0) {
                 log.info("RocketMQ metadata topic {} doesn't exist. Creating it ...", fullTopicName);
-                adminClient.topics().createPartitionedTopic(
-                        fullTopicName,
-                        tc.getWriteQueueNums());
+                adminClient.topics().createPartitionedTopic(fullTopicName, tc.getWriteQueueNums());
 //                for (int i = 0; i < tc.getWriteQueueNums(); i++) {
 //                    adminClient.topics().createNonPartitionedTopic(fullTopicName + PARTITIONED_TOPIC_SUFFIX + i);
 //                }
-                lookupTopics(tc);
+                lookupTopics(fullTopicName);
             } else if (topicMetadata.partitions < tc.getWriteQueueNums()) {
                 adminClient.topics().updatePartitionedTopic(fullTopicName, tc.getWriteQueueNums());
 //                for (int i = topicMetadata.partitions; i < tc.getWriteQueueNums(); i++) {
 //                    adminClient.topics().createNonPartitionedTopic(fullTopicName + PARTITIONED_TOPIC_SUFFIX + i);
 //                }
-                lookupTopics(tc);
+                lookupTopics(fullTopicName);
             }
         } catch (Exception e) {
             log.warn("Topic {} create or update partition failed", fullTopicName, e);
@@ -412,8 +410,13 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
     public void deleteTopic(final String topic) {
         String fullTopicName = RocketMQTopic.getPulsarOrigNoDomainTopic(topic);
         try {
-            // 删除分区主题源主题，否者再次创建的主题的时候会查询到分区主题的一些元数据
-            adminClient.topics().deletePartitionedTopic(fullTopicName, true);
+            // 删除分区主题
+            PartitionedTopicMetadata topicMetadata = adminClient.topics().getPartitionedTopicMetadata(fullTopicName);
+            if (topicMetadata.partitions > 0) {
+                adminClient.topics().deletePartitionedTopic(fullTopicName, true);
+            }
+            // 清空cache
+            lookupCache.invalidate(TopicName.get(fullTopicName));
         } catch (Exception e) {
             log.warn("Topic {} create or update partition failed", fullTopicName, e);
         }

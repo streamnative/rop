@@ -16,7 +16,6 @@ package com.tencent.tdmq.handlers.rocketmq.inner.processor;
 
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
 import com.tencent.tdmq.handlers.rocketmq.inner.consumer.ConsumerGroupInfo;
-import com.tencent.tdmq.handlers.rocketmq.inner.consumer.SubscriptionGroupManager;
 import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientGroupAndTopicName;
 import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientGroupName;
 import com.tencent.tdmq.handlers.rocketmq.utils.CommonUtils;
@@ -587,9 +586,7 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
         log.info("updateAndCreateSubscriptionGroup called by {}", RemotingHelper.parseChannelRemoteAddr(ctx.channel()));
 
         SubscriptionGroupConfig config = RemotingSerializable.decode(request.getBody(), SubscriptionGroupConfig.class);
-        if (config != null) {
-            this.brokerController.getSubscriptionGroupManager().updateSubscriptionGroupConfig(config);
-        }
+        this.brokerController.getSubscriptionGroupManager().updateSubscriptionGroupConfig(config);
 
         response.setCode(ResponseCode.SUCCESS);
         response.setRemark(null);
@@ -600,15 +597,13 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
             RemotingCommand request) throws RemotingCommandException {
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
 
-        SubscriptionGroupManager subscriptionGroupManager = this.brokerController.getSubscriptionGroupManager();
-
         SubscriptionGroupWrapper subscriptionGroupWrapper = new SubscriptionGroupWrapper();
         ConcurrentMap<String, SubscriptionGroupConfig> subscriptionGroupTable = new ConcurrentHashMap<>(1024);
-        subscriptionGroupManager.getSubscriptionGroupTable().forEach((clientGroupName, subscriptionGroupConfig) -> {
-            subscriptionGroupTable.putIfAbsent(clientGroupName.getRmqGroupName(), subscriptionGroupConfig);
-        });
+        this.brokerController.getSubscriptionGroupManager().getSubscriptionGroupTable().forEach(
+                (clientGroupName, subscriptionGroupConfig) ->
+                        subscriptionGroupTable.putIfAbsent(clientGroupName.getRmqGroupName(), subscriptionGroupConfig));
         subscriptionGroupWrapper.setSubscriptionGroupTable(subscriptionGroupTable);
-        subscriptionGroupWrapper.setDataVersion(subscriptionGroupManager.getDataVersion());
+        subscriptionGroupWrapper.setDataVersion(this.brokerController.getSubscriptionGroupManager().getDataVersion());
 
         /*this.brokerController.getSubscriptionGroupManager().encode()*/
         String content = subscriptionGroupWrapper.toJson();
@@ -616,8 +611,6 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
             try {
                 response.setBody(content.getBytes(MixAll.DEFAULT_CHARSET));
             } catch (UnsupportedEncodingException e) {
-                log.error("", e);
-
                 response.setCode(ResponseCode.SYSTEM_ERROR);
                 response.setRemark("UnsupportedEncodingException " + e);
                 return response;

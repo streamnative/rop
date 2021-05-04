@@ -180,9 +180,7 @@ public class ConsumerManager {
     public HashSet<String> queryTopicConsumeByWho(String topic) {
         HashSet<String> groups = new HashSet<>();
 
-        for (Entry<ClientGroupName, ConsumerGroupInfo> clientGroupNameConsumerGroupInfoEntry : this.consumerTable
-                .entrySet()) {
-            Entry<ClientGroupName, ConsumerGroupInfo> entry = clientGroupNameConsumerGroupInfoEntry;
+        for (Entry<ClientGroupName, ConsumerGroupInfo> entry : this.consumerTable.entrySet()) {
             ConcurrentMap<String, SubscriptionData> subscriptionTable = entry.getValue().getSubscriptionTable();
             if (subscriptionTable.containsKey(topic)) {
                 groups.add(entry.getKey().getRmqGroupName());
