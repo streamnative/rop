@@ -221,6 +221,19 @@ public class NameserverProcessor implements NettyRequestProcessor {
         return result;
     }
 
+    public String getBrokerHost(String brokerAddress) {
+        // pulsar://localhost:6650
+        if (null == brokerAddress) {
+            log.error("The brokerAddress is null, please check.");
+            return "";
+        }
+        Matcher matcher = BROKER_ADDER_PAT.matcher(brokerAddress);
+        if (matcher.find()) {
+            return matcher.group(1).replaceAll(":", "");
+        }
+        return brokerAddress;
+    }
+
     /**
      * 获取broker集群信息，当前认为一个broker物理集群中只有一个broker集群，这里只返回一个broker集群中的一个节点.
      *
@@ -242,7 +255,8 @@ public class NameserverProcessor implements NettyRequestProcessor {
             HashMap<String, BrokerData> brokerAddrTable = Maps.newHashMap();
             HashMap<Long, String> brokerAddrs = Maps.newHashMap();
             brokerAddrs.put(0L, rmqBrokerAddress);
-            brokerAddrTable.put(rmqBrokerAddress, new BrokerData(clusterName, rmqBrokerAddress, brokerAddrs));
+            brokerAddrTable
+                    .put(rmqBrokerAddress, new BrokerData(clusterName, getBrokerHost(randomBroker), brokerAddrs));
 
             ClusterInfo clusterInfoSerializeWrapper = new ClusterInfo();
             clusterInfoSerializeWrapper.setBrokerAddrTable(brokerAddrTable);

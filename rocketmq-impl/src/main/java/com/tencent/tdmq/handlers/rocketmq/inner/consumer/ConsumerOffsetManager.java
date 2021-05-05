@@ -19,21 +19,27 @@ import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientGroupAndTopicName
 import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientGroupName;
 import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientTopicName;
 import com.tencent.tdmq.handlers.rocketmq.utils.MessageIdUtils;
+import com.tencent.tdmq.handlers.rocketmq.utils.OffsetFinder;
 import com.tencent.tdmq.handlers.rocketmq.utils.RocketMQTopic;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.TimeUnit;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.bookkeeper.mledger.AsyncCallbacks;
 import org.apache.bookkeeper.mledger.ManagedCursor;
 import org.apache.bookkeeper.mledger.ManagedLedger;
 import org.apache.bookkeeper.mledger.ManagedLedgerException;
+import org.apache.bookkeeper.mledger.Position;
+import org.apache.bookkeeper.mledger.impl.ManagedLedgerImpl;
 import org.apache.bookkeeper.mledger.impl.PositionImpl;
 import org.apache.pulsar.broker.PulsarService;
 import org.apache.pulsar.broker.namespace.LookupOptions;
@@ -274,6 +280,47 @@ public class ConsumerOffsetManager {
         return 0L;
     }
 
+    public long searchOffsetByTimestamp(ClientGroupAndTopicName groupAndTopic, int partitionId, long timestamp) {
+        PersistentTopic persistentTopic = getPulsarPersistentTopic(groupAndTopic, partitionId);
+        if (persistentTopic != null) {
+            // find with real wanted timestamp
+            OffsetFinder offsetFinder = new OffsetFinder((ManagedLedgerImpl) persistentTopic.getManagedLedger());
+
+            CompletableFuture<Long> finalOffset = new CompletableFuture<>();
+            offsetFinder.findMessages(timestamp, new AsyncCallbacks.FindEntryCallback() {
+                @Override
+                public void findEntryComplete(Position position, Object ctx) {
+                    if (position == null) {
+                        finalOffset.complete(-1L);
+                    } else {
+                        PositionImpl finalPosition = (PositionImpl) position;
+                        long offset = MessageIdUtils
+                                .getOffset(finalPosition.getLedgerId(), finalPosition.getEntryId(), partitionId);
+                        finalOffset.complete(offset);
+                    }
+                }
+
+                @Override
+                public void findEntryFailed(ManagedLedgerException exception,
+                        Optional<Position> position, Object ctx) {
+                    log.warn("Unable to find position for topic {} time {}. Exception:",
+                            persistentTopic.getName(), timestamp, exception);
+                    finalOffset.complete(-1L);
+                }
+            });
+
+            try {
+                return finalOffset.get(5, TimeUnit.SECONDS);
+            } catch (Exception e) {
+                log.warn("SearchOffsetByTimestamp: topic [{}] search offset timeout.", persistentTopic.getName());
+            }
+        } else {
+            log.warn("SearchOffsetByTimestamp: topic [{}] not found",
+                    groupAndTopic.getClientTopicName().getPulsarTopicName());
+        }
+        return -1L;
+    }
+
     public void getPulsarPersitentTopicAsync(ClientGroupAndTopicName groupAndTopic, int partitionId,
             CompletableFuture<PersistentTopic> topicCompletableFuture) {
         // setup ownership of service unit to this broker
@@ -286,10 +333,12 @@ public class ConsumerOffsetManager {
                 .getBrokerServiceUrlAsync(partitionTopicName, lookupOptions).
                 whenComplete((addr, th) -> {
                     log.info("Find getBrokerServiceUrl {}, return Topic: {}", addr, topicName);
-                    if (th != null || addr == null || addr.get() == null) {
+                    if (th != null || !addr.isPresent()) {
                         log.warn("Failed getBrokerServiceUrl {}, return null Topic. throwable: ", topicName, th);
                         topicCompletableFuture.complete(null);
                         return;
+                    } else {
+                        addr.get();
                     }
                     pulsarService.getBrokerService().getTopic(topicName, false)
                             .whenComplete((topicOptional, throwable) -> {
@@ -331,7 +380,8 @@ public class ConsumerOffsetManager {
                 this.pulsarTopicCache.get(clientTopicName).putIfAbsent(partitionId, persistentTopic);
             }
         } catch (Exception e) {
-            log.warn("getPulsarPersistentTopic topic=[{}] and partition=[{}] timeout.", partitionId);
+            log.warn("getPulsarPersistentTopic topic=[{}] and partition=[{}] timeout.",
+                    clientTopicName.getPulsarTopicName(), partitionId);
         }
         return this.pulsarTopicCache.get(groupAndTopic.getClientTopicName()).get(partitionId);
     }

@@ -15,6 +15,7 @@
 package com.tencent.tdmq.handlers.rocketmq.inner;
 
 import com.tencent.tdmq.handlers.rocketmq.inner.consumer.ConsumerGroupInfo;
+import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientGroupAndTopicName;
 import io.netty.channel.Channel;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -23,6 +24,8 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentMap;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.logging.log4j.util.Strings;
+import org.apache.pulsar.broker.ServiceConfigurationUtils;
 import org.apache.rocketmq.broker.client.ClientChannelInfo;
 import org.apache.rocketmq.common.MQVersion;
 import org.apache.rocketmq.common.TopicConfig;
@@ -116,11 +119,11 @@ public class Broker2Client {
             return response;
         }
 
-        Map<MessageQueue, Long> offsetTable = new HashMap<MessageQueue, Long>();
+        Map<MessageQueue, Long> offsetTable = new HashMap<>();
 
         for (int i = 0; i < topicConfig.getWriteQueueNums(); i++) {
             MessageQueue mq = new MessageQueue();
-            mq.setBrokerName(this.brokerController.getServerConfig().getBrokerName());
+            mq.setBrokerName(ServiceConfigurationUtils.unsafeLocalhostResolve());
             mq.setTopic(topic);
             mq.setQueueId(i);
 
@@ -133,16 +136,18 @@ public class Broker2Client {
             }
 
             long timeStampOffset;
-            if (timeStamp == -1) {
-
-                timeStampOffset = 0L; /* TODO:this.brokerController.getMessageStore().getMaxOffsetInQueue(topic, i)*/
+            ClientGroupAndTopicName clientGroupName = new ClientGroupAndTopicName(Strings.EMPTY, topic);
+            if (timeStamp != -1) {
+                timeStampOffset = this.brokerController.getConsumerOffsetManager()
+                        .searchOffsetByTimestamp(clientGroupName, i, timeStamp);
             } else {
-                timeStampOffset = 0L; /* TODO: getMessageStore().getOffsetInQueueByTime(topic, i, timeStamp)*/
+                timeStampOffset = this.brokerController.getConsumerOffsetManager()
+                        .getMaxOffsetInQueue(clientGroupName, i);
             }
 
             if (timeStampOffset < 0) {
-                log.warn("reset offset is invalid. topic={}, queueId={}, timeStampOffset={}", topic, i,
-                        timeStampOffset);
+                log.warn("reset offset is invalid. topic={}, queueId={}, timeStampOffset={}",
+                        topic, i, timeStampOffset);
                 timeStampOffset = 0;
             }
 

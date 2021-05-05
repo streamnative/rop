@@ -20,7 +20,6 @@ import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientGroupAndTopicName
 import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientGroupName;
 import com.tencent.tdmq.handlers.rocketmq.utils.CommonUtils;
 import com.tencent.tdmq.handlers.rocketmq.utils.MessageIdUtils;
-import com.tencent.tdmq.handlers.rocketmq.utils.OffsetFinder;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import java.io.UnsupportedEncodingException;
@@ -28,23 +27,18 @@ import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.bookkeeper.mledger.AsyncCallbacks;
-import org.apache.bookkeeper.mledger.ManagedLedgerException;
-import org.apache.bookkeeper.mledger.Position;
-import org.apache.bookkeeper.mledger.impl.ManagedLedgerImpl;
 import org.apache.bookkeeper.mledger.impl.PositionImpl;
+import org.apache.logging.log4j.util.Strings;
 import org.apache.pulsar.broker.service.Topic;
 import org.apache.pulsar.broker.service.persistent.PersistentTopic;
 import org.apache.pulsar.client.api.Message;
@@ -384,59 +378,14 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
         final SearchOffsetRequestHeader requestHeader =
                 (SearchOffsetRequestHeader) request.decodeCommandCustomHeader(SearchOffsetRequestHeader.class);
 
-        long timestamp = requestHeader.getTimestamp();
-        String pulsarTopicName = CommonUtils.tdmqGroupName(requestHeader.getTopic());
+        ClientGroupAndTopicName clientGroupName = new ClientGroupAndTopicName(Strings.EMPTY, requestHeader.getTopic());
+        long offset = this.brokerController.getConsumerOffsetManager()
+                .searchOffsetByTimestamp(clientGroupName, requestHeader.getQueueId(), requestHeader.getTimestamp());
 
-        CompletableFuture<Long> finalOffset = new CompletableFuture<>();
-
-        try {
-            Optional<Topic> optionalTopic = this.brokerController.getBrokerService().getTopicIfExists(pulsarTopicName)
-                    .get();
-            if (optionalTopic.isPresent()) {
-                PersistentTopic persistentTopic = (PersistentTopic) optionalTopic.get();
-
-                // find with real wanted timestamp
-                OffsetFinder offsetFinder = new OffsetFinder((ManagedLedgerImpl) persistentTopic.getManagedLedger());
-
-                offsetFinder.findMessages(timestamp, new AsyncCallbacks.FindEntryCallback() {
-                    @Override
-                    public void findEntryComplete(Position position, Object ctx) {
-                        PositionImpl finalPosition;
-                        if (position == null) {
-                            finalOffset.complete(-1L);
-                        } else {
-                            finalPosition = (PositionImpl) position;
-                            long offset = MessageIdUtils
-                                    .getOffset(finalPosition.getLedgerId(), finalPosition.getEntryId(),
-                                            requestHeader.getQueueId());
-                            finalOffset.complete(offset);
-                        }
-                    }
-
-                    @Override
-                    public void findEntryFailed(ManagedLedgerException exception,
-                            Optional<Position> position, Object ctx) {
-                        log.warn("Unable to find position for topic {} time {}. Exception:", pulsarTopicName, timestamp,
-                                exception);
-                        finalOffset.complete(-1L);
-                    }
-                });
-            } else {
-                log.warn("SearchOffsetByTimestamp: topic [{}] not found.", pulsarTopicName);
-            }
-        } catch (Exception e) {
-            log.warn("SearchOffsetByTimestamp: get topic [{}] from broker error.", pulsarTopicName);
-        }
-
-        try {
-            long offset = finalOffset.get(5, TimeUnit.SECONDS);
-            if (offset >= 0) {
-                responseHeader.setOffset(offset);
-                response.setCode(ResponseCode.SUCCESS);
-                return response;
-            }
-        } catch (Exception e) {
-            log.warn("SearchOffsetByTimestamp: topic [{}] search offset timeout.", pulsarTopicName);
+        if (offset >= 0) {
+            responseHeader.setOffset(offset);
+            response.setCode(ResponseCode.SUCCESS);
+            return response;
         }
 
         response.setCode(ResponseCode.SYSTEM_ERROR);
@@ -450,29 +399,12 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
         final GetMaxOffsetRequestHeader requestHeader =
                 (GetMaxOffsetRequestHeader) request.decodeCommandCustomHeader(GetMaxOffsetRequestHeader.class);
 
-        String pulsarTopicName = CommonUtils.tdmqGroupName(requestHeader.getTopic());
-        try {
-            Optional<Topic> optionalTopic = this.brokerController.getBrokerService()
-                    .getTopicIfExists(pulsarTopicName).get();
-            if (optionalTopic.isPresent()) {
-                PersistentTopic persistentTopic = (PersistentTopic) optionalTopic.get();
-                PositionImpl lastPosition = (PositionImpl) persistentTopic.getLastPosition();
-                long offset = MessageIdUtils
-                        .getOffset(lastPosition.getLedgerId(), lastPosition.getEntryId(), requestHeader.getQueueId());
+        ClientGroupAndTopicName clientGroupName = new ClientGroupAndTopicName(Strings.EMPTY, requestHeader.getTopic());
+        long offset = this.brokerController.getConsumerOffsetManager()
+                .getMaxOffsetInQueue(clientGroupName, requestHeader.getQueueId());
 
-                responseHeader.setOffset(offset);
-                response.setCode(ResponseCode.SUCCESS);
-                response.setRemark(null);
-                return response;
-            } else {
-                log.warn("GetMaxOffset: topic [{}] not found.", pulsarTopicName);
-            }
-        } catch (Exception e) {
-            log.error("GetMaxOffset: get topic [{}] from broker error", pulsarTopicName);
-        }
-
-        response.setCode(ResponseCode.SYSTEM_ERROR);
-        response.setRemark(null);
+        responseHeader.setOffset(offset);
+        response.setCode(ResponseCode.SUCCESS);
         return response;
     }
 
@@ -483,30 +415,12 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
         final GetMinOffsetRequestHeader requestHeader =
                 (GetMinOffsetRequestHeader) request.decodeCommandCustomHeader(GetMinOffsetRequestHeader.class);
 
-        String pulsarTopicName = CommonUtils.tdmqGroupName(requestHeader.getTopic());
-        try {
-            Optional<Topic> optionalTopic = this.brokerController.getBrokerService()
-                    .getTopicIfExists(pulsarTopicName).get();
-            if (optionalTopic.isPresent()) {
-                PersistentTopic persistentTopic = (PersistentTopic) optionalTopic.get();
-                PositionImpl lastPosition = persistentTopic.getFirstPosition();
-                long offset = MessageIdUtils
-                        .getOffset(lastPosition.getLedgerId(), lastPosition.getEntryId(), requestHeader.getQueueId());
+        ClientGroupAndTopicName clientGroupName = new ClientGroupAndTopicName(Strings.EMPTY, requestHeader.getTopic());
+        long offset = this.brokerController.getConsumerOffsetManager()
+                .getMinOffsetInQueue(clientGroupName, requestHeader.getQueueId());
 
-                responseHeader.setOffset(offset);
-
-                response.setCode(ResponseCode.SUCCESS);
-                response.setRemark(null);
-                return response;
-            } else {
-                log.warn("GetMinOffset: topic [{}] not found.", pulsarTopicName);
-            }
-        } catch (Exception e) {
-            log.error("GetMinOffset: get topic [{}] from broker error", pulsarTopicName);
-        }
-
-        response.setCode(ResponseCode.SYSTEM_ERROR);
-        response.setRemark(null);
+        responseHeader.setOffset(offset);
+        response.setCode(ResponseCode.SUCCESS);
         return response;
     }
 
@@ -704,26 +618,25 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
         ConsumerGroupInfo consumerGroupInfo =
                 this.brokerController.getConsumerManager().getConsumerGroupInfo(requestHeader.getConsumerGroup());
         if (consumerGroupInfo != null) {
-            ConsumerConnection bodydata = new ConsumerConnection();
-            bodydata.setConsumeFromWhere(consumerGroupInfo.getConsumeFromWhere());
-            bodydata.setConsumeType(consumerGroupInfo.getConsumeType());
-            bodydata.setMessageModel(consumerGroupInfo.getMessageModel());
-            bodydata.getSubscriptionTable().putAll(consumerGroupInfo.getSubscriptionTable());
+            ConsumerConnection bodyData = new ConsumerConnection();
+            bodyData.setConsumeFromWhere(consumerGroupInfo.getConsumeFromWhere());
+            bodyData.setConsumeType(consumerGroupInfo.getConsumeType());
+            bodyData.setMessageModel(consumerGroupInfo.getMessageModel());
+            bodyData.getSubscriptionTable().putAll(consumerGroupInfo.getSubscriptionTable());
 
-            Iterator<Entry<Channel, ClientChannelInfo>> it = consumerGroupInfo.getChannelInfoTable().entrySet()
-                    .iterator();
-            while (it.hasNext()) {
-                ClientChannelInfo info = it.next().getValue();
+            for (Entry<Channel, ClientChannelInfo> entry : consumerGroupInfo
+                    .getChannelInfoTable().entrySet()) {
+                ClientChannelInfo info = entry.getValue();
                 Connection connection = new Connection();
                 connection.setClientId(info.getClientId());
                 connection.setLanguage(info.getLanguage());
                 connection.setVersion(info.getVersion());
                 connection.setClientAddr(RemotingHelper.parseChannelRemoteAddr(info.getChannel()));
 
-                bodydata.getConnectionSet().add(connection);
+                bodyData.getConnectionSet().add(connection);
             }
 
-            byte[] body = bodydata.encode();
+            byte[] body = bodyData.encode();
             response.setBody(body);
             response.setCode(ResponseCode.SUCCESS);
             response.setRemark(null);

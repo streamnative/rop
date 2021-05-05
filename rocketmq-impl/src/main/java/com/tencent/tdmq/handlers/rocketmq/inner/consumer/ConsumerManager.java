@@ -40,7 +40,7 @@ import org.apache.rocketmq.remoting.common.RemotingUtil;
 public class ConsumerManager {
 
     private static final long CHANNEL_EXPIRED_TIMEOUT = 120000L;
-    private final ConcurrentMap<ClientGroupName, ConsumerGroupInfo> consumerTable = new ConcurrentHashMap(1024);
+    private final ConcurrentMap<ClientGroupName, ConsumerGroupInfo> consumerTable = new ConcurrentHashMap<>(1024);
     //ConsumerIdsChangeListener groupName is rocketmq groupName example: tenant|ns%topicName; %RETRY%tenant|ns%topicName
     private final ConsumerIdsChangeListener consumerIdsChangeListener;
 

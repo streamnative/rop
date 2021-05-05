@@ -438,13 +438,9 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                     reader.seek(startOffset);
                     message = reader.readNext(fetchTimeoutInMs, TimeUnit.MILLISECONDS);
                     if (message != null && !MessageIdUtils.isMessageEquals(startOffset, message.getMessageId())) {
-                        if (message != null) {
-                            log.error("getMessage error, for seekOffset=[{}] isn't matched readOffset=[{}].",
-                                    startOffset, message.getMessageId());
-                            throw new RopPullMessageException("couldn't find start-offset matched message");
-                        } else {
-                            log.error("getMessage null message for seekOffset=[{}].", startOffset);
-                        }
+                        log.error("getMessage error, for seekOffset=[{}] isn't matched readOffset=[{}].",
+                                startOffset, message.getMessageId());
+                        throw new RopPullMessageException("couldn't find start-offset matched message");
                     }
                 }
             }
