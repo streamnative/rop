@@ -16,7 +16,6 @@ RoP is implemented based on Pulsar features. However, the methods of using Pulsa
 are different. The following are some limitations of RoP.
 
 - TBD
-- TBD
 
 ## Get started
 
@@ -26,6 +25,8 @@ In this guide, you will learn how to use the Pulsar broker to serve requests fro
 
 Download [Pulsar 2.7.1](https://github.com/streamnative/pulsar/releases/download/v2.7.1/apache-pulsar-2.7.1-bin.tar.gz)
 binary package `apache-pulsar-2.7.1-bin.tar.gz`. and unzip it.
+
+> Note: Currently, RoP is only compatible with Apache Pulsar 2.7.0 and above.
 
 ### Download and Build RoP Plugin
 
@@ -108,7 +109,7 @@ bin/pulsar standalone -nss -nfw
 
 ### Run RocketMQ Client to verify
 
-You can download the RocketMQ src code and run RocketMQ client.
+In the RoP repo, we provide a sub model of `examples`, which contains a variety of scenarios used by the rocketmq client. You can run these examples directly in the IDE. Or you can download the RocketMQ src code and run RocketMQ client of `examples`.
 
 ### Log level configuration
 
