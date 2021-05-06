@@ -39,7 +39,7 @@ public class OrderProducer {
             producer.start();
 
             String[] tags = new String[]{"TagA", "TagB", "TagC", "TagD", "TagE"};
-            for (int i = 0; i < 100; i++) {
+            for (int i = 0; i < 10; i++) {
                 int orderId = i % 10;
                 Message msg =
                         new Message("OrderTopic", tags[i % tags.length], "KEY" + i,
