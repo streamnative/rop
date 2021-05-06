@@ -39,7 +39,7 @@
         <!-- test dependencies -->
         <dependency>
             <groupId>com.tencent.tdmq.handlers</groupId>
-            <artifactId>rocketmq-impl</artifactId>
+            <artifactId>tdmq-protocol-handler-rocketmq</artifactId>
             <version>${project.version}</version>
             <scope>test</scope>
         </dependency>
