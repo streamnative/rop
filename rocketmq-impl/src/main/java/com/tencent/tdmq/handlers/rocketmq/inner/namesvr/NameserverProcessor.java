@@ -172,11 +172,6 @@ public class NameserverProcessor implements NettyRequestProcessor {
             }
         }
 
-        // 解析请求本地接收端口，根据端口识别客户端网络类型【临时硬编码端口到listenerName】
-        String localAddress = ctx.channel().localAddress().toString();
-        String localPort = localAddress.substring(localAddress.indexOf(":") + 1);
-        String listenerName = PORT_LISTENER_NAME_MAP.get(localPort);
-
         // 根据传入的请求获取指定的topic
         String requestTopic = requestHeader.getTopic();
         if (Strings.isNotBlank(requestTopic)) {
@@ -185,7 +180,7 @@ public class NameserverProcessor implements NettyRequestProcessor {
                             .getRocketMQMetaTopic(requestTopic)
                             : new RocketMQTopic(requestTopic);
             Map<Integer, InetSocketAddress> topicBrokerAddr =
-                    mqTopicManager.getTopicBrokerAddr(mqTopic.getPulsarTopicName(), listenerName);
+                    mqTopicManager.getTopicBrokerAddr(mqTopic.getPulsarTopicName(), getListenerName(ctx));
             if (topicBrokerAddr != null && topicBrokerAddr.size() > 0) {
                 topicBrokerAddr.forEach((i, addr) -> {
                     String hostName = addr.getHostName();
@@ -289,5 +284,14 @@ public class NameserverProcessor implements NettyRequestProcessor {
         response.setCode(ResponseCode.SYSTEM_ERROR);
         response.setRemark(null);
         return response;
+    }
+
+    /**
+     * 解析请求本地接收端口，根据端口识别客户端网络类型【类型映射关系通过配置项rocketmqListenerPortMap指定】
+     */
+    private String getListenerName(ChannelHandlerContext ctx) {
+        String localAddress = ctx.channel().localAddress().toString();
+        String localPort = localAddress.substring(localAddress.indexOf(":") + 1);
+        return PORT_LISTENER_NAME_MAP.get(localPort);
     }
 }
