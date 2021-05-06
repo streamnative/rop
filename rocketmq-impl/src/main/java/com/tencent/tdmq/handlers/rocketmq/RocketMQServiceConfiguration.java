@@ -69,6 +69,15 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
 
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
+            required = true,
+            doc = "Comma-separated list of URIs we will listen on and the listener names.\n"
+                    + "e.g. 9876:INTERNAL_ROP,9877:QCLOUD_ROP,9878:PUBLIC_ROP.\n"
+                    + "If hostname is not set, bind to the default interface."
+    )
+    private String rocketmqListenerPortMap = "9876:INTERNAL_ROP,9877:QCLOUD_ROP,9878:PUBLIC_ROP";
+
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
             doc = "Server worker threads number.\n"
     )
     private int serverWorkerThreads = 8;

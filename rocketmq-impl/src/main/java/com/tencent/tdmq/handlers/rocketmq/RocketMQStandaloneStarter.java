@@ -60,7 +60,7 @@ public class RocketMQStandaloneStarter extends RocketMQStandalone {
             // Use advertised address from command line
             config.setAdvertisedAddress(this.getAdvertisedAddress());
             zkServers = this.getAdvertisedAddress();
-        } else if (isBlank(config.getAdvertisedAddress())) {
+        } else if (isBlank(config.getAdvertisedAddress()) && isBlank(config.getAdvertisedListeners())) {
             // Use advertised address as local hostname
             config.setAdvertisedAddress("localhost");
         } else {

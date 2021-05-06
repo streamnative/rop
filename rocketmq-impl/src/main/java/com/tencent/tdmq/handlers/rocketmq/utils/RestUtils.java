@@ -14,6 +14,8 @@
 
 package com.tencent.tdmq.handlers.rocketmq.utils;
 
+import com.alibaba.fastjson.JSON;
+import com.google.common.collect.Maps;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.http.HttpEntity;
@@ -23,19 +25,32 @@ import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.util.EntityUtils;
+import org.apache.pulsar.common.lookup.data.LookupData;
 
 /**
  * Rest utils class.
  */
+@Deprecated
 @Slf4j
 public class RestUtils {
 
     private static final CloseableHttpClient HTTP_CLIENT = HttpClients.createDefault();
-    private static final RequestConfig REQUEST_CONFIG = RequestConfig.custom().setConnectTimeout(5000)
+    private static final RequestConfig REQUEST_CONFIG = RequestConfig.custom()
+            .setConnectTimeout(5000)
             .setConnectionRequestTimeout(5000)
             .setSocketTimeout(5000)
             .build();
 
+
+    public static String getBrokerAddr(String topic, String listenerName) {
+        Map<String, String> headers = Maps.newHashMap();
+        String url = String
+                .format("http://127.0.0.1:8080/lookup/v2/topic/persistent/%s?listenerName=%s", topic, listenerName);
+        LookupData lookupData = JSON.parseObject(RestUtils.get(url, headers), LookupData.class);
+        String brokerUrl = lookupData.getBrokerUrl();
+        brokerUrl = brokerUrl.replaceAll("pulsar://", "");
+        return brokerUrl;
+    }
 
     public static String get(String uri, Map<String, String> headers) {
         // 创建httpGet远程连接实例

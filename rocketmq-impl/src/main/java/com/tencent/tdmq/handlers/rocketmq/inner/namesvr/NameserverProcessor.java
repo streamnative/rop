@@ -20,6 +20,7 @@ import static org.apache.rocketmq.common.constant.PermName.PERM_WRITE;
 import static org.apache.rocketmq.common.protocol.RequestCode.GET_ROUTEINTO_BY_TOPIC;
 
 import com.google.common.collect.Maps;
+import com.tencent.tdmq.handlers.rocketmq.RocketMQProtocolHandler;
 import com.tencent.tdmq.handlers.rocketmq.RocketMQServiceConfiguration;
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
 import com.tencent.tdmq.handlers.rocketmq.utils.RocketMQTopic;
@@ -59,15 +60,25 @@ public class NameserverProcessor implements NettyRequestProcessor {
     public static final Pattern BROKER_ADDER_PAT = Pattern.compile("([^/:]+:)(\\d+)");
     private final RocketMQBrokerController brokerController;
     private final RocketMQServiceConfiguration config;
-    private final int defaultNumPartitions;
     private final MQTopicManager mqTopicManager;
-    private final int servicePort = 9876;
+    private final int servicePort;
+    /**
+     * 根据不同port区分客户端请求来源网络类型
+     */
+    private static final Map<String, String> PORT_LISTENER_NAME_MAP = Maps.newHashMap();
 
     public NameserverProcessor(RocketMQBrokerController brokerController) {
         this.brokerController = brokerController;
         this.config = brokerController.getServerConfig();
-        this.defaultNumPartitions = config.getDefaultNumPartitions();
         this.mqTopicManager = brokerController.getTopicConfigManager();
+        this.servicePort = RocketMQProtocolHandler.getListenerPort(config.getRocketmqListeners());
+
+        String rocketmqListenerPortMap = config.getRocketmqListenerPortMap();
+        String[] parts = rocketmqListenerPortMap.split(",");
+        for (String part : parts) {
+            String[] arr = part.split(":");
+            PORT_LISTENER_NAME_MAP.put(arr[0].trim(), arr[1].trim());
+        }
     }
 
     @Override
@@ -142,8 +153,7 @@ public class NameserverProcessor implements NettyRequestProcessor {
                 PulsarAdmin adminClient = brokerController.getBrokerService().pulsar().getAdminClient();
                 List<String> brokers = adminClient.brokers().getActiveBrokers(clusterName);
                 String randomBroker = brokers.get(new Random().nextInt(brokers.size()));
-                String rmqBrokerAddress =
-                        parseBrokerAddress(randomBroker, brokerController.getRemotingServer().getPort());
+                String rmqBrokerAddress = parseBrokerAddress(randomBroker, servicePort);
                 BrokerData brokerData = new BrokerData();
                 HashMap<Long, String> brokerAddrs = Maps.newHashMap();
                 brokerAddrs.put(0L, rmqBrokerAddress);
@@ -162,6 +172,11 @@ public class NameserverProcessor implements NettyRequestProcessor {
             }
         }
 
+        // 解析请求本地接收端口，根据端口识别客户端网络类型【临时硬编码端口到listenerName】
+        String localAddress = ctx.channel().localAddress().toString();
+        String localPort = localAddress.substring(localAddress.indexOf(":") + 1);
+        String listenerName = PORT_LISTENER_NAME_MAP.get(localPort);
+
         // 根据传入的请求获取指定的topic
         String requestTopic = requestHeader.getTopic();
         if (Strings.isNotBlank(requestTopic)) {
@@ -169,14 +184,12 @@ public class NameserverProcessor implements NettyRequestProcessor {
                     requestTopic.equals(MixAll.AUTO_CREATE_TOPIC_KEY_TOPIC) ? RocketMQTopic
                             .getRocketMQMetaTopic(requestTopic)
                             : new RocketMQTopic(requestTopic);
-            Map<Integer, InetSocketAddress> topicBrokerAddr = mqTopicManager
-                    .getTopicBrokerAddr(mqTopic.getPulsarTopicName());
+            Map<Integer, InetSocketAddress> topicBrokerAddr =
+                    mqTopicManager.getTopicBrokerAddr(mqTopic.getPulsarTopicName(), listenerName);
             if (topicBrokerAddr != null && topicBrokerAddr.size() > 0) {
                 topicBrokerAddr.forEach((i, addr) -> {
-                    String ownerBrokerAddress = addr.toString();
                     String hostName = addr.getHostName();
-                    String brokerAddress = parseBrokerAddress(ownerBrokerAddress,
-                            brokerController.getRemotingServer().getPort());
+                    String brokerAddress = hostName + ":" + addr.getPort();
 
                     HashMap<Long, String> brokerAddrs = new HashMap<>();
                     brokerAddrs.put(0L, brokerAddress);
@@ -250,7 +263,7 @@ public class NameserverProcessor implements NettyRequestProcessor {
             // 随机获取一个broker节点
             String randomBroker = brokers.get(new Random().nextInt(brokers.size()));
             // 组装成rmq broker节点地址
-            String rmqBrokerAddress = parseBrokerAddress(randomBroker, brokerController.getRemotingServer().getPort());
+            String rmqBrokerAddress = parseBrokerAddress(randomBroker, servicePort);
 
             HashMap<String, BrokerData> brokerAddrTable = Maps.newHashMap();
             HashMap<Long, String> brokerAddrs = Maps.newHashMap();

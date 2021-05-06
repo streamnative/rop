@@ -14,14 +14,12 @@
 
 package com.tencent.tdmq.handlers.rocketmq.inner.namesvr;
 
-import static com.google.common.base.Preconditions.checkState;
 import static org.apache.pulsar.common.naming.TopicName.PARTITIONED_TOPIC_SUFFIX;
 
 import com.google.common.base.Joiner;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.collect.Sets;
-import com.tencent.tdmq.handlers.rocketmq.RocketMQProtocolHandler;
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
 import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientTopicName;
 import com.tencent.tdmq.handlers.rocketmq.utils.RocketMQTopic;
@@ -33,16 +31,21 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
+import lombok.AllArgsConstructor;
+import lombok.EqualsAndHashCode;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.util.Strings;
-import org.apache.pulsar.broker.PulsarServerException;
 import org.apache.pulsar.broker.PulsarService;
 import org.apache.pulsar.broker.namespace.NamespaceBundleOwnershipListener;
 import org.apache.pulsar.broker.service.BrokerService;
 import org.apache.pulsar.broker.service.persistent.PersistentTopic;
 import org.apache.pulsar.client.admin.PulsarAdmin;
 import org.apache.pulsar.client.admin.PulsarAdminException.ConflictException;
+import org.apache.pulsar.client.api.ClientBuilder;
+import org.apache.pulsar.client.api.PulsarClient;
 import org.apache.pulsar.client.impl.Backoff;
 import org.apache.pulsar.client.impl.PulsarClientImpl;
 import org.apache.pulsar.common.naming.NamespaceBundle;
@@ -52,6 +55,7 @@ import org.apache.pulsar.common.policies.data.ClusterData;
 import org.apache.pulsar.common.policies.data.RetentionPolicies;
 import org.apache.pulsar.common.policies.data.TenantInfo;
 import org.apache.rocketmq.common.TopicConfig;
+import org.testng.collections.Maps;
 
 /**
  * MQ topic manager.
@@ -63,19 +67,17 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
     private final int maxCacheTimeInSec = 120;
     //cache-key TopicName = {tenant/ns/topic}, Map key={partition id} nonPartitionedTopic, only one record in map.
     @Getter
-    private final Cache<TopicName, Map<Integer, InetSocketAddress>> lookupCache = CacheBuilder
+    private final Cache<LookupCacheKey, Map<Integer, InetSocketAddress>> lookupCache = CacheBuilder
             .newBuilder()
             .initialCapacity(maxCacheSize)
             .expireAfterWrite(maxCacheTimeInSec, TimeUnit.SECONDS)
             .build();
-    private final int servicePort;
     private PulsarService pulsarService;
     private BrokerService brokerService;
     private PulsarAdmin adminClient;
 
     public MQTopicManager(RocketMQBrokerController brokerController) {
         super(brokerController);
-        this.servicePort = RocketMQProtocolHandler.getListenerPort(config.getRocketmqListeners());
     }
 
     @Override
@@ -115,13 +117,19 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
     }
 
     public void shutdown() {
+        lookupCache.invalidateAll();
+    }
+
+    public void getTopicBrokerAddr(TopicName topicName) {
+        getTopicBrokerAddr(topicName, null);
     }
 
     // call pulsarClient.lookup.getBroker to get and own a topic.
     // when error happens, the returned future will complete with null.
-    public Map<Integer, InetSocketAddress> getTopicBrokerAddr(TopicName topicName) {
-        if (lookupCache.getIfPresent(topicName) != null) {
-            return lookupCache.getIfPresent(topicName);
+    public Map<Integer, InetSocketAddress> getTopicBrokerAddr(TopicName topicName, String listenerName) {
+        LookupCacheKey lookupCacheKey = new LookupCacheKey(topicName, listenerName);
+        if (lookupCache.getIfPresent(lookupCacheKey) != null) {
+            return lookupCache.getIfPresent(lookupCacheKey);
         }
 
         Map<Integer, InetSocketAddress> partitionedTopicAddr = new HashMap<>();
@@ -139,7 +147,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                                 15, TimeUnit.SECONDS
                         );
                         CompletableFuture<InetSocketAddress> resultFuture = new CompletableFuture<>();
-                        lookupBroker(topicName.getPartition(i), backoff, resultFuture);
+                        lookupBroker(topicName.getPartition(i), backoff, listenerName, resultFuture);
                         partitionedTopicAddr.put(i, resultFuture.get());
                     } catch (Exception e) {
                         log.warn("getTopicBrokerAddr error.", e);
@@ -147,7 +155,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                 });
             }
             if (!partitionedTopicAddr.isEmpty()) {
-                lookupCache.put(topicName, partitionedTopicAddr);
+                lookupCache.put(lookupCacheKey, partitionedTopicAddr);
                 putPulsarTopic2Config(topicName, partitionedTopicAddr.size());
             }
         } catch (Exception e) {
@@ -158,30 +166,30 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
 
     // this method do the real lookup into Pulsar broker.
     // retFuture will be completed with null when meet error.
-    private void lookupBroker(TopicName topicName, Backoff backoff,
+    private void lookupBroker(TopicName topicName, Backoff backoff, String listenerName,
             CompletableFuture<InetSocketAddress> retFuture) {
         try {
-            ((PulsarClientImpl) pulsarService.getClient()).getLookup()
+            PulsarClient pulsarClient =
+                    StringUtils.isBlank(listenerName) ? pulsarService.getClient() : getClient(listenerName);
+            ((PulsarClientImpl) pulsarClient).getLookup()
                     .getBroker(topicName)
-                    .thenAccept(pair -> {
-                        checkState(pair.getLeft().equals(pair.getRight()));
-                        retFuture.complete(pair.getLeft());
-                    }).exceptionally(th -> {
+                    .thenAccept(pair -> retFuture.complete(pair.getLeft())).exceptionally(th -> {
                 long waitTimeMs = backoff.next();
                 if (backoff.isMandatoryStopMade()) {
-                    log.warn("getBroker for topic {} failed, retried too many times {}, return null."
-                            + " throwable: ", topicName, waitTimeMs, th);
+                    log.warn("getBroker for topic {} failed, retried too many times {}, return null.",
+                            topicName, waitTimeMs, th);
                     retFuture.complete(null);
                 } else {
-                    log.warn("getBroker for topic [{}] failed, will retry in [{}] ms. throwable: ",
+                    log.warn("getBroker for topic [{}] failed, will retry in [{}] ms.",
                             topicName, waitTimeMs, th);
-                    pulsarService.getExecutor().schedule(() -> lookupBroker(topicName, backoff, retFuture),
-                            waitTimeMs,
-                            TimeUnit.MILLISECONDS);
+                    pulsarService.getExecutor()
+                            .schedule(() -> lookupBroker(topicName, backoff, listenerName, retFuture),
+                                    waitTimeMs,
+                                    TimeUnit.MILLISECONDS);
                 }
                 return null;
             });
-        } catch (PulsarServerException e) {
+        } catch (Exception e) {
             log.error("getTopicBroker for topic {} failed get pulsar client, return null. throwable: ",
                     topicName, e);
             retFuture.complete(null);
@@ -415,12 +423,44 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
             if (topicMetadata.partitions > 0) {
                 adminClient.topics().deletePartitionedTopic(fullTopicName, true);
             }
-            // 清空cache
-            lookupCache.invalidate(TopicName.get(fullTopicName));
+            // TODO: hanmz 2021/5/6 清空cache
         } catch (Exception e) {
             log.warn("Topic {} create or update partition failed", fullTopicName, e);
         }
 
+    }
+
+    private final Map<String, PulsarClient> pulsarClientMap = Maps.newConcurrentMap();
+
+    private synchronized PulsarClient getClient(String listenerName) {
+        if (pulsarClientMap.get(listenerName) == null) {
+            try {
+                ClientBuilder builder =
+                        PulsarClient.builder().serviceUrl(this.brokerService.getPulsar().getBrokerServiceUrl());
+                if (StringUtils.isNotBlank(this.config.getBrokerClientAuthenticationPlugin())) {
+                    builder.authentication(
+                            this.config.getBrokerClientAuthenticationPlugin(),
+                            this.config.getBrokerClientAuthenticationParameters()
+                    );
+                }
+                if (StringUtils.isNotBlank(listenerName)) {
+                    builder.listenerName(listenerName);
+                }
+                pulsarClientMap.put(listenerName, builder.build());
+            } catch (Exception e) {
+                log.error("listenerName [{}] getClient error", listenerName, e);
+            }
+        }
+        return pulsarClientMap.get(listenerName);
+    }
+
+    @EqualsAndHashCode
+    @AllArgsConstructor
+    @NoArgsConstructor
+    private static class LookupCacheKey {
+
+        TopicName topicName;
+        String listenerName;
     }
 
 }
