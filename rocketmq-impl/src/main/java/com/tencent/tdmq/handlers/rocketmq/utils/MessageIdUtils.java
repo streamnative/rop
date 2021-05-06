@@ -32,15 +32,15 @@ public class MessageIdUtils {
     public static final int LEDGER_BITS = 32;
     public static final int ENTRY_BITS = 24;
     public static final int PARTITION_BITS = 8;
-    private static final long MASK_LEDGER_ID = (1L << (LEDGER_BITS - 1)) - 1L;
     public static final long MAX_LEDGER_ID = (1L << (LEDGER_BITS - 1)) - 2L;
-    private static final long MASK_ENTRY_ID = (1L << ENTRY_BITS) - 1L;
     public static final long MAX_ENTRY_ID = (1L << ENTRY_BITS) - 2L;
-    private static final long MASK_PARTITION_ID = (1L << PARTITION_BITS) - 1L;
     public static final long MAX_PARTITION_ID = (1L << PARTITION_BITS) - 2L;
+    public static final long MIN_ROP_OFFSET = 0L;
+    private static final long MASK_LEDGER_ID = (1L << (LEDGER_BITS - 1)) - 1L;
+    private static final long MASK_ENTRY_ID = (1L << ENTRY_BITS) - 1L;
+    private static final long MASK_PARTITION_ID = (1L << PARTITION_BITS) - 1L;
     public static final long MAX_ROP_OFFSET =
             (MASK_LEDGER_ID << (ENTRY_BITS + PARTITION_BITS)) | (MASK_ENTRY_ID << PARTITION_BITS) | MASK_PARTITION_ID;
-    public static final long MIN_ROP_OFFSET = 0L;
 
     public static final long getOffset(long ledgerId, long entryId, long partitionId) {
         entryId = entryId < 0L ? -1L : entryId;

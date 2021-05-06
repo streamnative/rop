@@ -19,7 +19,6 @@ import java.util.List;
 import org.apache.rocketmq.client.exception.MQBrokerException;
 import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.client.producer.DefaultMQProducer;
-import org.apache.rocketmq.client.producer.MQProducer;
 import org.apache.rocketmq.client.producer.MessageQueueSelector;
 import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.common.message.Message;
@@ -34,7 +33,7 @@ public class OrderProducer {
 
     public static void main(String[] args) throws UnsupportedEncodingException {
         try {
-            DefaultMQProducer producer = new DefaultMQProducer("test1|InstanceTest","please_rename_unique_group_name");
+            DefaultMQProducer producer = new DefaultMQProducer("test1|InstanceTest", "please_rename_unique_group_name");
             producer.setNamesrvAddr("127.0.0.1:9876");
             producer.start();
 

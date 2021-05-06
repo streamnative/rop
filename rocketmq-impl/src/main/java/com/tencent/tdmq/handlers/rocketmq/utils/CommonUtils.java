@@ -52,6 +52,8 @@ public class CommonUtils {
     public static final String SLASH_CHAR = "/";
     public static final String BACKSLASH_CHAR = "\\";
     private static final int MESSAGE_BYTEBUF_SIZE = 28;
+    private static final int ROP_QUEUE_OFFSET_INDEX = 8 + 4 + 4 + 4 + 4 + 4;
+    private static final int ROP_PHYSICAL_OFFSET_INDEX = 8 + 4 + 4 + 4 + 4 + 4 + 8;
     private static ThreadLocal<ByteBuffer> byteBufLocal = ThreadLocal
             .withInitial(() -> ByteBuffer.allocate(MESSAGE_BYTEBUF_SIZE));
 
@@ -311,8 +313,6 @@ public class CommonUtils {
         return null;
     }
 
-    private static final int ROP_QUEUE_OFFSET_INDEX = 8 + 4 + 4 + 4 + 4 + 4;
-    private static final int ROP_PHYSICAL_OFFSET_INDEX = 8 + 4 + 4 + 4 + 4 + 4 + 8;
     public static ByteBuffer decode(Message<byte[]> message) {
         // 去除 tags 标记位的 8 个字节之后，将原先的 byteBuffer 返回
         ByteBuffer wrap = ByteBuffer.wrap(message.getData());

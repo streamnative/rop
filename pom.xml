@@ -30,7 +30,7 @@
     <packaging>pom</packaging>
 
     <groupId>com.tencent.tdmq.handlers</groupId>
-    <artifactId>tdmq-protocol-handler-rocketmq</artifactId>
+    <artifactId>tdmq-protocol-handler-rocketmq-parent</artifactId>
     <version>0.1.0-SNAPSHOT</version>
     <name>Tencent :: TDMQ Protocol Handler :: RoP Parent</name>
     <description>Parent for RocketMQ on TDMQ implemented using TDMQ Protocol Handler.</description>

@@ -85,6 +85,7 @@ public class ScheduleMessageService {
         this.sendBackProdcuers = new ConcurrentHashMap<>();
         this.expirationReaper = new ServiceThread() {
             private final long advanceTimeInterval = 100L;
+
             @Override
             public String getServiceName() {
                 return "ScheduleMessageService-expirationReaper-thread";
@@ -246,7 +247,8 @@ public class ScheduleMessageService {
                     long diff = deliveryTime - Instant.now().toEpochMilli();
                     diff = diff < 0 ? 0 : diff;
                     log.debug(
-                            "retry delayedTime ======> delayLeve=[{}], delayTime=[{}], bornTime=[{}], storeTime=[{}], deliveryTime=[{}].",
+                            "retry delayedTime ======> delayLeve=[{}], delayTime=[{}], "
+                                    + "bornTime=[{}], storeTime=[{}], deliveryTime=[{}].",
                             new Object[]{delayLevel, delayLevelTable.get(delayLevel), messageExt.getBornTimestamp(),
                                     messageExt.getStoreTimestamp(), deliveryTime});
                     timeoutTimer.add(new com.tencent.tdmq.handlers.rocketmq.inner.timer.TimerTask(diff) {
