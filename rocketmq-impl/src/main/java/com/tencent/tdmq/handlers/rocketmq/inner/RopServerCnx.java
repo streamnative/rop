@@ -431,16 +431,21 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             }
 
             Reader<byte[]> reader = this.readers.get(readerId);
-            if (startOffset != MessageId.earliest && startOffset != MessageId.latest
-                    && startOffset.getEntryId() != -1L) {//skip the first position of ledger (non-message)
+            if (startOffset != MessageId.earliest && startOffset != MessageId.latest) {
                 Message<byte[]> message = reader.readNext(fetchTimeoutInMs, TimeUnit.MILLISECONDS);
-                if (message != null && !MessageIdUtils.isMessageEquals(startOffset, message.getMessageId())) {
-                    reader.seek(startOffset);
-                    message = reader.readNext(fetchTimeoutInMs, TimeUnit.MILLISECONDS);
-                    if (message != null && !MessageIdUtils.isMessageEquals(startOffset, message.getMessageId())) {
-                        log.error("getMessage error, for seekOffset=[{}] isn't matched readOffset=[{}].",
-                                startOffset, message.getMessageId());
-                        throw new RopPullMessageException("couldn't find start-offset matched message");
+                if (message != null) {
+                    MessageIdImpl curMsgId = (MessageIdImpl) message.getMessageId();
+                    if (startOffset.getLedgerId() == curMsgId.getLedgerId() &&
+                            (startOffset.getEntryId() + 1) == curMsgId.getEntryId()) {
+                        messageList.add(message);
+                    } else {
+                        reader.seek(startOffset);
+                        message = reader.readNext(fetchTimeoutInMs, TimeUnit.MILLISECONDS);
+                        if (message != null && !MessageIdUtils.isMessageEquals(startOffset, message.getMessageId())) {
+                            log.error("getMessage error, for seekOffset=[{}] isn't matched readOffset=[{}].",
+                                    startOffset, message.getMessageId());
+                            throw new RopPullMessageException("couldn't find start-offset matched message");
+                        }
                     }
                 }
             }
