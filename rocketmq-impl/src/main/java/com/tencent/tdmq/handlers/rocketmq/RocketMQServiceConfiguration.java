@@ -80,7 +80,7 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
             category = CATEGORY_ROCKETMQ,
             doc = "Server worker threads number.\n"
     )
-    private int serverWorkerThreads = 8;
+    private int serverWorkerThreads = 16;
 
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
@@ -248,7 +248,7 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
             category = CATEGORY_ROCKETMQ,
             doc = "Number of default topics queue.\n"
     )
-    private int defaultTopicQueueNums = 3;
+    private int defaultTopicQueueNums = 5;
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
             doc = "Whether enable cluster topic function, the default is true.\n"
@@ -273,7 +273,7 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
             category = CATEGORY_ROCKETMQ,
             doc = "Whether enable long polling function in consumer.\n"
     )
-    private boolean longPollingEnable = false;
+    private boolean longPollingEnable = true;
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
             doc = "The time of short polling.\n"
