@@ -435,8 +435,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 Message<byte[]> message = reader.readNext(fetchTimeoutInMs, TimeUnit.MILLISECONDS);
                 if (message != null) {
                     MessageIdImpl curMsgId = (MessageIdImpl) message.getMessageId();
-                    if (startOffset.getLedgerId() == curMsgId.getLedgerId() &&
-                            (startOffset.getEntryId() + 1) == curMsgId.getEntryId()) {
+                    if (startOffset.getLedgerId() == curMsgId.getLedgerId()
+                            && (startOffset.getEntryId() + 1) == curMsgId.getEntryId()) {
                         messageList.add(message);
                     } else {
                         reader.seek(startOffset);
@@ -460,7 +460,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             }
         } catch (Exception e) {
             log.warn("retrieve message error, group = [{}], topic = [{}], startOffset=[{}].",
-                    new Object[]{consumerGroup, topic, startOffset});
+                    consumerGroup, topic, startOffset);
             e.printStackTrace();
         } finally {
             readLock.unlock();

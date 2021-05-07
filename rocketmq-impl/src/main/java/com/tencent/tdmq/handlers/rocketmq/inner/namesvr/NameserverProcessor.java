@@ -63,7 +63,7 @@ public class NameserverProcessor implements NettyRequestProcessor {
     private final MQTopicManager mqTopicManager;
     private final int servicePort;
     /**
-     * 根据不同port区分客户端请求来源网络类型
+     * Differentiate the source network type of client requests according to different ports.
      */
     private static final Map<String, String> PORT_LISTENER_NAME_MAP = Maps.newHashMap();
 
@@ -288,7 +288,8 @@ public class NameserverProcessor implements NettyRequestProcessor {
     }
 
     /**
-     * 解析请求本地接收端口，根据端口识别客户端网络类型【类型映射关系通过配置项rocketmqListenerPortMap指定】
+     * Analyze the request local receiving port, and identify the client network type according to the
+     * port [type mapping relationship is specified by the configuration item rocketmqListenerPortMap].
      */
     private String getListenerName(ChannelHandlerContext ctx) {
         String localAddress = ctx.channel().localAddress().toString();
