@@ -147,11 +147,15 @@ public abstract class NettyRemotingAbstract {
         if (cmd != null) {
             switch (cmd.getType()) {
                 case REQUEST_COMMAND:
-                    log.info("process request command:{}", cmd);
+                    if (log.isDebugEnabled()) {
+                        log.debug("process request command:{}", cmd);
+                    }
                     processRequestCommand(ctx, cmd);
                     break;
                 case RESPONSE_COMMAND:
-                    log.info("process response command:{}", cmd);
+                    if (log.isDebugEnabled()) {
+                        log.debug("process response command:{}", cmd);
+                    }
                     processResponseCommand(ctx, cmd);
                     break;
                 default:
