@@ -90,13 +90,6 @@ public class PullMessageProcessor implements NettyRequestProcessor {
         return this.processRequest(ctx.channel(), requestHeader, request, true);
     }
 
-    public void checkConsumerExists(PullMessageRequestHeader requestHeader) {
-        String topic = requestHeader.getTopic();
-        String consumerGroup = requestHeader.getConsumerGroup();
-        Integer partitionId = requestHeader.getQueueId();
-        this.brokerController.getConsumerOffsetManager().checkExistsAndAddCache(consumerGroup, topic, partitionId);
-    }
-
     @Override
     public boolean rejectRequest() {
         return false;

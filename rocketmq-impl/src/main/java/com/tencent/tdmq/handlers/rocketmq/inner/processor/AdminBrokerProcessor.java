@@ -395,7 +395,7 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
 
         ClientGroupAndTopicName clientGroupName = new ClientGroupAndTopicName(Strings.EMPTY, requestHeader.getTopic());
         long offset = this.brokerController.getConsumerOffsetManager()
-                .getMaxOffsetInQueue(clientGroupName, requestHeader.getQueueId());
+                .getMaxOffsetInQueue(clientGroupName.getClientTopicName(), requestHeader.getQueueId());
 
         responseHeader.setOffset(offset);
         response.setCode(ResponseCode.SUCCESS);
@@ -411,7 +411,7 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
 
         ClientGroupAndTopicName clientGroupName = new ClientGroupAndTopicName(Strings.EMPTY, requestHeader.getTopic());
         long offset = this.brokerController.getConsumerOffsetManager()
-                .getMinOffsetInQueue(clientGroupName, requestHeader.getQueueId());
+                .getMinOffsetInQueue(clientGroupName.getClientTopicName(), requestHeader.getQueueId());
 
         responseHeader.setOffset(offset);
         response.setCode(ResponseCode.SUCCESS);
@@ -725,7 +725,8 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
                 ClientGroupAndTopicName clientGroupName =
                         new ClientGroupAndTopicName(requestHeader.getConsumerGroup(), topic);
                 long brokerOffset =
-                        this.brokerController.getConsumerOffsetManager().getMaxOffsetInQueue(clientGroupName, i);
+                        this.brokerController.getConsumerOffsetManager()
+                                .getMaxOffsetInQueue(clientGroupName.getClientTopicName(), i);
                 if (brokerOffset < 0) {
                     brokerOffset = 0;
                 }
