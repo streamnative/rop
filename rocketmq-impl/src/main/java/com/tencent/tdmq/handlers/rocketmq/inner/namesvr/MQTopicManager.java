@@ -328,7 +328,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                                     fullTopicName + PARTITIONED_TOPIC_SUFFIX + i);
                 }
             }
-            lookupTopics(tc);
+            //lookupTopics(tc);
         } catch (Exception e) {
             log.error("createPulsarTopic topic=[{}] error.", tc, e);
         }

@@ -14,6 +14,7 @@
 
 package com.tencent.rocketmq.example.namespace;
 
+import java.util.concurrent.atomic.AtomicLong;
 import org.apache.rocketmq.client.consumer.DefaultMQPushConsumer;
 import org.apache.rocketmq.client.consumer.listener.ConsumeConcurrentlyStatus;
 import org.apache.rocketmq.client.consumer.listener.MessageListenerConcurrently;
@@ -28,12 +29,15 @@ public class PushConsumerWithNamespace {
                 "test1|InstanceTest", "cidTest");
         defaultMQPushConsumer.setNamesrvAddr("127.0.0.1:9876");
         defaultMQPushConsumer.subscribe("topicTest", "*");
+        AtomicLong count = new AtomicLong(0L);
         defaultMQPushConsumer.registerMessageListener((MessageListenerConcurrently) (msgs, context) -> {
             msgs.forEach((msg) -> {
                 System.out.printf("Msg payload: %s, topic is:%s, MsgId is:%s, reconsumeTimes is:%s%n",
                         new String(msg.getBody()), msg.getTopic(), msg.getMsgId(), msg.getReconsumeTimes());
+                count.incrementAndGet();
+                System.out.println("total ====> " + count.get());
             });
-            return ConsumeConcurrentlyStatus.CONSUME_SUCCESS;
+            return ConsumeConcurrentlyStatus.RECONSUME_LATER;
         });
 
         defaultMQPushConsumer.start();

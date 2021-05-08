@@ -41,6 +41,7 @@ import org.apache.pulsar.client.api.Producer;
 import org.apache.pulsar.client.api.SubscriptionInitialPosition;
 import org.apache.pulsar.client.api.SubscriptionMode;
 import org.apache.pulsar.client.api.SubscriptionType;
+import org.apache.pulsar.client.impl.PulsarClientImpl;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.ServiceThread;
 import org.apache.rocketmq.common.TopicFilterType;
@@ -204,15 +205,18 @@ public class ScheduleMessageService {
             this.pulsarService = ScheduleMessageService.this.pulsarBroker.pulsar();
             this.timeoutTimer = SystemTimer.builder().executorName("DeliverDelayedMessageTimeWheelExecutor").build();
             try {
+                log.warn("1 =======> The client config value: [{}]", ((PulsarClientImpl)this.pulsarService.getClient()).getConfiguration());
                 this.delayedConsumer = this.pulsarService.getClient()
                         .newConsumer()
                         .receiverQueueSize(MAX_FETCH_MESSAGE_NUM)
                         .subscriptionMode(SubscriptionMode.Durable)
-                        .subscriptionType(SubscriptionType.Shared)
-                        .subscriptionName(getDelayedTopicConsumerName((int) delayLevel))
+                        .subscriptionType(SubscriptionType.Failover)
+                        .subscriptionName(getDelayedTopicConsumerName(delayLevel))
                         .topic(this.delayTopic)
                         .subscriptionInitialPosition(SubscriptionInitialPosition.Earliest)
                         .subscribe();
+
+                    log.warn("2 =======> The client config value: [{}]", ((PulsarClientImpl)this.pulsarService.getClient()).getConfiguration());
             } catch (Exception e) {
                 log.error("create delayed topic[delayLevel={}] consumer error.", delayLevel, e);
                 throw new RuntimeException("Create delayed topic error");

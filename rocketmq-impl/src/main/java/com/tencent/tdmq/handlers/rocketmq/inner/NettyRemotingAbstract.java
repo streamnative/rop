@@ -213,8 +213,6 @@ public abstract class NettyRemotingAbstract {
                                     if (log.isDebugEnabled()) {
                                         log.debug("Will write and flush the response{} to channel", response);
                                     }
-
-                                    log.info("Write and flush route topic command response: {}", response);
                                     ctx.writeAndFlush(response);
                                 } catch (Throwable e) {
                                     log.error("process request over, but response failed", e);

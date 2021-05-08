@@ -15,6 +15,8 @@
 package com.tencent.tdmq.handlers.rocketmq.utils;
 
 import com.google.common.base.Joiner;
+import java.util.Arrays;
+import java.util.Collection;
 import lombok.Getter;
 import org.apache.logging.log4j.util.Strings;
 import org.apache.pulsar.common.naming.TopicDomain;
@@ -34,6 +36,8 @@ public class RocketMQTopic {
     private static final char TENANT_NAMESPACE_SEP = '|';
     private static final char ROCKETMQ_NAMESPACE_TOPIC_SEP = NamespaceUtil.NAMESPACE_SEPARATOR;
     private static final TopicDomain domain = TopicDomain.persistent;
+    private static final Collection<String> ROCKETMQ_SYSTEM_TOPICS = Arrays
+            .asList(MixAll.AUTO_CREATE_TOPIC_KEY_TOPIC, MixAll.BENCHMARK_TOPIC);
     public static String defaultTenant = "rocketmq";
     public static String defaultNamespace = "public";
     public static String metaTenant = "rocketmq";
@@ -54,8 +58,14 @@ public class RocketMQTopic {
                 this.rocketmqNs = prefix;
             }
         }
+
         String realTenant = Strings.isNotBlank(this.rocketmqTenant) ? this.rocketmqTenant : defaultTenant;
         String realNs = Strings.isNotBlank(this.rocketmqNs) ? this.rocketmqNs : defaultNamespace;
+
+        if (ROCKETMQ_SYSTEM_TOPICS.contains(rmqTopicName)) {
+            realTenant = metaTenant;
+            realNs = metaNamespace;
+        }
         this.pulsarTopicName = TopicName
                 .get(domain.name(), realTenant, realNs, NamespaceUtil.withoutNamespace(rmqTopicName));
     }

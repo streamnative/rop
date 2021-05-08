@@ -135,8 +135,7 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
     }
 
     private void resetByteBuffer(final ByteBuffer byteBuffer, final int limit) {
-        byteBuffer.flip();
-        byteBuffer.limit(limit);
+        byteBuffer.clear();
     }
 
     private List<byte[]> convertRocketmq2Pulsar(final MessageExtBatch messageExtBatch) throws RopEncodeException {
