@@ -16,7 +16,7 @@ package com.tencent.tdmq.handlers.rocketmq.inner.processor;
 
 import com.tencent.tdmq.handlers.rocketmq.inner.RocketMQBrokerController;
 import com.tencent.tdmq.handlers.rocketmq.inner.consumer.ConsumerGroupInfo;
-import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientGroupAndTopicName;
+import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientTopicName;
 import io.netty.channel.ChannelHandlerContext;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
@@ -141,16 +141,14 @@ public class ConsumerManageProcessor implements NettyRequestProcessor {
             if (consumerGroupInfo != null) {
                 if (consumerGroupInfo.getConsumeFromWhere() == ConsumeFromWhere.CONSUME_FROM_FIRST_OFFSET) {
                     long minOffset = this.brokerController.getConsumerOffsetManager()
-                            .getMinOffsetInQueue(new ClientGroupAndTopicName(requestHeader.getConsumerGroup(),
-                                            requestHeader.getTopic()),
+                            .getMinOffsetInQueue(new ClientTopicName(requestHeader.getTopic()),
                                     requestHeader.getQueueId());
                     responseHeader.setOffset(minOffset);
                     response.setCode(ResponseCode.SUCCESS);
                     response.setRemark(null);
                 } else {
                     long maxOffset = this.brokerController.getConsumerOffsetManager()
-                            .getMaxOffsetInQueue(new ClientGroupAndTopicName(requestHeader.getConsumerGroup(),
-                                            requestHeader.getTopic()),
+                            .getMaxOffsetInQueue(new ClientTopicName(requestHeader.getTopic()),
                                     requestHeader.getQueueId());
                     responseHeader.setOffset(maxOffset);
                     response.setCode(ResponseCode.SUCCESS);

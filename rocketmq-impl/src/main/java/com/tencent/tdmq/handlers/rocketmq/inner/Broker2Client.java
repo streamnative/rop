@@ -136,13 +136,13 @@ public class Broker2Client {
             }
 
             long timeStampOffset;
-            ClientGroupAndTopicName clientGroupName = new ClientGroupAndTopicName(Strings.EMPTY, topic);
+            ClientGroupAndTopicName groupAndTopicName = new ClientGroupAndTopicName(Strings.EMPTY, topic);
             if (timeStamp != -1) {
                 timeStampOffset = this.brokerController.getConsumerOffsetManager()
-                        .searchOffsetByTimestamp(clientGroupName, i, timeStamp);
+                        .searchOffsetByTimestamp(groupAndTopicName, i, timeStamp);
             } else {
                 timeStampOffset = this.brokerController.getConsumerOffsetManager()
-                        .getMaxOffsetInQueue(clientGroupName, i);
+                        .getMaxOffsetInQueue(groupAndTopicName.getClientTopicName(), i);
             }
 
             if (timeStampOffset < 0) {

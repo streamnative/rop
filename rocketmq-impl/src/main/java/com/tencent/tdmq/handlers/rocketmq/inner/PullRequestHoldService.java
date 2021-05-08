@@ -14,6 +14,7 @@
 
 package com.tencent.tdmq.handlers.rocketmq.inner;
 
+import com.tencent.tdmq.handlers.rocketmq.inner.producer.ClientTopicName;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -102,7 +103,8 @@ public class PullRequestHoldService extends ServiceThread {
             if (2 == kArray.length) {
                 String topic = kArray[0];
                 int queueId = Integer.parseInt(kArray[1]);
-                final long offset = 0L; /*TODO: getMessageStore().getMaxOffsetInQueue(topic, queueId);*/
+                final long offset = this.brokerController.getConsumerOffsetManager()
+                        .getMaxOffsetInQueue(new ClientTopicName(topic), queueId);
                 try {
                     this.notifyMessageArriving(topic, queueId, offset);
                 } catch (Throwable e) {
@@ -128,26 +130,17 @@ public class PullRequestHoldService extends ServiceThread {
                 for (PullRequest request : requestList) {
                     long newestOffset = maxOffset;
                     if (newestOffset <= request.getPullFromThisOffset()) {
-                        newestOffset = 0L; /*TODO: getMessageStore().getMaxOffsetInQueue(topic, queueId)*/
+                        newestOffset = this.brokerController.getConsumerOffsetManager()
+                                .getMaxOffsetInQueue(new ClientTopicName(topic), queueId);
                     }
 
                     if (newestOffset > request.getPullFromThisOffset()) {
-                        boolean match = true; /* TODO request.getMessageFilter().isMatchedByConsumeQueue(tagsCode,
-                                new ConsumeQueueExt.CqExtUnit(tagsCode, msgStoreTime, filterBitMap))*/
-                        // match by bit map, need eval again when properties is not null.
-                        if (match && properties != null) {
-                            match = request.getMessageFilter().isMatchedByCommitLog(null, properties);
-                        }
-
-                        if (match) {
-                            try {
-                                this.brokerController.getPullMessageProcessor()
-                                        .executeRequestWhenWakeup(request.getClientChannel(),
-                                                request.getRequestCommand());
-                            } catch (Throwable e) {
-                                log.error("execute request when wakeup failed.", e);
-                            }
-                            continue;
+                        try {
+                            this.brokerController.getPullMessageProcessor()
+                                    .executeRequestWhenWakeup(request.getClientChannel(),
+                                            request.getRequestCommand());
+                        } catch (Throwable e) {
+                            log.error("execute request when wakeup failed.", e);
                         }
                     }
 

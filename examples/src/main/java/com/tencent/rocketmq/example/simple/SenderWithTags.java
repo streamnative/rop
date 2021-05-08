@@ -26,7 +26,6 @@ public class SenderWithTags {
     public static void main(String[] args) throws Exception {
 
         DefaultMQProducer producer = new DefaultMQProducer("test1|InstanceTest5", "pidTest");
-        producer.setNamesrvAddr("127.0.0.1:9876");
         producer.start();
         String[] tags = {"tagA", "tagB"};
         for (int i = 1; i < 100; i++) {

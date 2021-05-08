@@ -46,6 +46,7 @@ import org.apache.pulsar.client.api.Producer;
 import org.apache.pulsar.client.api.Reader;
 import org.apache.pulsar.client.impl.ClientCnx;
 import org.apache.pulsar.client.impl.MessageIdImpl;
+import org.apache.pulsar.client.impl.ProducerImpl;
 import org.apache.pulsar.common.naming.TopicName;
 import org.apache.pulsar.common.util.FutureUtil;
 import org.apache.pulsar.common.util.collections.ConcurrentLongHashMap;
@@ -72,7 +73,7 @@ import org.apache.rocketmq.store.PutMessageStatus;
 @Getter
 public class RopServerCnx extends ChannelInboundHandlerAdapter implements PulsarMessageStore {
 
-    private static final int sendTimeoutInSec = 300;
+    private static final int sendTimeoutInSec = 500;
     private static final int maxBatchMessageNum = 20;
     private static final int fetchTimeoutInMs = 200;
     public static String ropHandlerName = "RopServerCnxHandler";
@@ -227,7 +228,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             if (putMsgProducer == null) {
                 synchronized (this.producers) {
                     if (this.producers.get(producerId) == null) {
-                        log.info("putMessages create producer[id={}] successfully.", producerId);
+                        log.info("putMessages creating producer[id={}].", producerId);
                         putMsgProducer = this.service.pulsar().getClient().newProducer()
                                 .topic(pTopic)
                                 .producerName(producerGroup + producerId)
@@ -236,6 +237,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                                 .batchingMaxMessages(maxBatchMessageNum)
                                 .enableBatching(true)
                                 .create();
+                        log.info("putMessages create producer[id={}] conf=[{}] successfully.", producerId,
+                                ((ProducerImpl) putMsgProducer).getConfiguration());
                         Producer<byte[]> oldProducer = this.producers.put(producerId, putMsgProducer);
                         if (oldProducer != null) {
                             oldProducer.closeAsync();
@@ -243,7 +246,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                     }
                 }
             }
-
+            log.info("putMessages begin to send message.", producerId);
             List<CompletableFuture<MessageId>> batchMessageFutures = new ArrayList<>();
             List<byte[]> body = this.entryFormatter.encode(batchMessage, 1);
             AtomicInteger totalBytesSize = new AtomicInteger(0);
@@ -442,9 +445,9 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                         reader.seek(startOffset);
                         message = reader.readNext(fetchTimeoutInMs, TimeUnit.MILLISECONDS);
                         if (message != null && !MessageIdUtils.isMessageEquals(startOffset, message.getMessageId())) {
-                            log.error("getMessage error, for seekOffset=[{}] isn't matched readOffset=[{}].",
+                            log.error("getMessage error, for seekOffset=[{}] isn't matched readOffset=[{}], reset offset to earliest.",
                                     startOffset, message.getMessageId());
-                            throw new RopPullMessageException("couldn't find start-offset matched message");
+                            reader.seek(MessageId.earliest);
                         }
                     }
                 }
