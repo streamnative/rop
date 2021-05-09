@@ -21,6 +21,7 @@ import com.scurrilous.circe.checksum.Crc32cIntChecksum;
 import com.tencent.tdmq.handlers.rocketmq.inner.exception.RopEncodeException;
 import com.tencent.tdmq.handlers.rocketmq.utils.CommonUtils;
 import io.netty.buffer.ByteBuf;
+import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -134,11 +135,6 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
         }
     }
 
-    private void resetByteBuffer(final ByteBuffer byteBuffer, final int limit) {
-        byteBuffer.flip();
-        byteBuffer.limit(limit);
-    }
-
     private List<byte[]> convertRocketmq2Pulsar(final MessageExtBatch messageExtBatch) throws RopEncodeException {
         ByteBuffer msgStoreItemMemory = msgStoreItemMemoryThreadLocal.get();
         List<ByteBuffer> result = new ArrayList<>();
@@ -225,12 +221,10 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
             // 9 BORNTIMESTAMP
             msgStoreItemMemory.putLong(messageExtBatch.getBornTimestamp());
             // 10 BORNHOST
-            resetByteBuffer(bornHostHolder, bornHostLength);
             msgStoreItemMemory.put(messageExtBatch.getBornHostBytes(bornHostHolder));
             // 11 STORETIMESTAMP
             msgStoreItemMemory.putLong(Instant.now().toEpochMilli());
             // 12 STOREHOSTADDRESS
-            resetByteBuffer(storeHostHolder, storeHostLength);
             msgStoreItemMemory.put(messageExtBatch.getStoreHostBytes(storeHostHolder));
             // 13 RECONSUMETIMES
             msgStoreItemMemory.putInt(messageExtBatch.getReconsumeTimes());
@@ -266,10 +260,7 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
         int storeHostLength = (sysflag & MessageSysFlag.STOREHOSTADDRESS_V6_FLAG) == 0 ? 4 + 4 : 16 + 4;
         ByteBuffer bornHostHolder = ByteBuffer.allocate(bornHostLength);
         ByteBuffer storeHostHolder = ByteBuffer.allocate(storeHostLength);
-        this.resetByteBuffer(storeHostHolder, storeHostLength);
 
-        ByteBuffer msgStoreItemMemory = msgStoreItemMemoryThreadLocal.get();
-        msgStoreItemMemory.clear();
         final byte[] propertiesData =
                 msgInner.getPropertiesString() == null ? null
                         : msgInner.getPropertiesString().getBytes(MessageDecoder.CHARSET_UTF8);
@@ -293,7 +284,8 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
         }
 
         // Initialization of storage space
-        this.resetByteBuffer(msgStoreItemMemory, msgLen);
+        ByteBuffer msgStoreItemMemory = msgStoreItemMemoryThreadLocal.get();
+        msgStoreItemMemory.clear();
         // TAGSCODE
         msgStoreItemMemory.putLong(tagsCode);
         // 1 TOTALSIZE
@@ -315,12 +307,10 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
         // 9 BORNTIMESTAMP
         msgStoreItemMemory.putLong(msgInner.getBornTimestamp());
         // 10 BORNHOST
-        resetByteBuffer(bornHostHolder, bornHostLength);
         msgStoreItemMemory.put(msgInner.getBornHostBytes(bornHostHolder));
         // 11 STORETIMESTAMP
         msgStoreItemMemory.putLong(Instant.now().toEpochMilli());
         // 12 STOREHOSTADDRESS
-        resetByteBuffer(storeHostHolder, storeHostLength);
         msgStoreItemMemory.put(msgInner.getStoreHostBytes(storeHostHolder));
         // 13 RECONSUMETIMES
         msgStoreItemMemory.putInt(msgInner.getReconsumeTimes());
