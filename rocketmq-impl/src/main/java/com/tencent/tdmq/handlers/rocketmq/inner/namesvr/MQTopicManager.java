@@ -103,6 +103,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
         this.adminClient = this.pulsarService.getAdminClient();
         this.createSysResource();
         this.pulsarService.getNamespaceService().addNamespaceBundleOwnershipListener(this);
+        log.info("MQTopicManager started successfully.");
     }
 
     @Override
@@ -205,14 +206,15 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                         log.info("get owned topic list when onLoad bundle {}, topic size {} ", bundle, topics.size());
                         try {
                             for (String topic : topics) {
-                                log.info("NamespaceBundle onLoad topic = [{}].", topic);
                                 TopicName name = TopicName.get(TopicName.get(topic).getPartitionedTopicName());
-                                getTopicBrokerAddr(name);
+                                //getTopicBrokerAddr(name);
                             }
                         } catch (Exception e) {
                             log.warn("NamespaceBundle loading broker address error. topics=[{}].", topics);
                         }
+
                         try {
+                            log.info("loadPersistentTopic when namespaceBundle onLoad topic.");
                             loadPersistentTopic(topics);
                         } catch (Exception e) {
                             log.warn("NamespaceBundle loading persistent topic error. topics=[{}].", topics);
@@ -292,10 +294,6 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
         this.topicConfigTable.values().forEach(this::createPulsarTopic);
     }
 
-    private void lookupTopics(TopicConfig tc) {
-        lookupTopics(tc.getTopicName());
-    }
-
     // tenant/ns/topicName
     public void lookupTopics(String pulsarTopicName) {
         try {
@@ -322,13 +320,11 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                 adminClient.topics().createPartitionedTopic(
                         fullTopicName,
                         tc.getWriteQueueNums());
-                for (int i = 0; i < tc.getWriteQueueNums(); i++) {
-                    adminClient.topics()
-                            .createNonPartitionedTopic(
-                                    fullTopicName + PARTITIONED_TOPIC_SUFFIX + i);
-                }
             }
+<<<<<<< HEAD
             //lookupTopics(tc);
+=======
+>>>>>>> dev/rop_20210507
         } catch (Exception e) {
             log.error("createPulsarTopic topic=[{}] error.", tc, e);
         }
