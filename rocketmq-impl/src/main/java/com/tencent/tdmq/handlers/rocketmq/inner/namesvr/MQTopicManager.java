@@ -321,10 +321,6 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                         fullTopicName,
                         tc.getWriteQueueNums());
             }
-<<<<<<< HEAD
-            //lookupTopics(tc);
-=======
->>>>>>> dev/rop_20210507
         } catch (Exception e) {
             log.error("createPulsarTopic topic=[{}] error.", tc, e);
         }
