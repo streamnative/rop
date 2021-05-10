@@ -10,12 +10,22 @@ Broker starts.
 
 ![](docs/rop-architecture.png)
 
-## Limitations
+## Supported
 
-RoP is implemented based on Pulsar features. However, the methods of using Pulsar and using RocketMQ
-are different. The following are some limitations of RoP.
+RoP is implemented based on Pulsar features. Currently, the functions supported by RoP are as follows:
 
-- TBD
+- Send and Receive Messages
+- SendAsync Messages
+- Queue Selector Producer
+- Round Robin Producer  
+- Producer And Consumer(Push and Pull) With Namespace  
+- Batch Messages
+- Order Messages
+- Send And Receive With Tag
+- Deliver Level Message
+- Retry Topic
+- DLQ Topic
+- Broadcast Consumer
 
 ## Get started
 
