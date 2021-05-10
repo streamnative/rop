@@ -40,7 +40,7 @@
             <AppenderRef ref="Console"/>
         </Root>
         <Logger name="org.eclipse.jetty" level="info"/>
-        <Logger name="com.tencent.tdmq" level="info"/>
+        <Logger name="org.streamnative.pulsar" level="info"/>
         <Logger name="org.apache.pulsar" level="info"/>
         <Logger name="org.apache.bookkeeper" level="info"/>
     </Loggers>
