@@ -19,4 +19,4 @@
 
 name: rocketmq
 description: rocketmq Protocol Handler
-handlerClass: com.tencent.tdmq.handlers.rocketmq.RocketMQProtocolHandler
+handlerClass: org.streamnative.pulsar.handlers.rocketmq.RocketMQProtocolHandler

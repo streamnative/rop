@@ -40,14 +40,14 @@ binary package `apache-pulsar-2.7.1-bin.tar.gz`. and unzip it.
 
 ### Download and Build RoP Plugin
 
-You can download rop nar file from the [RoP sources](https://git.code.oa.com/csig_tdmq/rop).
+You can download rop nar file from the [RoP sources](https://github.com/streamnative/rop).
 
 To build from code, complete the following steps:
 
 1. Clone the project from GitHub to your local.
 
 ```bash
-git clone git@git.code.oa.com:csig_tdmq/rop.git
+git clone https://github.com/streamnative/rop.git
 cd rop
 ```
 
@@ -60,7 +60,7 @@ mvn clean install -DskipTests
 You can find the nar file in the following directory.
 
 ```bash
-./target/tdmq-protocol-handler-rocketmq-${version}.nar
+./target/pulsar-protocol-handler-rocketmq-${version}.nar
 ```
 
 ### Configuration
@@ -133,7 +133,7 @@ The following is an example.
 
 ```
     Logger:
-      - name: com.tencent.tdmq.handlers.rocketmq.RocketMQProtocolHandler
+      - name: RocketMQProtocolHandler
         level: debug
         additivity: false
         AppenderRef:

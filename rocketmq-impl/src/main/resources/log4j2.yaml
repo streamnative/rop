@@ -144,7 +144,7 @@ Configuration:
         AppenderRef:
           - ref: Console
 
-      - name: com.tencent.tdmq.handlers.rocketmq.RocketMQProtocolHandler
+      - name: org.streamnative.pulsar.handlers.rocketmq.RocketMQProtocolHandler
         level: debug
         additivity: false
         AppenderRef:

@@ -20,14 +20,14 @@
         xmlns="http://maven.apache.org/POM/4.0.0"
         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <parent>
-        <artifactId>tdmq-protocol-handler-rocketmq-parent</artifactId>
-        <groupId>com.tencent.tdmq.handlers</groupId>
+        <artifactId>pulsar-protocol-handler-rocketmq-parent</artifactId>
+        <groupId>org.streamnative.pulsar.handlers</groupId>
         <version>0.1.0-SNAPSHOT</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
     <artifactId>tests</artifactId>
-    <name>Tencent :: TDMQ Protocol Handler :: RoP Tests</name>
+    <name>StreamNative :: Pulsar Protocol Handler :: RoP Tests</name>
     <description>Tests for RocketMQ on Pulsar</description>
 
     <properties>
@@ -38,8 +38,8 @@
     <dependencies>
         <!-- test dependencies -->
         <dependency>
-            <groupId>com.tencent.tdmq.handlers</groupId>
-            <artifactId>tdmq-protocol-handler-rocketmq</artifactId>
+            <groupId>org.streamnative.pulsar.handlers</groupId>
+            <artifactId>pulsar-protocol-handler-rocketmq</artifactId>
             <version>${project.version}</version>
             <scope>test</scope>
         </dependency>
@@ -59,7 +59,7 @@
                         <configuration>
                             <tasks>
                                 <echo>copy protocol handler</echo>
-                                <copy file="${basedir}/../rocketmq-impl/target/tdmq-protocol-handler-rocketmq-${project.version}.nar"
+                                <copy file="${basedir}/../rocketmq-impl/target/pulsar-protocol-handler-rocketmq-${project.version}.nar"
                                         tofile="${basedir}/src/test/resources/test-protocol-handler.nar"/>
                             </tasks>
                         </configuration>

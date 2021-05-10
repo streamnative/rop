@@ -29,11 +29,11 @@
 
     <packaging>pom</packaging>
 
-    <groupId>com.tencent.tdmq.handlers</groupId>
-    <artifactId>tdmq-protocol-handler-rocketmq-parent</artifactId>
+    <groupId>org.streamnative.pulsar.handlers</groupId>
+    <artifactId>pulsar-protocol-handler-rocketmq-parent</artifactId>
     <version>0.1.0-SNAPSHOT</version>
-    <name>Tencent :: TDMQ Protocol Handler :: RoP Parent</name>
-    <description>Parent for RocketMQ on TDMQ implemented using TDMQ Protocol Handler.</description>
+    <name>StreamNative :: Pulsar Protocol Handler :: RoP Parent</name>
+    <description>Parent for RocketMQ on Pulsar implemented using Pulsar Protocol Handler.</description>
 
     <properties>
         <!-- dependencies -->
@@ -54,7 +54,7 @@
         <!-- core dependencies-->
         <rocketmq.version>4.6.1</rocketmq.version>
         <!-- 目前使用的社区的最新官方版本 -->
-        <tdmq.version>2.7.1</tdmq.version>
+        <pulsar.version>2.7.1</pulsar.version>
         <license-maven-plugin.version>3.0.rc1</license-maven-plugin.version>
         <spotbugs-annotations.version>3.1.8</spotbugs-annotations.version>
         <maven-checkstyle-plugin.version>3.0.0</maven-checkstyle-plugin.version>
@@ -109,41 +109,41 @@
         <dependency>
             <groupId>org.apache.pulsar</groupId>
             <artifactId>pulsar-broker</artifactId>
-            <version>${tdmq.version}</version>
+            <version>${pulsar.version}</version>
         </dependency>
 
         <dependency>
             <groupId>org.apache.pulsar</groupId>
             <artifactId>pulsar-broker-common</artifactId>
-            <version>${tdmq.version}</version>
+            <version>${pulsar.version}</version>
             <!-- <scope>provided</scope>-->
         </dependency>
 
         <dependency>
             <groupId>org.apache.pulsar</groupId>
             <artifactId>pulsar-client-original</artifactId>
-            <version>${tdmq.version}</version>
+            <version>${pulsar.version}</version>
             <!--<scope>provided</scope>-->
         </dependency>
 
         <dependency>
             <groupId>org.apache.pulsar</groupId>
             <artifactId>pulsar-client-admin-original</artifactId>
-            <version>${tdmq.version}</version>
+            <version>${pulsar.version}</version>
             <!--<scope>provided</scope>-->
         </dependency>
 
         <dependency>
             <groupId>org.apache.pulsar</groupId>
             <artifactId>testmocks</artifactId>
-            <version>${tdmq.version}</version>
+            <version>${pulsar.version}</version>
             <!--<scope>provided</scope>-->
         </dependency>
 
         <dependency>
             <groupId>org.apache.pulsar</groupId>
             <artifactId>pulsar-broker</artifactId>
-            <version>${tdmq.version}</version>
+            <version>${pulsar.version}</version>
             <type>test-jar</type>
             <scope>test</scope>
         </dependency>
@@ -151,7 +151,7 @@
         <dependency>
             <groupId>org.apache.pulsar</groupId>
             <artifactId>managed-ledger</artifactId>
-            <version>${tdmq.version}</version>
+            <version>${pulsar.version}</version>
             <type>test-jar</type>
             <scope>test</scope>
         </dependency>
