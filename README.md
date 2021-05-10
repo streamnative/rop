@@ -88,14 +88,17 @@ protocolHandlerDirectory=./protocols
 2. Set RocketMQ service listeners
 
 Set RocketMQ service `listeners`. Note that the hostname value in listeners is the same as Pulsar
-broker's `advertisedAddress`.
+broker's `advertisedListeners`.
 
 The following is an example.
 
 ```
 rocketmqListeners=rocketmq://127.0.0.1:9876
-advertisedAddress=127.0.0.1
+advertisedListeners=INTERNAL:pulsar://127.0.0.1:6650,INTERNAL:pulsar+ssl://127.0.0.1:6651,INTERNAL_ROP:pulsar://127.0.0.1:9876,INTERNAL_ROP:pulsar+ssl://127.0.0.1:9896
+rocketmqListenerPortMap=9876:INTERNAL_ROP
 ```
+
+> Note: `advertisedListeners` and `advertisedAddress` cannot be configured at the same time.
 
 ### Run Pulsar broker
 
