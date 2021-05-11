@@ -62,7 +62,7 @@ import org.testng.collections.Maps;
 public class MQTopicManager extends TopicConfigManager implements NamespaceBundleOwnershipListener {
 
     private final int maxCacheSize = 1024;
-    private final int maxCacheTimeInSec = 120;
+    private final int maxCacheTimeInSec = 300;
     //cache-key TopicName = {tenant/ns/topic}, Map key={partition id} nonPartitionedTopic, only one record in map.
     @Getter
     private final Cache<LookupCacheKey, Map<Integer, InetSocketAddress>> lookupCache = CacheBuilder
@@ -134,8 +134,6 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
 
         Map<Integer, InetSocketAddress> partitionedTopicAddr = new HashMap<>();
         try {
-            //String lookupName = TopicNameUtils.getNoDomainTopicName(topicName);
-            //adminClient.lookups().lookupTopic(lookupName);
             PartitionedTopicMetadata pTopicMeta = adminClient.topics()
                     .getPartitionedTopicMetadata(topicName.toString());
             if (pTopicMeta.partitions > 0) {
@@ -385,15 +383,9 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
             if (topicMetadata.partitions <= 0) {
                 log.info("RocketMQ metadata topic {} doesn't exist. Creating it ...", fullTopicName);
                 adminClient.topics().createPartitionedTopic(fullTopicName, tc.getWriteQueueNums());
-//                for (int i = 0; i < tc.getWriteQueueNums(); i++) {
-//                    adminClient.topics().createNonPartitionedTopic(fullTopicName + PARTITIONED_TOPIC_SUFFIX + i);
-//                }
                 lookupTopics(fullTopicName);
             } else if (topicMetadata.partitions < tc.getWriteQueueNums()) {
                 adminClient.topics().updatePartitionedTopic(fullTopicName, tc.getWriteQueueNums());
-//                for (int i = topicMetadata.partitions; i < tc.getWriteQueueNums(); i++) {
-//                    adminClient.topics().createNonPartitionedTopic(fullTopicName + PARTITIONED_TOPIC_SUFFIX + i);
-//                }
                 lookupTopics(fullTopicName);
             }
         } catch (Exception e) {
