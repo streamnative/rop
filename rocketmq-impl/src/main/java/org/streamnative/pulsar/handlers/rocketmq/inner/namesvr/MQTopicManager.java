@@ -18,9 +18,6 @@ import com.google.common.base.Joiner;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.collect.Sets;
-import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
-import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientTopicName;
-import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 import java.net.InetSocketAddress;
 import java.util.HashMap;
 import java.util.List;
@@ -53,6 +50,9 @@ import org.apache.pulsar.common.policies.data.ClusterData;
 import org.apache.pulsar.common.policies.data.RetentionPolicies;
 import org.apache.pulsar.common.policies.data.TenantInfo;
 import org.apache.rocketmq.common.TopicConfig;
+import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
+import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientTopicName;
+import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 import org.testng.collections.Maps;
 
 /**
@@ -70,6 +70,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
             .initialCapacity(maxCacheSize)
             .expireAfterWrite(maxCacheTimeInSec, TimeUnit.SECONDS)
             .build();
+    private final Map<String, PulsarClient> pulsarClientMap = Maps.newConcurrentMap();
     private PulsarService pulsarService;
     private BrokerService brokerService;
     private PulsarAdmin adminClient;
@@ -419,8 +420,6 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
         }
 
     }
-
-    private final Map<String, PulsarClient> pulsarClientMap = Maps.newConcurrentMap();
 
     private synchronized PulsarClient getClient(String listenerName) {
         if (pulsarClientMap.get(listenerName) == null) {

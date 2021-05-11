@@ -17,9 +17,6 @@ package org.streamnative.pulsar.handlers.rocketmq;
 import static com.google.common.base.Preconditions.checkState;
 
 import com.google.common.collect.ImmutableMap;
-import org.streamnative.pulsar.handlers.rocketmq.utils.ConfigurationUtils;
-import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
-import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.socket.SocketChannel;
 import java.net.InetSocketAddress;
@@ -31,6 +28,9 @@ import org.apache.pulsar.broker.ServiceConfiguration;
 import org.apache.pulsar.broker.ServiceConfigurationUtils;
 import org.apache.pulsar.broker.protocol.ProtocolHandler;
 import org.apache.pulsar.broker.service.BrokerService;
+import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
+import org.streamnative.pulsar.handlers.rocketmq.utils.ConfigurationUtils;
+import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 
 /**
  * RocketMQ protocol handler load and run by Pulsar Service.

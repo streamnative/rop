@@ -14,11 +14,11 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.listener;
 
-import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import io.netty.channel.Channel;
 import java.util.List;
 import org.apache.rocketmq.broker.client.ConsumerGroupEvent;
 import org.apache.rocketmq.broker.client.ConsumerIdsChangeListener;
+import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 
 /**
  * Default consumerIds change listener.

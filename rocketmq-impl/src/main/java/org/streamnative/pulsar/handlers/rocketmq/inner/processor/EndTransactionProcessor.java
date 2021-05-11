@@ -14,7 +14,6 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.processor;
 
-import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import io.netty.channel.ChannelHandlerContext;
 import org.apache.rocketmq.broker.transaction.OperationResult;
 import org.apache.rocketmq.common.TopicFilterType;
@@ -34,6 +33,7 @@ import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.store.MessageExtBrokerInner;
 import org.apache.rocketmq.store.PutMessageResult;
+import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 
 /**
  * End transaction processor.

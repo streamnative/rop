@@ -15,8 +15,6 @@
 package org.streamnative.pulsar.handlers.rocketmq.inner.consumer;
 
 import com.google.common.base.Preconditions;
-import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
-import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupName;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import lombok.extern.slf4j.Slf4j;
@@ -24,6 +22,8 @@ import org.apache.pulsar.common.naming.TopicName;
 import org.apache.rocketmq.common.DataVersion;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.subscription.SubscriptionGroupConfig;
+import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
+import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupName;
 
 /**
  * Subscription group manager.

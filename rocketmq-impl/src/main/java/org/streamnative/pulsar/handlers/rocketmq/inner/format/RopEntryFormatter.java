@@ -18,8 +18,6 @@ import static org.apache.pulsar.common.protocol.Commands.hasChecksum;
 
 import com.google.common.base.Preconditions;
 import com.scurrilous.circe.checksum.Crc32cIntChecksum;
-import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopEncodeException;
-import org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils;
 import io.netty.buffer.ByteBuf;
 import java.nio.ByteBuffer;
 import java.time.Instant;
@@ -44,6 +42,8 @@ import org.apache.rocketmq.common.sysflag.MessageSysFlag;
 import org.apache.rocketmq.store.AppendMessageStatus;
 import org.apache.rocketmq.store.CommitLog;
 import org.apache.rocketmq.store.MessageExtBrokerInner;
+import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopEncodeException;
+import org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils;
 
 /**
  * Rop entry formatter.

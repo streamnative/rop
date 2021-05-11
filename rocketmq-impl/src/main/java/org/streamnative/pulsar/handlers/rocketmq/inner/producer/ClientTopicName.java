@@ -15,13 +15,13 @@
 package org.streamnative.pulsar.handlers.rocketmq.inner.producer;
 
 import com.google.common.base.Joiner;
-import org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils;
-import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
 import org.apache.pulsar.common.naming.TopicName;
 import org.apache.rocketmq.common.protocol.NamespaceUtil;
+import org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils;
+import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 
 /**
  * Client topic name.

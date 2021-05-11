@@ -14,8 +14,6 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner;
 
-import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.ConsumerGroupInfo;
-import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupAndTopicName;
 import io.netty.channel.Channel;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -47,6 +45,8 @@ import org.apache.rocketmq.remoting.common.RemotingHelper;
 import org.apache.rocketmq.remoting.exception.RemotingSendRequestException;
 import org.apache.rocketmq.remoting.exception.RemotingTimeoutException;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
+import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.ConsumerGroupInfo;
+import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupAndTopicName;
 
 /**
  * Broker to client.

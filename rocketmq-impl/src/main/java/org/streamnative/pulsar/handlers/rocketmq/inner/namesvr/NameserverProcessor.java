@@ -20,10 +20,6 @@ import static org.apache.rocketmq.common.constant.PermName.PERM_WRITE;
 import static org.apache.rocketmq.common.protocol.RequestCode.GET_ROUTEINTO_BY_TOPIC;
 
 import com.google.common.collect.Maps;
-import org.streamnative.pulsar.handlers.rocketmq.RocketMQProtocolHandler;
-import org.streamnative.pulsar.handlers.rocketmq.RocketMQServiceConfiguration;
-import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
-import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 import io.netty.channel.ChannelHandlerContext;
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
@@ -48,6 +44,10 @@ import org.apache.rocketmq.common.protocol.route.TopicRouteData;
 import org.apache.rocketmq.remoting.common.RemotingHelper;
 import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
+import org.streamnative.pulsar.handlers.rocketmq.RocketMQProtocolHandler;
+import org.streamnative.pulsar.handlers.rocketmq.RocketMQServiceConfiguration;
+import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
+import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 import org.testng.collections.Sets;
 
 /**
@@ -57,14 +57,14 @@ import org.testng.collections.Sets;
 public class NameserverProcessor implements NettyRequestProcessor {
 
     public static final Pattern BROKER_ADDER_PAT = Pattern.compile("([^/:]+:)(\\d+)");
-    private final RocketMQBrokerController brokerController;
-    private final RocketMQServiceConfiguration config;
-    private final MQTopicManager mqTopicManager;
-    private final int servicePort;
     /**
      * Differentiate the source network type of client requests according to different ports.
      */
     private static final Map<String, String> PORT_LISTENER_NAME_MAP = Maps.newHashMap();
+    private final RocketMQBrokerController brokerController;
+    private final RocketMQServiceConfiguration config;
+    private final MQTopicManager mqTopicManager;
+    private final int servicePort;
 
     public NameserverProcessor(RocketMQBrokerController brokerController) {
         this.brokerController = brokerController;

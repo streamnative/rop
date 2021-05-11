@@ -16,11 +16,6 @@ package org.streamnative.pulsar.handlers.rocketmq.inner;
 
 import com.alibaba.fastjson.JSON;
 import com.google.common.base.Preconditions;
-import org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils;
-import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
-import org.streamnative.pulsar.handlers.rocketmq.RocketMQServiceConfiguration;
-import org.streamnative.pulsar.handlers.rocketmq.inner.format.RopEntryFormatter;
-import org.streamnative.pulsar.handlers.rocketmq.inner.timer.SystemTimer;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -50,6 +45,11 @@ import org.apache.rocketmq.common.message.MessageConst;
 import org.apache.rocketmq.common.message.MessageDecoder;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.store.MessageExtBrokerInner;
+import org.streamnative.pulsar.handlers.rocketmq.RocketMQServiceConfiguration;
+import org.streamnative.pulsar.handlers.rocketmq.inner.format.RopEntryFormatter;
+import org.streamnative.pulsar.handlers.rocketmq.inner.timer.SystemTimer;
+import org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils;
+import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 
 /**
  * Schedule message service.
@@ -205,7 +205,8 @@ public class ScheduleMessageService {
             this.pulsarService = ScheduleMessageService.this.pulsarBroker.pulsar();
             this.timeoutTimer = SystemTimer.builder().executorName("DeliverDelayedMessageTimeWheelExecutor").build();
             try {
-                log.warn("1 =======> The client config value: [{}]", ((PulsarClientImpl)this.pulsarService.getClient()).getConfiguration());
+                log.warn("1 =======> The client config value: [{}]",
+                        ((PulsarClientImpl) this.pulsarService.getClient()).getConfiguration());
                 this.delayedConsumer = this.pulsarService.getClient()
                         .newConsumer()
                         .receiverQueueSize(MAX_FETCH_MESSAGE_NUM)
@@ -216,7 +217,8 @@ public class ScheduleMessageService {
                         .subscriptionInitialPosition(SubscriptionInitialPosition.Earliest)
                         .subscribe();
 
-                    log.warn("2 =======> The client config value: [{}]", ((PulsarClientImpl)this.pulsarService.getClient()).getConfiguration());
+                log.warn("2 =======> The client config value: [{}]",
+                        ((PulsarClientImpl) this.pulsarService.getClient()).getConfiguration());
             } catch (Exception e) {
                 log.error("create delayed topic[delayLevel={}] consumer error.", delayLevel, e);
                 throw new RuntimeException("Create delayed topic error");

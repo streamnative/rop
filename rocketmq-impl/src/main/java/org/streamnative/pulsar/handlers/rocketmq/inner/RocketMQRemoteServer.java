@@ -14,8 +14,6 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner;
 
-import org.streamnative.pulsar.handlers.rocketmq.utils.FileRegionEncoder;
-import org.streamnative.pulsar.handlers.rocketmq.RocketMQServiceConfiguration;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelDuplexHandler;
@@ -55,6 +53,8 @@ import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
 import org.apache.rocketmq.remoting.netty.TlsHelper;
 import org.apache.rocketmq.remoting.netty.TlsSystemConfig;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
+import org.streamnative.pulsar.handlers.rocketmq.RocketMQServiceConfiguration;
+import org.streamnative.pulsar.handlers.rocketmq.utils.FileRegionEncoder;
 
 /**
  * RocketMQ remote server.

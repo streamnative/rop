@@ -33,7 +33,8 @@
     <artifactId>pulsar-protocol-handler-rocketmq-parent</artifactId>
     <version>0.1.0-SNAPSHOT</version>
     <name>StreamNative :: Pulsar Protocol Handler :: RoP Parent</name>
-    <description>Parent for RocketMQ on Pulsar implemented using Pulsar Protocol Handler.</description>
+    <description>Parent for RocketMQ on Pulsar implemented using Pulsar Protocol Handler.
+    </description>
 
     <properties>
         <!-- dependencies -->
@@ -286,7 +287,7 @@
                     </dependencies>
                     <configuration>
                         <configLocation>resources/checkstyle.xml</configLocation>
-                        <suppressionsLocation>resources/suppressions.xml</suppressionsLocation>
+                        <suppressionsLocation>resources/suppression.xml</suppressionsLocation>
                         <encoding>UTF-8</encoding>
                         <consoleOutput>true</consoleOutput>
                         <failOnViolation>true</failOnViolation>
@@ -348,6 +349,7 @@
                         <exclude>NOTICE</exclude>
                         <exclude>Jenkinsfile</exclude>
                         <exclude>resources/license.template</exclude>
+                        <exclude>resources/findbugsExclude.xml</exclude>
                         <exclude>**/build/**</exclude>
                         <exclude>**/ahc.properties</exclude>
                         <exclude>**/.idea/**</exclude>

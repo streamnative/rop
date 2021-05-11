@@ -21,10 +21,6 @@ import static org.apache.pulsar.common.protocol.Commands.readChecksum;
 import com.github.benmanes.caffeine.cache.AsyncLoadingCache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.RemovalCause;
-import org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils;
-import org.streamnative.pulsar.handlers.rocketmq.utils.MessageIdUtils;
-import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
-import org.streamnative.pulsar.handlers.rocketmq.inner.format.RopEntryFormatter;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
@@ -67,6 +63,10 @@ import org.apache.rocketmq.remoting.exception.RemotingCommandException;
 import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.store.QueryMessageResult;
+import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
+import org.streamnative.pulsar.handlers.rocketmq.inner.format.RopEntryFormatter;
+import org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils;
+import org.streamnative.pulsar.handlers.rocketmq.utils.MessageIdUtils;
 
 /**
  * Query message processor.

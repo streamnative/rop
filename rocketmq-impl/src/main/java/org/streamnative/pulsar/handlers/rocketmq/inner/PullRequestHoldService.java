@@ -14,7 +14,6 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner;
 
-import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientTopicName;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -25,6 +24,7 @@ import org.apache.rocketmq.broker.longpolling.ManyPullRequest;
 import org.apache.rocketmq.broker.longpolling.PullRequest;
 import org.apache.rocketmq.common.ServiceThread;
 import org.apache.rocketmq.common.SystemClock;
+import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientTopicName;
 
 /**
  * Pull request hold service.

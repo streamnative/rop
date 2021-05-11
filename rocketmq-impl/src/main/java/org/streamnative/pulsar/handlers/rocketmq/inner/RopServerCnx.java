@@ -16,14 +16,6 @@ package org.streamnative.pulsar.handlers.rocketmq.inner;
 
 import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
-import org.streamnative.pulsar.handlers.rocketmq.RocketMQProtocolHandler;
-import org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils;
-import org.streamnative.pulsar.handlers.rocketmq.utils.MessageIdUtils;
-import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
-import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.RopGetMessageResult;
-import org.streamnative.pulsar.handlers.rocketmq.inner.format.RopEntryFormatter;
-import org.streamnative.pulsar.handlers.rocketmq.inner.format.RopMessageFilter;
-import org.streamnative.pulsar.handlers.rocketmq.inner.pulsar.PulsarMessageStore;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import java.net.SocketAddress;
@@ -64,6 +56,14 @@ import org.apache.rocketmq.store.GetMessageStatus;
 import org.apache.rocketmq.store.MessageExtBrokerInner;
 import org.apache.rocketmq.store.PutMessageResult;
 import org.apache.rocketmq.store.PutMessageStatus;
+import org.streamnative.pulsar.handlers.rocketmq.RocketMQProtocolHandler;
+import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.RopGetMessageResult;
+import org.streamnative.pulsar.handlers.rocketmq.inner.format.RopEntryFormatter;
+import org.streamnative.pulsar.handlers.rocketmq.inner.format.RopMessageFilter;
+import org.streamnative.pulsar.handlers.rocketmq.inner.pulsar.PulsarMessageStore;
+import org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils;
+import org.streamnative.pulsar.handlers.rocketmq.utils.MessageIdUtils;
+import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 
 /**
  * Rop server cnx.
@@ -444,7 +444,9 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                         reader.seek(startOffset);
                         message = reader.readNext(fetchTimeoutInMs, TimeUnit.MILLISECONDS);
                         if (message != null && !MessageIdUtils.isMessageEquals(startOffset, message.getMessageId())) {
-                            log.error("getMessage error, for seekOffset=[{}] isn't matched readOffset=[{}], reset offset to earliest.",
+                            log.error(
+                                    "getMessage error, for seekOffset=[{}] isn't matched readOffset=[{}], "
+                                            + "reset offset to earliest.",
                                     startOffset, message.getMessageId());
                             reader.seek(MessageId.earliest);
                         }

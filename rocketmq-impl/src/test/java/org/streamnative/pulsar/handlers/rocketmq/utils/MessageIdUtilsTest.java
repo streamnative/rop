@@ -14,7 +14,6 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.utils;
 
-import static org.streamnative.pulsar.handlers.rocketmq.utils.MessageIdUtils.getOffset;
 import static org.junit.Assert.assertEquals;
 
 import org.apache.pulsar.client.api.MessageId;

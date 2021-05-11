@@ -14,7 +14,6 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.consumer;
 
-import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupName;
 import io.netty.channel.Channel;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -32,6 +31,7 @@ import org.apache.rocketmq.common.protocol.heartbeat.MessageModel;
 import org.apache.rocketmq.common.protocol.heartbeat.SubscriptionData;
 import org.apache.rocketmq.remoting.common.RemotingHelper;
 import org.apache.rocketmq.remoting.common.RemotingUtil;
+import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupName;
 
 /**
  * Consumer manager service.
