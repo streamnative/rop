@@ -14,9 +14,9 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.timer;
 
-import org.streamnative.pulsar.handlers.rocketmq.inner.timer.TimerTaskList.TimerTaskEntry;
 import java.util.Comparator;
 import java.util.PriorityQueue;
+import org.streamnative.pulsar.handlers.rocketmq.inner.timer.TimerTaskList.TimerTaskEntry;
 
 /**
  * A mock implementation of {@link Timer}.

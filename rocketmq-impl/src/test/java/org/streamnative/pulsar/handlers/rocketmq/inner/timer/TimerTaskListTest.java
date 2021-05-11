@@ -16,12 +16,12 @@ package org.streamnative.pulsar.handlers.rocketmq.inner.timer;
 
 import static org.junit.Assert.assertEquals;
 
-import org.streamnative.pulsar.handlers.rocketmq.inner.timer.TimerTaskList.TimerTaskEntry;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.junit.Test;
+import org.streamnative.pulsar.handlers.rocketmq.inner.timer.TimerTaskList.TimerTaskEntry;
 
 /**
  * Unit test {@link TimerTaskList}.

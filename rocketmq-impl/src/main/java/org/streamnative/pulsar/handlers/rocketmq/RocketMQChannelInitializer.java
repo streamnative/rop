@@ -14,8 +14,6 @@
 
 package org.streamnative.pulsar.handlers.rocketmq;
 
-import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
-import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQRemoteServer;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.handler.timeout.IdleStateHandler;
@@ -23,6 +21,8 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.pulsar.broker.service.BrokerService;
 import org.apache.rocketmq.remoting.netty.NettyDecoder;
+import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
+import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQRemoteServer;
 
 /**
  * rocketmq output data encoder.

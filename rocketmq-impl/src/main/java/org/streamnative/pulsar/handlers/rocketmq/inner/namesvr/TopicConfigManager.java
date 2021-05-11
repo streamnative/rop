@@ -16,9 +16,6 @@ package org.streamnative.pulsar.handlers.rocketmq.inner.namesvr;
 
 import com.google.common.base.Joiner;
 import com.google.common.base.Splitter;
-import org.streamnative.pulsar.handlers.rocketmq.RocketMQServiceConfiguration;
-import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
-import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -34,6 +31,9 @@ import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.TopicConfig;
 import org.apache.rocketmq.common.constant.PermName;
 import org.apache.rocketmq.common.protocol.body.KVTable;
+import org.streamnative.pulsar.handlers.rocketmq.RocketMQServiceConfiguration;
+import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
+import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 
 /**
  * Topic config manager.

@@ -12,13 +12,14 @@ Broker starts.
 
 ## Supported
 
-RoP is implemented based on Pulsar features. Currently, the functions supported by RoP are as follows:
+RoP is implemented based on Pulsar features. Currently, the functions supported by RoP are as
+follows:
 
 - Send and Receive Messages
 - SendAsync Messages
 - Queue Selector Producer
-- Round Robin Producer  
-- Producer And Consumer(Push and Pull) With Namespace  
+- Round Robin Producer
+- Producer And Consumer(Push and Pull) With Namespace
 - Batch Messages
 - Order Messages
 - Send And Receive With Tag
@@ -122,7 +123,9 @@ bin/pulsar standalone -nss -nfw
 
 ### Run RocketMQ Client to verify
 
-In the RoP repo, we provide a sub model of `examples`, which contains a variety of scenarios used by the rocketmq client. You can run these examples directly in the IDE. Or you can download the RocketMQ src code and run RocketMQ client of `examples`.
+In the RoP repo, we provide a sub model of `examples`, which contains a variety of scenarios used by
+the rocketmq client. You can run these examples directly in the IDE. Or you can download the
+RocketMQ src code and run RocketMQ client of `examples`.
 
 ### Log level configuration
 

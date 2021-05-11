@@ -15,7 +15,6 @@
 package org.streamnative.pulsar.handlers.rocketmq.inner.timer;
 
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
-import org.streamnative.pulsar.handlers.rocketmq.inner.timer.TimerTaskList.TimerTaskEntry;
 import java.util.Objects;
 import java.util.concurrent.DelayQueue;
 import java.util.concurrent.ExecutorService;
@@ -28,6 +27,7 @@ import java.util.function.Consumer;
 import javax.annotation.concurrent.ThreadSafe;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import org.streamnative.pulsar.handlers.rocketmq.inner.timer.TimerTaskList.TimerTaskEntry;
 
 /**
  * A system timer implementation.

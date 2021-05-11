@@ -14,12 +14,12 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.format;
 
-import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopEncodeException;
 import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.function.Predicate;
 import org.apache.pulsar.client.api.Message;
 import org.apache.rocketmq.common.message.MessageExt;
+import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopEncodeException;
 
 /**
  * The formatter for conversion between Kafka records and Bookie entries.

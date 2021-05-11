@@ -14,14 +14,14 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.pulsar;
 
-import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.RopGetMessageResult;
-import org.streamnative.pulsar.handlers.rocketmq.inner.format.RopMessageFilter;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageExtBatch;
 import org.apache.rocketmq.common.protocol.header.PullMessageRequestHeader;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.store.MessageExtBrokerInner;
 import org.apache.rocketmq.store.PutMessageResult;
+import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.RopGetMessageResult;
+import org.streamnative.pulsar.handlers.rocketmq.inner.format.RopMessageFilter;
 
 /**
  * Pulsar message store interface.

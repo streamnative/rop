@@ -14,7 +14,6 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.listener;
 
-import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import io.netty.channel.Channel;
 import java.util.Random;
 import java.util.concurrent.ArrayBlockingQueue;
@@ -27,6 +26,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.common.message.MessageConst;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.protocol.header.CheckTransactionStateRequestHeader;
+import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 
 /**
  * Abstract transactional message check listener.

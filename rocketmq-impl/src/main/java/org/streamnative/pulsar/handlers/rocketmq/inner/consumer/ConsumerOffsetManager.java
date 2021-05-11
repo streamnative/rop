@@ -14,13 +14,6 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.consumer;
 
-import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
-import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupAndTopicName;
-import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupName;
-import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientTopicName;
-import org.streamnative.pulsar.handlers.rocketmq.utils.MessageIdUtils;
-import org.streamnative.pulsar.handlers.rocketmq.utils.OffsetFinder;
-import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -49,6 +42,13 @@ import org.apache.pulsar.client.impl.MessageIdImpl;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandSubscribe.InitialPosition;
 import org.apache.pulsar.common.naming.TopicName;
 import org.apache.rocketmq.common.UtilAll;
+import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
+import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupAndTopicName;
+import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupName;
+import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientTopicName;
+import org.streamnative.pulsar.handlers.rocketmq.utils.MessageIdUtils;
+import org.streamnative.pulsar.handlers.rocketmq.utils.OffsetFinder;
+import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 
 /**
  * Consumer offset manager.

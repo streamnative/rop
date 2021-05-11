@@ -14,9 +14,9 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.listener;
 
-import org.streamnative.pulsar.handlers.rocketmq.inner.PullRequestHoldService;
 import java.util.Map;
 import org.apache.rocketmq.store.MessageArrivingListener;
+import org.streamnative.pulsar.handlers.rocketmq.inner.PullRequestHoldService;
 
 /**
  * Notify message arriving listener.

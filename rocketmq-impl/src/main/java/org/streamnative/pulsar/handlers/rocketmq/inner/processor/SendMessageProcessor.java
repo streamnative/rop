@@ -14,8 +14,6 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.processor;
 
-import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
-import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import io.netty.channel.ChannelHandlerContext;
 import java.util.List;
 import java.util.Map;
@@ -51,6 +49,8 @@ import org.apache.rocketmq.store.MessageExtBrokerInner;
 import org.apache.rocketmq.store.PutMessageResult;
 import org.apache.rocketmq.store.PutMessageStatus;
 import org.apache.rocketmq.store.stats.BrokerStatsManager;
+import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
+import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 
 /**
  * Send message processor.
