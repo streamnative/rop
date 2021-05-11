@@ -105,12 +105,12 @@ public class MessageIdUtilsTest {
         assertEquals(1234L, messageId.getLedgerId());
         assertEquals(0L, messageId.getEntryId());
 
-        messageId = new MessageIdImpl(1234L, 123L, 254);
+        messageId = new MessageIdImpl(1234L, 123L, 126);
         offset = MessageIdUtils.getOffset(messageId);
         messageId = MessageIdUtils.getMessageId(offset);
         assertEquals(1234L, messageId.getLedgerId());
         assertEquals(123L, messageId.getEntryId());
-        assertEquals(254, messageId.getPartitionIndex());
+        assertEquals(126, messageId.getPartitionIndex());
 
         messageId = MessageIdUtils.getMessageId(0L);
         assertEquals(-1L, messageId.getLedgerId());
