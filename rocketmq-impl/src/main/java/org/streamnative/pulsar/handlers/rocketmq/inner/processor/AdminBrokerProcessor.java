@@ -17,6 +17,7 @@ package org.streamnative.pulsar.handlers.rocketmq.inner.processor;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import java.io.UnsupportedEncodingException;
+import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -31,8 +32,12 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.logging.log4j.util.Strings;
+import org.apache.pulsar.broker.PulsarServerException;
+import org.apache.pulsar.client.admin.PulsarAdmin;
 import org.apache.pulsar.client.api.Message;
 import org.apache.pulsar.client.api.Reader;
+import org.apache.pulsar.common.naming.TopicName;
+import org.apache.pulsar.common.policies.data.TopicStats;
 import org.apache.rocketmq.broker.client.ClientChannelInfo;
 import org.apache.rocketmq.broker.topic.TopicValidator;
 import org.apache.rocketmq.broker.transaction.queue.TransactionalMessageUtil;
@@ -104,9 +109,15 @@ import org.apache.rocketmq.remoting.protocol.RemotingSerializable;
 import org.apache.rocketmq.store.MessageExtBrokerInner;
 import org.apache.rocketmq.store.SelectMappedBufferResult;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
+import org.streamnative.pulsar.handlers.rocketmq.inner.bean.RopConsumeStats;
+import org.streamnative.pulsar.handlers.rocketmq.inner.bean.RopOffsetWrapper;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.ConsumerGroupInfo;
+import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopPersistentTopicException;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupAndTopicName;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupName;
+import org.streamnative.pulsar.handlers.rocketmq.utils.MessageIdUtils;
+import org.streamnative.pulsar.handlers.rocketmq.utils.PulsarUtil;
+import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 
 /**
  * Admin broker processor.
@@ -394,9 +405,12 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
                 (GetMaxOffsetRequestHeader) request.decodeCommandCustomHeader(GetMaxOffsetRequestHeader.class);
 
         ClientGroupAndTopicName clientGroupName = new ClientGroupAndTopicName(Strings.EMPTY, requestHeader.getTopic());
-        long offset = this.brokerController.getConsumerOffsetManager()
-                .getMaxOffsetInQueue(clientGroupName.getClientTopicName(), requestHeader.getQueueId());
-
+        long offset = 0L;
+        try {
+            offset = this.brokerController.getConsumerOffsetManager()
+                    .getMaxOffsetInQueue(clientGroupName.getClientTopicName(), requestHeader.getQueueId());
+        } catch (RopPersistentTopicException e) {
+        }
         responseHeader.setOffset(offset);
         response.setCode(ResponseCode.SUCCESS);
         return response;
@@ -410,8 +424,12 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
                 (GetMinOffsetRequestHeader) request.decodeCommandCustomHeader(GetMinOffsetRequestHeader.class);
 
         ClientGroupAndTopicName clientGroupName = new ClientGroupAndTopicName(Strings.EMPTY, requestHeader.getTopic());
-        long offset = this.brokerController.getConsumerOffsetManager()
-                .getMinOffsetInQueue(clientGroupName.getClientTopicName(), requestHeader.getQueueId());
+        long offset = 0L;
+        try {
+            offset = this.brokerController.getConsumerOffsetManager()
+                    .getMinOffsetInQueue(clientGroupName.getClientTopicName(), requestHeader.getQueueId());
+        } catch (RopPersistentTopicException e) {
+        }
 
         responseHeader.setOffset(offset);
         response.setCode(ResponseCode.SUCCESS);
@@ -683,7 +701,7 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
         final GetConsumeStatsRequestHeader requestHeader =
                 (GetConsumeStatsRequestHeader) request.decodeCommandCustomHeader(GetConsumeStatsRequestHeader.class);
 
-        ConsumeStats consumeStats = new ConsumeStats();
+        RopConsumeStats consumeStats = new RopConsumeStats();
 
         Set<String> topics = new HashSet<String>();
         if (UtilAll.isBlank(requestHeader.getTopic())) {
@@ -714,19 +732,63 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
                 }
             }
 
+            String lookupTopic = RocketMQTopic.getPulsarOrigNoDomainTopic(topic);
+            TopicName topicName = TopicName.get(lookupTopic);
+            Map<Integer, InetSocketAddress> topicBrokerAddr = brokerController.getTopicConfigManager()
+                    .getTopicBrokerAddr(topicName, "");
+
+            String pulsarGroupName = new ClientGroupName(requestHeader.getConsumerGroup()).getPulsarGroupName();
+
+            PulsarAdmin pulsarAdmin;
+            try {
+                pulsarAdmin = this.brokerController.getBrokerService().pulsar().getAdminClient();
+            } catch (PulsarServerException e) {
+                log.error("getConsumeStats get pulsarAdmin failed", e);
+                response.setCode(ResponseCode.SYSTEM_ERROR);
+                response.setRemark(null);
+                return response;
+            }
+
             for (int i = 0; i < topicConfig.getReadQueueNums(); i++) {
+                if (!topicBrokerAddr.containsKey(i)) {
+                    continue;
+                }
+
+                String brokerName = topicBrokerAddr.get(i).getHostName();
+                String brokerServiceUrl = this.brokerController.getBrokerService().pulsar().getBrokerServiceUrl();
+                if (!PulsarUtil.getBrokerHost(brokerServiceUrl).equals(brokerName)) {
+                    continue;
+                }
+
                 MessageQueue mq = new MessageQueue();
                 mq.setTopic(topic);
-                mq.setBrokerName(this.brokerController.getServerConfig().getBrokerName());
+                mq.setBrokerName(topicBrokerAddr.get(i).getHostName());
                 mq.setQueueId(i);
 
-                OffsetWrapper offsetWrapper = new OffsetWrapper();
+                RopOffsetWrapper offsetWrapper = new RopOffsetWrapper();
+
+                // fetch msg backlog
+                String pulsarTopicName = topicName.getPartition(i).toString();
+                try {
+                    TopicStats topicStats = pulsarAdmin.topics().getStats(pulsarTopicName);
+                    if (topicStats.subscriptions.containsKey(pulsarGroupName)) {
+                        offsetWrapper.setMsgBacklog(topicStats.subscriptions.get(pulsarGroupName).msgBacklog);
+                    } else {
+                        log.warn("getConsumeStats not found subscriptions, pulsarTopicName: {}, pulsarGroupName: {}",
+                                pulsarTopicName, pulsarGroupName);
+                    }
+                } catch (Exception e) {
+                    log.warn("getConsumeStats found msgBacklog error", e);
+                }
 
                 ClientGroupAndTopicName clientGroupName =
                         new ClientGroupAndTopicName(requestHeader.getConsumerGroup(), topic);
-                long brokerOffset =
-                        this.brokerController.getConsumerOffsetManager()
-                                .getMaxOffsetInQueue(clientGroupName.getClientTopicName(), i);
+                long brokerOffset = 0L;
+                try {
+                    brokerOffset = this.brokerController.getConsumerOffsetManager()
+                            .getMaxOffsetInQueue(clientGroupName.getClientTopicName(), i);
+                } catch (RopPersistentTopicException e) {
+                }
                 if (brokerOffset < 0) {
                     brokerOffset = 0;
                 }
@@ -742,26 +804,27 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
                 offsetWrapper.setBrokerOffset(brokerOffset);
                 offsetWrapper.setConsumerOffset(consumerOffset);
 
-                long timeOffset = consumerOffset - 1;
-                if (timeOffset >= 0) {
-                    // TODO: 2021/4/25 获取指定offset位点的存储时间（当前消费位置时间）
+                if (consumerOffset >= 1) {
                     long lastTimestamp = 0L;
+                    org.apache.pulsar.client.api.MessageId messageId = MessageIdUtils.getMessageId(consumerOffset);
                     try (Reader<byte[]> reader = this.brokerController.getBrokerService().pulsar().getClient()
                             .newReader()
-                            .topic(clientGroupName.getClientTopicName().getPulsarTopicName())
-                            .receiverQueueSize(100)
-                            .startMessageId(org.apache.pulsar.client.api.MessageId.earliest)
-                            .readerName(clientGroupName.getClientGroupName().getPulsarGroupName())
+                            .topic(pulsarTopicName)
+                            .receiverQueueSize(1)
+                            .startMessageId(messageId)
+                            .startMessageIdInclusive()
                             .create()) {
                         Message message = reader.readNext(1000, TimeUnit.MILLISECONDS);
-                        lastTimestamp = message.getPublishTime();
+                        if (message != null) {
+                            lastTimestamp = message.getPublishTime();
+                        } else {
+                            log.info("getConsumeStats not found message on messageId: {}", messageId);
+                        }
                     } catch (Exception e) {
                         log.warn("Retrieve message error, topic = [{}].", topic);
                     }
 
-                    if (lastTimestamp > 0) {
-                        offsetWrapper.setLastTimestamp(lastTimestamp);
-                    }
+                    offsetWrapper.setLastTimestamp(lastTimestamp);
                 }
 
                 consumeStats.getOffsetTable().put(mq, offsetWrapper);

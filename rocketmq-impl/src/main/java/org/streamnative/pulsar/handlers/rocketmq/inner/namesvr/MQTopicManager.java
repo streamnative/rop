@@ -134,8 +134,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
 
         Map<Integer, InetSocketAddress> partitionedTopicAddr = new HashMap<>();
         try {
-            PartitionedTopicMetadata pTopicMeta = adminClient.topics()
-                    .getPartitionedTopicMetadata(topicName.toString());
+            PartitionedTopicMetadata pTopicMeta = brokerService.fetchPartitionedTopicMetadataAsync(topicName).get();
             if (pTopicMeta.partitions > 0) {
                 IntStream.range(0, pTopicMeta.partitions).forEach((i) -> {
                     try {
@@ -200,16 +199,6 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
         pulsarService.getNamespaceService().getOwnedTopicListForNamespaceBundle(bundle)
                 .whenComplete((topics, ex) -> {
                     if (ex == null) {
-                        log.info("get owned topic list when onLoad bundle {}, topic size {} ", bundle, topics.size());
-                        try {
-                            for (String topic : topics) {
-                                TopicName name = TopicName.get(TopicName.get(topic).getPartitionedTopicName());
-                                //getTopicBrokerAddr(name);
-                            }
-                        } catch (Exception e) {
-                            log.warn("NamespaceBundle loading broker address error. topics=[{}].", topics);
-                        }
-
                         try {
                             log.info("loadPersistentTopic when namespaceBundle onLoad topic.");
                             loadPersistentTopic(topics);
@@ -294,7 +283,8 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
     // tenant/ns/topicName
     public void lookupTopics(String pulsarTopicName) {
         try {
-            adminClient.lookups().lookupTopicAsync(pulsarTopicName)
+            ((PulsarClientImpl) pulsarService.getClient()).getLookup()
+                    .getBroker(TopicName.get(pulsarTopicName))
                     .whenComplete((serviceUrl, throwable1) -> {
                         if (throwable1 != null) {
                             log.warn("lookupTopicAsync topic[{}] exception.", pulsarTopicName);
@@ -379,14 +369,20 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
 
         try {
             PartitionedTopicMetadata topicMetadata = adminClient.topics().getPartitionedTopicMetadata(fullTopicName);
-            // 如果分区小于0，主题不存在，创建主题
+            // If the partition < 0, the topic does not exist, let us to create topic.
             if (topicMetadata.partitions <= 0) {
                 log.info("RocketMQ metadata topic {} doesn't exist. Creating it ...", fullTopicName);
                 adminClient.topics().createPartitionedTopic(fullTopicName, tc.getWriteQueueNums());
-                lookupTopics(fullTopicName);
+//                for (int i = 0; i < tc.getWriteQueueNums(); i++) {
+//                    adminClient.topics().createNonPartitionedTopic(fullTopicName + PARTITIONED_TOPIC_SUFFIX + i);
+//                }
+//                lookupTopics(fullTopicName);
             } else if (topicMetadata.partitions < tc.getWriteQueueNums()) {
                 adminClient.topics().updatePartitionedTopic(fullTopicName, tc.getWriteQueueNums());
-                lookupTopics(fullTopicName);
+//                for (int i = topicMetadata.partitions; i < tc.getWriteQueueNums(); i++) {
+//                    adminClient.topics().createNonPartitionedTopic(fullTopicName + PARTITIONED_TOPIC_SUFFIX + i);
+//                }
+//                lookupTopics(fullTopicName);
             }
         } catch (Exception e) {
             log.warn("Topic {} create or update partition failed", fullTopicName, e);
@@ -401,12 +397,10 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
     public void deleteTopic(final String topic) {
         String fullTopicName = RocketMQTopic.getPulsarOrigNoDomainTopic(topic);
         try {
-            // 删除分区主题
             PartitionedTopicMetadata topicMetadata = adminClient.topics().getPartitionedTopicMetadata(fullTopicName);
             if (topicMetadata.partitions > 0) {
                 adminClient.topics().deletePartitionedTopic(fullTopicName, true);
             }
-            // TODO: hanmz 2021/5/6 清空cache
         } catch (Exception e) {
             log.warn("Topic {} create or update partition failed", fullTopicName, e);
         }
@@ -414,7 +408,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
     }
 
     private synchronized PulsarClient getClient(String listenerName) {
-        if (pulsarClientMap.get(listenerName) == null) {
+        if (pulsarClientMap.get(listenerName) == null || pulsarClientMap.get(listenerName).isClosed()) {
             try {
                 ClientBuilder builder =
                         PulsarClient.builder().serviceUrl(this.brokerService.getPulsar().getBrokerServiceUrl());

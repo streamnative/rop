@@ -276,13 +276,11 @@ public abstract class AbstractSendMessageProcessor implements NettyRequestProces
         }
     }
 
-    @SuppressWarnings(value = {"all"})
     protected SendMessageRequestHeader parseRequestHeader(RemotingCommand request)
             throws RemotingCommandException {
 
         SendMessageRequestHeaderV2 requestHeaderV2 = null;
         SendMessageRequestHeader requestHeader = null;
-
         if (request.getCode() == RequestCode.SEND_BATCH_MESSAGE || request.getCode() == RequestCode.SEND_MESSAGE_V2) {
             requestHeaderV2 =
                     (SendMessageRequestHeaderV2) request

@@ -15,6 +15,7 @@
 package org.streamnative.pulsar.handlers.rocketmq.inner;
 
 import io.netty.channel.Channel;
+import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -23,7 +24,7 @@ import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentMap;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.logging.log4j.util.Strings;
-import org.apache.pulsar.broker.ServiceConfigurationUtils;
+import org.apache.pulsar.common.naming.TopicName;
 import org.apache.rocketmq.broker.client.ClientChannelInfo;
 import org.apache.rocketmq.common.MQVersion;
 import org.apache.rocketmq.common.TopicConfig;
@@ -46,7 +47,11 @@ import org.apache.rocketmq.remoting.exception.RemotingSendRequestException;
 import org.apache.rocketmq.remoting.exception.RemotingTimeoutException;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.ConsumerGroupInfo;
+import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopPersistentTopicException;
+import org.streamnative.pulsar.handlers.rocketmq.inner.namesvr.MQTopicManager;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupAndTopicName;
+import org.streamnative.pulsar.handlers.rocketmq.utils.ConfigurationUtils;
+import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 
 /**
  * Broker to client.
@@ -111,7 +116,8 @@ public class Broker2Client {
             boolean isC) {
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
 
-        TopicConfig topicConfig = this.brokerController.getTopicConfigManager().selectTopicConfig(topic);
+        MQTopicManager topicManager = brokerController.getTopicConfigManager();
+        TopicConfig topicConfig = topicManager.selectTopicConfig(topic);
         if (null == topicConfig) {
             log.error("[reset-offset] reset offset failed, no topic in this broker. topic={}", topic);
             response.setCode(ResponseCode.SYSTEM_ERROR);
@@ -120,16 +126,21 @@ public class Broker2Client {
         }
 
         Map<MessageQueue, Long> offsetTable = new HashMap<>();
+        String lookupTopic = RocketMQTopic.getPulsarOrigNoDomainTopic(topic);
+        Map<Integer, InetSocketAddress> topicBrokerAddr = topicManager
+                .getTopicBrokerAddr(TopicName.get(lookupTopic),
+                        ConfigurationUtils.getDefaultListenerName(brokerController.getServerConfig()));
 
         for (int i = 0; i < topicConfig.getWriteQueueNums(); i++) {
             MessageQueue mq = new MessageQueue();
-            mq.setBrokerName(ServiceConfigurationUtils.unsafeLocalhostResolve());
+            mq.setBrokerName(topicBrokerAddr.get(i).getHostName());
             mq.setTopic(topic);
             mq.setQueueId(i);
 
-            long consumerOffset =
+            // current consume offset
+            long consumeOffset =
                     this.brokerController.getConsumerOffsetManager().queryOffset(group, topic, i);
-            if (-1 == consumerOffset) {
+            if (-1 == consumeOffset) {
                 response.setCode(ResponseCode.SYSTEM_ERROR);
                 response.setRemark(String.format("THe consumer group <%s> not exist", group));
                 return response;
@@ -141,8 +152,12 @@ public class Broker2Client {
                 timeStampOffset = this.brokerController.getConsumerOffsetManager()
                         .searchOffsetByTimestamp(groupAndTopicName, i, timeStamp);
             } else {
-                timeStampOffset = this.brokerController.getConsumerOffsetManager()
-                        .getMaxOffsetInQueue(groupAndTopicName.getClientTopicName(), i);
+                try {
+                    timeStampOffset = this.brokerController.getConsumerOffsetManager()
+                            .getMaxOffsetInQueue(groupAndTopicName.getClientTopicName(), i);
+                } catch (RopPersistentTopicException e) {
+                    timeStampOffset = -1L;
+                }
             }
 
             if (timeStampOffset < 0) {
@@ -151,10 +166,11 @@ public class Broker2Client {
                 timeStampOffset = 0;
             }
 
-            if (isForce || timeStampOffset < consumerOffset) {
+            // if isForce is true and timeStampOffset < consumeOffset,reset offset to timeStampOffset
+            if (isForce || timeStampOffset < consumeOffset) {
                 offsetTable.put(mq, timeStampOffset);
             } else {
-                offsetTable.put(mq, consumerOffset);
+                offsetTable.put(mq, consumeOffset);
             }
         }
 

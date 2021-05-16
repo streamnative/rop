@@ -19,6 +19,8 @@ import static org.apache.rocketmq.common.constant.PermName.PERM_READ;
 import static org.apache.rocketmq.common.constant.PermName.PERM_WRITE;
 import static org.apache.rocketmq.common.protocol.RequestCode.GET_ROUTEINTO_BY_TOPIC;
 
+import com.google.common.base.Joiner;
+import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import io.netty.channel.ChannelHandlerContext;
 import java.net.InetSocketAddress;
@@ -32,7 +34,11 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.logging.log4j.util.Strings;
+import org.apache.pulsar.broker.loadbalance.impl.ModularLoadManagerImpl;
+import org.apache.pulsar.broker.loadbalance.impl.ModularLoadManagerWrapper;
 import org.apache.pulsar.client.admin.PulsarAdmin;
+import org.apache.pulsar.policies.data.loadbalancer.AdvertisedListener;
+import org.apache.pulsar.policies.data.loadbalancer.LocalBrokerData;
 import org.apache.rocketmq.common.help.FAQUrl;
 import org.apache.rocketmq.common.protocol.RequestCode;
 import org.apache.rocketmq.common.protocol.ResponseCode;
@@ -47,6 +53,7 @@ import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.streamnative.pulsar.handlers.rocketmq.RocketMQProtocolHandler;
 import org.streamnative.pulsar.handlers.rocketmq.RocketMQServiceConfiguration;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
+import org.streamnative.pulsar.handlers.rocketmq.utils.PulsarUtil;
 import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 import org.testng.collections.Sets;
 
@@ -171,37 +178,43 @@ public class NameserverProcessor implements NettyRequestProcessor {
             }
         }
 
+        String listenerName = getListenerName(ctx);
+
         // 根据传入的请求获取指定的topic
         String requestTopic = requestHeader.getTopic();
         if (Strings.isNotBlank(requestTopic)) {
             RocketMQTopic mqTopic = new RocketMQTopic(requestTopic);
             Map<Integer, InetSocketAddress> topicBrokerAddr =
-                    mqTopicManager.getTopicBrokerAddr(mqTopic.getPulsarTopicName(), getListenerName(ctx));
-            if (topicBrokerAddr != null && topicBrokerAddr.size() > 0) {
-                topicBrokerAddr.forEach((i, addr) -> {
-                    String hostName = addr.getHostName();
-                    String brokerAddress = hostName + ":" + addr.getPort();
+                    mqTopicManager.getTopicBrokerAddr(mqTopic.getPulsarTopicName(), "");
+            try {
+                if (topicBrokerAddr != null && topicBrokerAddr.size() > 0) {
+                    topicBrokerAddr.forEach((i, addr) -> {
+                        String hostName = addr.getHostName();
+                        String ropBrokerAddress = getBrokerAddressByListenerName(hostName, listenerName);
 
-                    HashMap<Long, String> brokerAddrs = new HashMap<>();
-                    brokerAddrs.put(0L, brokerAddress);
-                    BrokerData brokerData = new BrokerData(clusterName, hostName, brokerAddrs);
-                    brokerDatas.add(brokerData);
-                    topicRouteData.setBrokerDatas(brokerDatas);
+                        HashMap<Long, String> brokerAddrs = new HashMap<>();
+                        brokerAddrs.put(0L, ropBrokerAddress);
+                        BrokerData brokerData = new BrokerData(clusterName, hostName, brokerAddrs);
+                        brokerDatas.add(brokerData);
+                        topicRouteData.setBrokerDatas(brokerDatas);
 
-                    QueueData queueData = new QueueData();
-                    queueData.setBrokerName(hostName);
-                    queueData.setReadQueueNums(topicBrokerAddr.size());
-                    queueData.setWriteQueueNums(topicBrokerAddr.size());
-                    queueData.setPerm(PERM_WRITE | PERM_READ);
-                    queueDatas.add(queueData);
-                    topicRouteData.setQueueDatas(queueDatas);
+                        QueueData queueData = new QueueData();
+                        queueData.setBrokerName(hostName);
+                        queueData.setReadQueueNums(topicBrokerAddr.size());
+                        queueData.setWriteQueueNums(topicBrokerAddr.size());
+                        queueData.setPerm(PERM_WRITE | PERM_READ);
+                        queueDatas.add(queueData);
+                        topicRouteData.setQueueDatas(queueDatas);
+                    });
 
-                });
-                byte[] content = topicRouteData.encode();
-                response.setBody(content);
-                response.setCode(ResponseCode.SUCCESS);
-                response.setRemark(null);
-                return response;
+                    byte[] content = topicRouteData.encode();
+                    response.setBody(content);
+                    response.setCode(ResponseCode.SUCCESS);
+                    response.setRemark(null);
+                    return response;
+                }
+            } catch (Exception ex) {
+                log.warn("fetch topic address of topic[{}] error.", requestTopic, ex);
             }
         }
 
@@ -225,24 +238,8 @@ public class NameserverProcessor implements NettyRequestProcessor {
         return result;
     }
 
-    public String getBrokerHost(String brokerAddress) {
-        // pulsar://localhost:6650
-        if (null == brokerAddress) {
-            log.error("The brokerAddress is null, please check.");
-            return "";
-        }
-        Matcher matcher = BROKER_ADDER_PAT.matcher(brokerAddress);
-        if (matcher.find()) {
-            return matcher.group(1).replaceAll(":", "");
-        }
-        return brokerAddress;
-    }
-
     /**
-     * 获取broker集群信息，当前认为一个broker物理集群中只有一个broker集群，这里只返回一个broker集群中的一个节点.
-     *
-     * <p>这里为了兼容客户端主题删除逻辑</p>
-     * <p>rocketmq中删除主题客户端会依次请求broker集群下全部broker节点执行主题删除，pulsar中只需要到一台节点上执行删除主题操作即可</p>
+     * Get cluster info according to cluster name.
      */
     private RemotingCommand getBrokerClusterInfo(ChannelHandlerContext ctx, RemotingCommand request) {
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
@@ -251,21 +248,25 @@ public class NameserverProcessor implements NettyRequestProcessor {
         try {
             PulsarAdmin adminClient = brokerController.getBrokerService().pulsar().getAdminClient();
             List<String> brokers = adminClient.brokers().getActiveBrokers(clusterName);
-            // 随机获取一个broker节点
-            String randomBroker = brokers.get(new Random().nextInt(brokers.size()));
-            // 组装成rmq broker节点地址
-            String rmqBrokerAddress = parseBrokerAddress(randomBroker, servicePort);
 
             HashMap<String, BrokerData> brokerAddrTable = Maps.newHashMap();
-            HashMap<Long, String> brokerAddrs = Maps.newHashMap();
-            brokerAddrs.put(0L, rmqBrokerAddress);
-            brokerAddrTable
-                    .put(rmqBrokerAddress, new BrokerData(clusterName, getBrokerHost(randomBroker), brokerAddrs));
+            Set<String> brokerNames = Sets.newHashSet();
+            for (String broker : brokers) {
+                String rmqBrokerAddress = parseBrokerAddress(broker, servicePort);
+                String brokerName = PulsarUtil.getBrokerHost(broker);
+
+                HashMap<Long, String> brokerAddrs = Maps.newHashMap();
+                brokerAddrs.put(0L, rmqBrokerAddress);
+                brokerAddrTable.put(brokerName, new BrokerData(clusterName, brokerName, brokerAddrs));
+
+                brokerNames.add(brokerName);
+            }
+
+            HashMap<String, Set<String>> clusterAddrTable = Maps.newHashMap();
+            clusterAddrTable.put(clusterName, brokerNames);
 
             ClusterInfo clusterInfoSerializeWrapper = new ClusterInfo();
             clusterInfoSerializeWrapper.setBrokerAddrTable(brokerAddrTable);
-            HashMap<String, Set<String>> clusterAddrTable = Maps.newHashMap();
-            clusterAddrTable.put(clusterName, Sets.newHashSet(rmqBrokerAddress));
             clusterInfoSerializeWrapper.setClusterAddrTable(clusterAddrTable);
 
             response.setBody(clusterInfoSerializeWrapper.encode());
@@ -290,5 +291,38 @@ public class NameserverProcessor implements NettyRequestProcessor {
         String localAddress = ctx.channel().localAddress().toString();
         String localPort = localAddress.substring(localAddress.indexOf(":") + 1);
         return PORT_LISTENER_NAME_MAP.get(localPort);
+    }
+
+    private String getBrokerAddressByListenerName(String host, String listenerName) {
+        ModularLoadManagerImpl modularLoadManager = getModularLoadManagerImpl();
+
+        List<String> brokers = Lists.newArrayList(modularLoadManager.getAvailableBrokers());
+        if (brokers.isEmpty()) {
+            log.info("GetBrokerAddressByListenerName not found broker");
+            return Joiner.on(":").join(host, servicePort);
+        }
+        String brokerAddress = brokers.get(0);
+        String port = brokerAddress.substring(brokerAddress.indexOf(":") + 1).trim();
+        brokerAddress = Joiner.on(":").join(host, port);
+
+        LocalBrokerData localBrokerData = modularLoadManager.getBrokerLocalData(brokerAddress);
+        if (localBrokerData == null) {
+            log.info("GetBrokerAddressByListenerName not found localBrokerData, host: {}", host);
+            return Joiner.on(":").join(host, servicePort);
+        }
+
+        AdvertisedListener advertisedListener = localBrokerData.getAdvertisedListeners().get(listenerName);
+        if (advertisedListener == null) {
+            log.info("GetBrokerAddressByListenerName not found advertisedListener, listenerName: {}", listenerName);
+            return Joiner.on(":").join(host, servicePort);
+        }
+
+        return advertisedListener.getBrokerServiceUrl().toString().replaceAll("pulsar://", "");
+    }
+
+    private ModularLoadManagerImpl getModularLoadManagerImpl() {
+
+        return (ModularLoadManagerImpl) ((ModularLoadManagerWrapper) this.brokerController.getBrokerService()
+                .getPulsar().getLoadManager().get()).getLoadManager();
     }
 }

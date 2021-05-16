@@ -32,6 +32,7 @@ public class MessageIdUtils {
     public static final int LEDGER_BITS = 32;
     public static final int ENTRY_BITS = 24;
     public static final int PARTITION_BITS = 8;
+
     public static final long MAX_LEDGER_ID = (1L << LEDGER_BITS) - 2L;
     public static final long MAX_ENTRY_ID = (1L << ENTRY_BITS) - 2L;
     public static final long MAX_PARTITION_ID = (1L << (PARTITION_BITS - 1)) - 2L;
@@ -71,6 +72,7 @@ public class MessageIdUtils {
         } else if (offset == MAX_ROP_OFFSET) {
             return (MessageIdImpl) MessageId.latest;
         }
+
         int partitionId = (int) ((offset >>> (LEDGER_BITS + ENTRY_BITS)) & MASK_PARTITION_ID);
         long ledgerId = (offset >>> ENTRY_BITS) & MASK_LEDGER_ID;
         long entryId = offset & MASK_ENTRY_ID;

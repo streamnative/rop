@@ -14,6 +14,8 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner;
 
+import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.SLASH_CHAR;
+
 import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
 import io.netty.channel.ChannelHandlerContext;
@@ -433,33 +435,16 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             }
 
             Reader<byte[]> reader = this.readers.get(readerId);
-            if (startOffset != MessageId.earliest && startOffset != MessageId.latest) {
-                Message<byte[]> message = reader.readNext(fetchTimeoutInMs, TimeUnit.MILLISECONDS);
-                if (message != null) {
-                    MessageIdImpl curMsgId = (MessageIdImpl) message.getMessageId();
-                    if (startOffset.getLedgerId() == curMsgId.getLedgerId()
-                            && (startOffset.getEntryId() + 1) == curMsgId.getEntryId()) {
-                        messageList.add(message);
-                    } else {
-                        reader.seek(startOffset);
-                        message = reader.readNext(fetchTimeoutInMs, TimeUnit.MILLISECONDS);
-                        if (message != null && !MessageIdUtils.isMessageEquals(startOffset, message.getMessageId())) {
-                            log.error(
-                                    "getMessage error, for seekOffset=[{}] isn't matched readOffset=[{}], "
-                                            + "reset offset to earliest.",
-                                    startOffset, message.getMessageId());
-                            reader.seek(MessageId.earliest);
-                        }
-                    }
-                }
-            }
-
             for (int i = 0; i < maxMsgNums; i++) {
                 Message<byte[]> message = reader.readNext(fetchTimeoutInMs, TimeUnit.MILLISECONDS);
                 if (message == null) {
                     break;
                 }
-                messageList.add(message);
+                MessageIdImpl curMsgId = (MessageIdImpl) message.getMessageId();
+                if (startOffset.getLedgerId() != curMsgId.getLedgerId()
+                        || (startOffset.getEntryId()) != curMsgId.getEntryId()) {
+                    messageList.add(message);
+                }
                 nextBeginOffset = MessageIdUtils.getOffset((MessageIdImpl) message.getMessageId());
             }
         } catch (Exception e) {
@@ -486,11 +471,11 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
     }
 
     private long buildPulsarReaderId(String... tags) {
-        return (Joiner.on("/").join(tags)).hashCode();
+        return (Joiner.on(SLASH_CHAR).join(tags)).hashCode();
     }
 
     private long buildPulsarProducerId(String... tags) {
-        return (Joiner.on("/").join(tags)).hashCode();
+        return (Joiner.on(SLASH_CHAR).join(tags)).hashCode();
     }
 
     enum State {
