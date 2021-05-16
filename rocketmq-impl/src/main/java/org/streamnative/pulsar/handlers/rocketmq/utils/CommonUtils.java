@@ -48,7 +48,7 @@ public class CommonUtils {
 
     public static final String UNDERSCORE_CHAR = "_";
     public static final String PERCENTAGE_CHAR = "%";
-    public static final String VERTICAL_LINE_CHAR = "｜";
+    public static final String VERTICAL_LINE_CHAR = "|";
     public static final String SLASH_CHAR = "/";
     public static final String BACKSLASH_CHAR = "\\";
     private static final int MESSAGE_BYTEBUF_SIZE = 28;
@@ -58,21 +58,21 @@ public class CommonUtils {
             .withInitial(() -> ByteBuffer.allocate(MESSAGE_BYTEBUF_SIZE));
 
     /**
-     * @param pulsarTopicName => [tenant/ns/topicName]
+     * @param tdmqTopicName => [tenant/ns/topicName]
      * @return rmqTopicName => [tenant|ns%topicName]
      */
-    public static String rmqTopicName(String pulsarTopicName) {
-        if (Strings.isBlank(pulsarTopicName)) {
+    public static String rmqTopicName(String tdmqTopicName) {
+        if (Strings.isBlank(tdmqTopicName)) {
             return Strings.EMPTY;
         }
-        List<String> splits = Splitter.on('/').splitToList(pulsarTopicName);
+        List<String> splits = Splitter.on('/').splitToList(tdmqTopicName);
         if (splits.size() >= 3) {
             return splits.get(0) + VERTICAL_LINE_CHAR + splits.get(1) + PERCENTAGE_CHAR + splits.get(2);
         }
-        return pulsarTopicName;
+        return tdmqTopicName;
     }
 
-    public static String pulsarTopicName(String rmqTopicName) {
+    public static String tdmqTopicName(String rmqTopicName) {
         if (Strings.isBlank(rmqTopicName)) {
             return Strings.EMPTY;
         }
@@ -80,12 +80,12 @@ public class CommonUtils {
         return rmqTopic.getOrigNoDomainTopicName();
     }
 
-    public static String pulsarGroupName(String rmqGroupName) {
-        return pulsarTopicName(rmqGroupName);
+    public static String tdmqGroupName(String rmqGroupName) {
+        return tdmqTopicName(rmqGroupName);
     }
 
-    public static String rmqGroupName(String pulsarGroupName) {
-        return rmqTopicName(pulsarGroupName);
+    public static String rmqGroupName(String tdmqGroupName) {
+        return rmqTopicName(tdmqGroupName);
     }
 
     public static int newBrokerId(final InetSocketAddress address) {

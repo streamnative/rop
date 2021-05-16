@@ -17,6 +17,8 @@ package org.streamnative.pulsar.handlers.rocketmq.utils;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.apache.pulsar.client.api.SubscriptionInitialPosition;
 import org.apache.pulsar.client.api.SubscriptionType;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandSubscribe.InitialPosition;
@@ -27,6 +29,8 @@ import org.apache.pulsar.common.api.proto.PulsarApi.KeyValue;
  * Pulsar utils class.
  */
 public class PulsarUtil {
+
+    public static final Pattern BROKER_ADDER_PAT = Pattern.compile("([^/:]+:)(\\d+)");
 
     public static InitialPosition parseSubPosition(SubscriptionInitialPosition subPosition) {
         switch (subPosition) {
@@ -68,5 +72,15 @@ public class PulsarUtil {
         return keyValueList;
     }
 
-
+    public static String getBrokerHost(String brokerAddress) {
+        // eg: pulsar://localhost:6650
+        if (null == brokerAddress) {
+            return "";
+        }
+        Matcher matcher = BROKER_ADDER_PAT.matcher(brokerAddress);
+        if (matcher.find()) {
+            return matcher.group(1).replaceAll(":", "");
+        }
+        return brokerAddress;
+    }
 }

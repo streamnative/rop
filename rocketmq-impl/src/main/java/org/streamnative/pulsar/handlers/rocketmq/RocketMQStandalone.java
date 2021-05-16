@@ -28,7 +28,6 @@ import org.apache.pulsar.broker.ServiceConfiguration;
 import org.apache.pulsar.broker.ServiceConfigurationUtils;
 import org.apache.pulsar.client.admin.PulsarAdmin;
 import org.apache.pulsar.client.admin.PulsarAdminBuilder;
-import org.apache.pulsar.common.policies.data.ClusterData;
 import org.apache.pulsar.functions.worker.WorkerConfig;
 import org.apache.pulsar.functions.worker.WorkerService;
 import org.apache.pulsar.transaction.coordinator.TransactionCoordinatorID;
@@ -99,10 +98,6 @@ public class RocketMQStandalone implements AutoCloseable {
 
     public void setBroker(PulsarService broker) {
         this.broker = broker;
-    }
-
-    public void setAdmin(PulsarAdmin admin) {
-        this.admin = admin;
     }
 
     public void setBkEnsemble(LocalBookkeeperEnsemble bkEnsemble) {
@@ -334,16 +329,12 @@ public class RocketMQStandalone implements AutoCloseable {
         if (!config.isTlsEnabled()) {
             URL webServiceUrl = new URL(
                     String.format("http://%s:%d", config.getAdvertisedAddress(), config.getWebServicePort().get()));
-            String brokerServiceUrl = String.format("pulsar://%s:%d", config.getAdvertisedAddress(),
-                    config.getBrokerServicePort().get());
             admin = PulsarAdmin.builder().serviceHttpUrl(webServiceUrl.toString()).authentication(
                     config.getBrokerClientAuthenticationPlugin(), config.getBrokerClientAuthenticationParameters())
                     .build();
         } else {
             URL webServiceUrlTls = new URL(
                     String.format("https://%s:%d", config.getAdvertisedAddress(), config.getWebServicePortTls().get()));
-            String brokerServiceUrlTls = String.format("pulsar+ssl://%s:%d", config.getAdvertisedAddress(),
-                    config.getBrokerServicePortTls().get());
             PulsarAdminBuilder builder = PulsarAdmin.builder()
                     .serviceHttpUrl(webServiceUrlTls.toString())
                     .authentication(
@@ -364,7 +355,6 @@ public class RocketMQStandalone implements AutoCloseable {
             }
 
             admin = builder.build();
-            ClusterData clusterData = new ClusterData(null, webServiceUrlTls.toString(), null, brokerServiceUrlTls);
         }
 
         log.debug("--- setup completed ---");

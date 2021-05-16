@@ -26,12 +26,15 @@ import java.lang.reflect.Field;
 import java.util.Map;
 import java.util.Properties;
 import java.util.stream.Stream;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.pulsar.common.configuration.PulsarConfiguration;
+import org.streamnative.pulsar.handlers.rocketmq.RocketMQServiceConfiguration;
 
 /**
  * Configuration utils class.
  */
+@Slf4j
 public final class ConfigurationUtils {
 
     private ConfigurationUtils() {
@@ -125,6 +128,23 @@ public final class ConfigurationUtils {
                 }
             }
         });
+    }
+
+    /**
+     * Get default listener name form configuration.
+     *
+     * @param configuration RocketMQServiceConfiguration
+     * @return default rop listener name
+     */
+    public static String getDefaultListenerName(RocketMQServiceConfiguration configuration) {
+        try {
+            String rocketmqListenerPortMap = configuration.getRocketmqListenerPortMap();
+            String[] parts = rocketmqListenerPortMap.split(",");
+            return parts[0].split(":")[1];
+        } catch (Exception e) {
+            log.warn("getDefaultListenerName failed", e);
+        }
+        return null;
     }
 
 }

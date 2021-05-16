@@ -14,6 +14,8 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.namesvr;
 
+import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.SLASH_CHAR;
+
 import com.google.common.base.Joiner;
 import com.google.common.base.Splitter;
 import java.util.HashSet;
@@ -146,7 +148,7 @@ public abstract class TopicConfigManager {
     }
 
     protected void putPulsarTopic2Config(TopicName pulsarTopic, int partitionNum) {
-        String pulsarTopicName = Joiner.on("/").join(pulsarTopic.getNamespace(), pulsarTopic.getLocalName());
+        String pulsarTopicName = Joiner.on(SLASH_CHAR).join(pulsarTopic.getNamespace(), pulsarTopic.getLocalName());
         if (!this.topicConfigTable.containsKey(pulsarTopicName)) {
             TopicConfig topicConfig = new TopicConfig(pulsarTopicName);
             if (partitionNum > 0) {

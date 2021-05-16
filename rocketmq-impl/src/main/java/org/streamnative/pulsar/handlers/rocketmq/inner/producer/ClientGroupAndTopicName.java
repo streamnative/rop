@@ -14,6 +14,7 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.producer;
 
+import java.io.Serializable;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
@@ -24,7 +25,7 @@ import lombok.ToString;
 @Data
 @EqualsAndHashCode
 @ToString
-public class ClientGroupAndTopicName {
+public class ClientGroupAndTopicName implements Serializable {
 
     private final ClientGroupName clientGroupName;
     private final ClientTopicName clientTopicName;

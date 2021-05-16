@@ -24,6 +24,7 @@ import org.apache.rocketmq.broker.longpolling.ManyPullRequest;
 import org.apache.rocketmq.broker.longpolling.PullRequest;
 import org.apache.rocketmq.common.ServiceThread;
 import org.apache.rocketmq.common.SystemClock;
+import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopPersistentTopicException;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientTopicName;
 
 /**
@@ -38,8 +39,7 @@ public class PullRequestHoldService extends ServiceThread {
 
     // key       => topicName@partitionId
     // topicName => tenant/ns/topicName
-    private ConcurrentMap<String, ManyPullRequest> pullRequestTable =
-            new ConcurrentHashMap<>(1024);
+    private final ConcurrentMap<String, ManyPullRequest> pullRequestTable = new ConcurrentHashMap<>(1024);
 
     public PullRequestHoldService(final RocketMQBrokerController brokerController) {
         this.brokerController = brokerController;
@@ -60,11 +60,7 @@ public class PullRequestHoldService extends ServiceThread {
     }
 
     private String buildKey(final String topic, final int queueId) {
-        StringBuilder sb = new StringBuilder();
-        sb.append(topic);
-        sb.append(TOPIC_QUEUEID_SEPARATOR);
-        sb.append(queueId);
-        return sb.toString();
+        return topic + TOPIC_QUEUEID_SEPARATOR + queueId;
     }
 
     @Override
@@ -94,7 +90,7 @@ public class PullRequestHoldService extends ServiceThread {
 
     @Override
     public String getServiceName() {
-        return org.apache.rocketmq.broker.longpolling.PullRequestHoldService.class.getSimpleName();
+        return PullRequestHoldService.class.getSimpleName();
     }
 
     private void checkHoldRequest() {
@@ -103,8 +99,14 @@ public class PullRequestHoldService extends ServiceThread {
             if (2 == kArray.length) {
                 String topic = kArray[0];
                 int queueId = Integer.parseInt(kArray[1]);
-                final long offset = this.brokerController.getConsumerOffsetManager()
-                        .getMaxOffsetInQueue(new ClientTopicName(topic), queueId);
+                long offset;
+                try {
+                    offset = this.brokerController.getConsumerOffsetManager()
+                            .getMaxOffsetInQueue(new ClientTopicName(topic), queueId);
+                } catch (Exception e) {
+                    offset = Long.MAX_VALUE;
+                    log.warn("check hold request failed. topic: {}, queueId: {} ", topic, queueId, e);
+                }
                 try {
                     this.notifyMessageArriving(topic, queueId, offset);
                 } catch (Throwable e) {
@@ -130,8 +132,12 @@ public class PullRequestHoldService extends ServiceThread {
                 for (PullRequest request : requestList) {
                     long newestOffset = maxOffset;
                     if (newestOffset <= request.getPullFromThisOffset()) {
-                        newestOffset = this.brokerController.getConsumerOffsetManager()
-                                .getMaxOffsetInQueue(new ClientTopicName(topic), queueId);
+                        try {
+                            newestOffset = this.brokerController.getConsumerOffsetManager()
+                                    .getMaxOffsetInQueue(new ClientTopicName(topic), queueId);
+                        } catch (RopPersistentTopicException e) {
+                            newestOffset = Long.MAX_VALUE;
+                        }
                     }
 
                     if (newestOffset > request.getPullFromThisOffset()) {
@@ -142,6 +148,7 @@ public class PullRequestHoldService extends ServiceThread {
                         } catch (Throwable e) {
                             log.error("execute request when wakeup failed.", e);
                         }
+                        continue;
                     }
 
                     if (System.currentTimeMillis() >= (request.getSuspendTimestamp() + request.getTimeoutMillis())) {

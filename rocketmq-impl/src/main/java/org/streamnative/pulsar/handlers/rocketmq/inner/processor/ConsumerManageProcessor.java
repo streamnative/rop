@@ -33,6 +33,7 @@ import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.ConsumerGroupInfo;
+import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopPersistentTopicException;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientTopicName;
 
 /**
@@ -139,20 +140,25 @@ public class ConsumerManageProcessor implements NettyRequestProcessor {
             ConsumerGroupInfo consumerGroupInfo = this.brokerController.getConsumerManager()
                     .getConsumerGroupInfo(requestHeader.getConsumerGroup());
             if (consumerGroupInfo != null) {
-                if (consumerGroupInfo.getConsumeFromWhere() == ConsumeFromWhere.CONSUME_FROM_FIRST_OFFSET) {
-                    long minOffset = this.brokerController.getConsumerOffsetManager()
-                            .getMinOffsetInQueue(new ClientTopicName(requestHeader.getTopic()),
-                                    requestHeader.getQueueId());
-                    responseHeader.setOffset(minOffset);
-                    response.setCode(ResponseCode.SUCCESS);
-                    response.setRemark(null);
-                } else {
-                    long maxOffset = this.brokerController.getConsumerOffsetManager()
-                            .getMaxOffsetInQueue(new ClientTopicName(requestHeader.getTopic()),
-                                    requestHeader.getQueueId());
-                    responseHeader.setOffset(maxOffset);
-                    response.setCode(ResponseCode.SUCCESS);
-                    response.setRemark(null);
+                try {
+                    if (consumerGroupInfo.getConsumeFromWhere() == ConsumeFromWhere.CONSUME_FROM_FIRST_OFFSET) {
+                        long minOffset = this.brokerController.getConsumerOffsetManager()
+                                .getMinOffsetInQueue(new ClientTopicName(requestHeader.getTopic()),
+                                        requestHeader.getQueueId());
+                        responseHeader.setOffset(minOffset);
+                        response.setCode(ResponseCode.SUCCESS);
+                        response.setRemark(null);
+                    } else {
+                        long maxOffset = this.brokerController.getConsumerOffsetManager()
+                                .getMaxOffsetInQueue(new ClientTopicName(requestHeader.getTopic()),
+                                        requestHeader.getQueueId());
+                        responseHeader.setOffset(maxOffset);
+                        response.setCode(ResponseCode.SUCCESS);
+                        response.setRemark(null);
+                    }
+                } catch (RopPersistentTopicException e) {
+                    response.setCode(ResponseCode.QUERY_NOT_FOUND);
+                    response.setRemark("Not found, partition topic not in current node.");
                 }
             } else {
                 response.setCode(ResponseCode.QUERY_NOT_FOUND);

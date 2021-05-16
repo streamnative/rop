@@ -12,23 +12,4 @@
  * limitations under the License.
  */
 
-package org.streamnative.pulsar.handlers.rocketmq.utils;
-
-import static org.junit.Assert.assertEquals;
-
-import lombok.SneakyThrows;
-import org.junit.Test;
-
-/**
- * Validate random util.
- */
-public class RandomTest {
-
-    @SneakyThrows
-    @Test
-    public void testRandom() {
-        Long randomLong = Random.randomLong(6);
-        String longStr = Long.toString(randomLong);
-        assertEquals(6, longStr.length());
-    }
-}
+package org.streamnative.pulsar.handlers.rocketmq.inner.bean;

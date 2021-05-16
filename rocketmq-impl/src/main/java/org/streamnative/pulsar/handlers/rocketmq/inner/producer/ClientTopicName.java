@@ -14,7 +14,11 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.producer;
 
+import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.SLASH_CHAR;
+import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.VERTICAL_LINE_CHAR;
+
 import com.google.common.base.Joiner;
+import java.io.Serializable;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
@@ -29,26 +33,26 @@ import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 @Data
 @EqualsAndHashCode
 @ToString
-public class ClientTopicName {
+public class ClientTopicName implements Serializable {
 
     private final String rmqTopicName;
     private final String pulsarTopicName;
 
     public ClientTopicName(String rmqTopicName) {
         this.rmqTopicName = rmqTopicName;
-        this.pulsarTopicName = CommonUtils.pulsarGroupName(this.rmqTopicName);
+        this.pulsarTopicName = CommonUtils.tdmqGroupName(this.rmqTopicName);
     }
 
-    public ClientTopicName(TopicName tdmpTopicName) {
-        TopicName tempTopic = TopicName.get(tdmpTopicName.getPartitionedTopicName());
-        this.pulsarTopicName = Joiner.on("/")
+    public ClientTopicName(TopicName pulsarTopicName) {
+        TopicName tempTopic = TopicName.get(pulsarTopicName.getPartitionedTopicName());
+        this.pulsarTopicName = Joiner.on(SLASH_CHAR)
                 .join(tempTopic.getTenant(), tempTopic.getNamespacePortion(), tempTopic.getLocalName());
-        if (tdmpTopicName.getTenant() == RocketMQTopic.metaTenant
-                && (tdmpTopicName.getNamespacePortion() == RocketMQTopic.metaNamespace
-                || tdmpTopicName.getNamespacePortion() == RocketMQTopic.defaultNamespace)) {
+        if (pulsarTopicName.getTenant() == RocketMQTopic.metaTenant
+                && (pulsarTopicName.getNamespacePortion() == RocketMQTopic.metaNamespace
+                || pulsarTopicName.getNamespacePortion() == RocketMQTopic.defaultNamespace)) {
             this.rmqTopicName = tempTopic.getLocalName();
         } else {
-            String rmqNamespace = tempTopic.getTenant() + "|" + tempTopic.getNamespacePortion();
+            String rmqNamespace = tempTopic.getTenant() + VERTICAL_LINE_CHAR + tempTopic.getNamespacePortion();
             this.rmqTopicName = NamespaceUtil.wrapNamespace(rmqNamespace, tempTopic.getLocalName());
         }
     }
