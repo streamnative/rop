@@ -17,6 +17,7 @@ package org.streamnative.pulsar.handlers.rocketmq.inner.namesvr;
 import com.google.common.base.Joiner;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.RemovalNotification;
 import com.google.common.collect.Sets;
 import java.net.InetSocketAddress;
 import java.util.HashMap;
@@ -52,6 +53,7 @@ import org.apache.pulsar.common.policies.data.TenantInfo;
 import org.apache.rocketmq.common.TopicConfig;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientTopicName;
+import org.streamnative.pulsar.handlers.rocketmq.utils.PulsarUtil;
 import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 import org.testng.collections.Maps;
 
@@ -62,13 +64,16 @@ import org.testng.collections.Maps;
 public class MQTopicManager extends TopicConfigManager implements NamespaceBundleOwnershipListener {
 
     private final int maxCacheSize = 1024;
-    private final int maxCacheTimeInSec = 300;
+    private final int maxCacheTimeInSec = 10;
     //cache-key TopicName = {tenant/ns/topic}, Map key={partition id} nonPartitionedTopic, only one record in map.
     @Getter
     private final Cache<LookupCacheKey, Map<Integer, InetSocketAddress>> lookupCache = CacheBuilder
             .newBuilder()
             .initialCapacity(maxCacheSize)
             .expireAfterWrite(maxCacheTimeInSec, TimeUnit.SECONDS)
+            .removalListener((RemovalNotification<LookupCacheKey, Map<Integer, InetSocketAddress>> notification) -> {
+                log.info("[key={}]========>[value={}].", notification.getKey().topicName, notification);
+            })
             .build();
     private final Map<String, PulsarClient> pulsarClientMap = Maps.newConcurrentMap();
     private PulsarService pulsarService;
@@ -121,7 +126,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
     }
 
     public void getTopicBrokerAddr(TopicName topicName) {
-        getTopicBrokerAddr(topicName, null);
+        getTopicBrokerAddr(topicName, Strings.EMPTY);
     }
 
     // call pulsarClient.lookup.getBroker to get and own a topic.
@@ -159,6 +164,22 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
             log.warn("getTopicBroker info error for the topic[{}].", topicName, e);
         }
         return partitionedTopicAddr;
+    }
+
+    /**
+     * If current broker is this partition topic owner return true else return false.
+     *
+     * @param topicName topic name
+     * @param queueId queue id
+     * @return if current broker is this partition topic owner return true else return false.
+     */
+    public boolean isPartitionTopicOwner(TopicName topicName, int queueId) {
+        String brokerServiceUrl = this.brokerController.getBrokerService().pulsar().getBrokerServiceUrl();
+
+        Map<Integer, InetSocketAddress> topicBrokerAddr = getTopicBrokerAddr(topicName, Strings.EMPTY);
+        String brokerName = topicBrokerAddr.get(queueId).getHostName();
+
+        return PulsarUtil.getBrokerHost(brokerServiceUrl).equals(brokerName);
     }
 
     // this method do the real lookup into Pulsar broker.
@@ -199,12 +220,9 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
         pulsarService.getNamespaceService().getOwnedTopicListForNamespaceBundle(bundle)
                 .whenComplete((topics, ex) -> {
                     if (ex == null) {
-                        try {
-                            log.info("loadPersistentTopic when namespaceBundle onLoad topic.");
-                            loadPersistentTopic(topics);
-                        } catch (Exception e) {
-                            log.warn("NamespaceBundle loading persistent topic error. topics=[{}].", topics);
-                        }
+                        log.info("Bundle onLoad topic and size=[{}].", topics.size());
+                        //load topic to cache
+                        loadPersistentTopic(topics);
                     } else {
                         log.error("Failed to get owned topic list for "
                                         + "OffsetAndTopicListener when triggering on-loading bundle {}.",
@@ -217,11 +235,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
         topics.forEach(topic -> {
             try {
                 this.brokerService.getTopic(topic, false).whenComplete((t2, throwable) -> {
-                    if (throwable != null) {
-                        log.warn("getTopicIfExists error, topic=[{}].", topic);
-                        return;
-                    }
-                    if (t2.isPresent()) {
+                    if (throwable == null && t2.isPresent()) {
                         PersistentTopic persistentTopic = (PersistentTopic) t2.get();
                         TopicName topicName = TopicName.get(topic);
                         ClientTopicName clientTopicName = new ClientTopicName(topicName);
@@ -242,10 +256,25 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
         pulsarService.getNamespaceService().getOwnedTopicListForNamespaceBundle(bundle)
                 .whenComplete((topics, ex) -> {
                     if (ex == null) {
-                        log.info("get owned topic list when unLoad bundle {}, topic size {} ", bundle,
+                        log.info("[MQTopicManager] unLoad bundle [{}], topic size [{}] ", bundle,
                                 topics.size());
                         for (String topic : topics) {
+                            log.info("[MQTopicManager] unload topic[{}] from current node.", topic);
                             TopicName partitionedTopic = TopicName.get(topic);
+                            LookupCacheKey lookupKey = new LookupCacheKey(
+                                    TopicName.get(partitionedTopic.getPartitionedTopicName()));
+                            int partitionIdx = partitionedTopic.getPartitionIndex();
+                            //remove topic from lookup cache
+                            Map<Integer, InetSocketAddress> pTopicAddress = this.lookupCache
+                                    .getIfPresent(lookupKey);
+                            if (pTopicAddress != null && !pTopicAddress.isEmpty()) {
+                                pTopicAddress.remove(partitionIdx);
+                                if (pTopicAddress.isEmpty()) {
+                                    this.lookupCache.invalidate(lookupKey);
+                                }
+                            }
+
+                            //remove cache from consumer offset manager
                             ClientTopicName clientTopicName = new ClientTopicName(
                                     partitionedTopic.getPartitionedTopicName());
                             this.brokerController.getConsumerOffsetManager()
@@ -436,6 +465,11 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
 
         TopicName topicName;
         String listenerName;
+
+        public LookupCacheKey(TopicName topicName) {
+            this.topicName = topicName;
+            this.listenerName = Strings.EMPTY;
+        }
     }
 
 }

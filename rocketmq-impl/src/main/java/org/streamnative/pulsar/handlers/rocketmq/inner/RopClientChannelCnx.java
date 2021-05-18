@@ -15,6 +15,7 @@
 package org.streamnative.pulsar.handlers.rocketmq.inner;
 
 import io.netty.channel.ChannelHandlerContext;
+import java.util.Objects;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.broker.client.ClientChannelInfo;
@@ -44,5 +45,14 @@ public class RopClientChannelCnx extends ClientChannelInfo {
 
     public String toString() {
         return super.toString();
+    }
+
+    public boolean equals(Object obj) {
+        return super.equals(obj);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(super.hashCode(), brokerController, serverCnx);
     }
 }

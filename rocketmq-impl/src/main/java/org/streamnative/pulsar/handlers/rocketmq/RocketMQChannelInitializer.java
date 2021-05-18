@@ -56,7 +56,6 @@ public class RocketMQChannelInitializer extends ChannelInitializer<SocketChannel
 
     @Override
     protected void initChannel(SocketChannel ch) throws Exception {
-        //remoteServer.setRocketMQChannel(ch);
         ch.pipeline()
                 .addLast(remoteServer.getDefaultEventExecutorGroup(), remoteServer.HANDSHAKE_HANDLER_NAME,
                         remoteServer.getHandshakeHandler())

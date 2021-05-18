@@ -14,6 +14,7 @@
 
 package org.streamnative.rocketmq.example.namespace;
 
+import java.io.UnsupportedEncodingException;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.rocketmq.client.consumer.DefaultMQPushConsumer;
 import org.apache.rocketmq.client.consumer.listener.ConsumeConcurrentlyStatus;
@@ -32,8 +33,12 @@ public class PushConsumerWithNamespace {
         AtomicLong count = new AtomicLong(0L);
         defaultMQPushConsumer.registerMessageListener((MessageListenerConcurrently) (msgs, context) -> {
             msgs.forEach((msg) -> {
-                System.out.printf("Msg payload: %s, topic is:%s, MsgId is:%s, reconsumeTimes is:%s%n",
-                        new String(msg.getBody()), msg.getTopic(), msg.getMsgId(), msg.getReconsumeTimes());
+                try {
+                    System.out.printf("Msg payload: %s, topic is:%s, MsgId is:%s, reconsumeTimes is:%s%n",
+                            new String(msg.getBody(), "GBK"), msg.getTopic(), msg.getMsgId(), msg.getReconsumeTimes());
+                } catch (UnsupportedEncodingException e) {
+                    e.printStackTrace();
+                }
                 count.incrementAndGet();
                 System.out.println("total ====> " + count.get());
             });

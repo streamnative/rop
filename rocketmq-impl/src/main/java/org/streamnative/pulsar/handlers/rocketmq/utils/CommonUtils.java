@@ -18,6 +18,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.apache.rocketmq.common.message.MessageDecoder.CHARSET_UTF8;
 
 import com.google.common.base.Splitter;
+import java.io.IOException;
 import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -50,29 +51,25 @@ public class CommonUtils {
     public static final String PERCENTAGE_CHAR = "%";
     public static final String VERTICAL_LINE_CHAR = "|";
     public static final String SLASH_CHAR = "/";
-    public static final String BACKSLASH_CHAR = "\\";
-    private static final int MESSAGE_BYTEBUF_SIZE = 28;
     private static final int ROP_QUEUE_OFFSET_INDEX = 8 + 4 + 4 + 4 + 4 + 4;
     private static final int ROP_PHYSICAL_OFFSET_INDEX = 8 + 4 + 4 + 4 + 4 + 4 + 8;
-    private static ThreadLocal<ByteBuffer> byteBufLocal = ThreadLocal
-            .withInitial(() -> ByteBuffer.allocate(MESSAGE_BYTEBUF_SIZE));
 
     /**
-     * @param tdmqTopicName => [tenant/ns/topicName]
+     * @param pulsarTopicName => [tenant/ns/topicName]
      * @return rmqTopicName => [tenant|ns%topicName]
      */
-    public static String rmqTopicName(String tdmqTopicName) {
-        if (Strings.isBlank(tdmqTopicName)) {
+    public static String rmqTopicName(String pulsarTopicName) {
+        if (Strings.isBlank(pulsarTopicName)) {
             return Strings.EMPTY;
         }
-        List<String> splits = Splitter.on('/').splitToList(tdmqTopicName);
+        List<String> splits = Splitter.on('/').splitToList(pulsarTopicName);
         if (splits.size() >= 3) {
             return splits.get(0) + VERTICAL_LINE_CHAR + splits.get(1) + PERCENTAGE_CHAR + splits.get(2);
         }
-        return tdmqTopicName;
+        return pulsarTopicName;
     }
 
-    public static String tdmqTopicName(String rmqTopicName) {
+    public static String pulsarTopicName(String rmqTopicName) {
         if (Strings.isBlank(rmqTopicName)) {
             return Strings.EMPTY;
         }
@@ -80,12 +77,12 @@ public class CommonUtils {
         return rmqTopic.getOrigNoDomainTopicName();
     }
 
-    public static String tdmqGroupName(String rmqGroupName) {
-        return tdmqTopicName(rmqGroupName);
+    public static String pulsarGroupName(String rmqGroupName) {
+        return pulsarTopicName(rmqGroupName);
     }
 
-    public static String rmqGroupName(String tdmqGroupName) {
-        return rmqTopicName(tdmqGroupName);
+    public static String rmqGroupName(String pulsarGroupName) {
+        return rmqTopicName(pulsarGroupName);
     }
 
     public static int newBrokerId(final InetSocketAddress address) {
@@ -116,15 +113,12 @@ public class CommonUtils {
     }
 
     public static MessageIdImpl decodeMessageId(final String msgId) throws UnknownHostException {
-        SocketAddress address;
         long offset;
         int ipLength = msgId.length() == 32 ? 4 * 2 : 16 * 2;
 
-        byte[] ip = UtilAll.string2bytes(msgId.substring(0, ipLength));
         byte[] port = UtilAll.string2bytes(msgId.substring(ipLength, ipLength + 8));
         ByteBuffer bb = ByteBuffer.wrap(port);
-        int portInt = bb.getInt(0);
-        address = new InetSocketAddress(InetAddress.getByAddress(ip), portInt);
+        bb.getInt(0);
         // offset
         byte[] data = UtilAll.string2bytes(msgId.substring(ipLength + 8, ipLength + 8 + 16));
         bb = ByteBuffer.wrap(data);
@@ -200,7 +194,7 @@ public class CommonUtils {
 
             MessageExt msgExt = new MessageExt();
 
-            long tagCode = byteBuffer.getLong();
+            byteBuffer.getLong();
             // 1 TOTALSIZE
             int storeSize = byteBuffer.getInt();
             msgExt.setStoreSize(storeSize);
@@ -306,10 +300,14 @@ public class CommonUtils {
             }
 
             return msgExt;
+        } catch (UnknownHostException e) {
+            log.warn("Decode message getByAddress failed.", e);
+        } catch (IOException e) {
+            log.warn("Decode message uncompress error.", e);
         } catch (Exception e) {
-            byteBuffer.position(byteBuffer.limit());
+            log.warn("Decode message error.", e);
         }
-
+        byteBuffer.position(byteBuffer.limit());
         return null;
     }
 
@@ -317,12 +315,12 @@ public class CommonUtils {
         // 去除 tags 标记位的 8 个字节之后，将原先的 byteBuffer 返回
         ByteBuffer wrap = ByteBuffer.wrap(message.getData());
         MessageIdImpl messageId = (MessageIdImpl) message.getMessageId();
-        Long physicalOffset = MessageIdUtils
+        long physicalOffset = MessageIdUtils
                 .getOffset(messageId.getLedgerId(), messageId.getEntryId(), messageId.getPartitionIndex());
 
         wrap.putLong(ROP_QUEUE_OFFSET_INDEX, physicalOffset);
         wrap.putLong(ROP_PHYSICAL_OFFSET_INDEX, physicalOffset);
-        long tag = wrap.getLong();
+        wrap.getLong();
         return wrap.slice();
     }
 }

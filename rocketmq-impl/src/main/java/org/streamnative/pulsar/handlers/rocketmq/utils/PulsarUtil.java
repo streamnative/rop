@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.apache.logging.log4j.util.Strings;
 import org.apache.pulsar.client.api.SubscriptionInitialPosition;
 import org.apache.pulsar.client.api.SubscriptionType;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandSubscribe.InitialPosition;
@@ -73,13 +74,13 @@ public class PulsarUtil {
     }
 
     public static String getBrokerHost(String brokerAddress) {
-        // eg: pulsar://localhost:6650
+        // eg: pulsar://127.0.0.1:6650
         if (null == brokerAddress) {
-            return "";
+            return Strings.EMPTY;
         }
         Matcher matcher = BROKER_ADDER_PAT.matcher(brokerAddress);
         if (matcher.find()) {
-            return matcher.group(1).replaceAll(":", "");
+            return matcher.group(1).replaceAll(":", Strings.EMPTY);
         }
         return brokerAddress;
     }

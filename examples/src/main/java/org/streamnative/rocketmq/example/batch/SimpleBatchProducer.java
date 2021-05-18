@@ -32,9 +32,9 @@ public class SimpleBatchProducer {
         //Messages of the same batch should have: same topic, same waitStoreMsgOK and no schedule support
         String topic = "BatchTest";
         List<Message> messages = new ArrayList<>();
-        messages.add(new Message(topic, "Tag", "OrderID001", "Hello world 0".getBytes()));
-        messages.add(new Message(topic, "Tag", "OrderID002", "Hello world 1".getBytes()));
-        messages.add(new Message(topic, "Tag", "OrderID003", "Hello world 2".getBytes()));
+        messages.add(new Message(topic, "Tag", "OrderID001", "Hello world 0".getBytes("GBK")));
+        messages.add(new Message(topic, "Tag", "OrderID002", "Hello world 1".getBytes("GBK")));
+        messages.add(new Message(topic, "Tag", "OrderID003", "Hello world 2".getBytes("GBK")));
 
         producer.send(messages);
     }

@@ -30,7 +30,6 @@ public class RopGetMessageResult {
     private long nextBeginOffset;
     private long minOffset;
     private long maxOffset;
-    private int bufferTotalSize = 0;
     private boolean suggestPullingFromSlave = false;
     private int msgCount4Commercial = 0;
 

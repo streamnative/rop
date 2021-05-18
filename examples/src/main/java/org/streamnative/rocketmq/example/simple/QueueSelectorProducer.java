@@ -32,7 +32,8 @@ public class QueueSelectorProducer {
         producer.setNamesrvAddr("127.0.0.1:9876");
         producer.start();
         for (int i = 1; i < 100; i++) {
-            Message message = new Message("topicTest", "tagTest", ("Hello world — " + i).getBytes());
+            Message message = new Message("topicTest", "tagTest", ("Hello world — " + i)
+                    .getBytes("GBK"));
             try {
                 SendResult result = producer.send(message, new MessageQueueSelector() {
                     @Override

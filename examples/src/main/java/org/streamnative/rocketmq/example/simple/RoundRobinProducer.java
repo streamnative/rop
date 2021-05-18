@@ -29,7 +29,8 @@ public class RoundRobinProducer {
         producer.setNamesrvAddr("127.0.0.1:9876");
         producer.start();
         for (int i = 1; i < 100; i++) {
-            Message message = new Message("topicTest", "tagTest", ("Hello world — " + i).getBytes());
+            Message message = new Message("topicTest", "tagTest", ("Hello world — " + i)
+                    .getBytes("GBK"));
             try {
                 SendResult result = producer.send(message, 300000);
                 System.out.printf("Topic:%s send success, misId is:%s, queueId is: %s%n", message.getTopic(),

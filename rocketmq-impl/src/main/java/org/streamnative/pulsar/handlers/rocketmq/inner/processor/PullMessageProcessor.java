@@ -69,17 +69,17 @@ public class PullMessageProcessor implements NettyRequestProcessor {
 
     protected PulsarMessageStore getServerCnxMsgStore(Channel channel, RemotingCommand request,
             String groupName) {
-        ConsumerGroupInfo consumerGroupInfo = this.brokerController.getConsumerManager()
-                .getConsumerGroupInfo(groupName);
-
-        if (null == consumerGroupInfo) {
-            log.warn("No consumerGroupInfo object available");
+        try {
+            ConsumerGroupInfo consumerGroupInfo = this.brokerController.getConsumerManager()
+                    .getConsumerGroupInfo(groupName);
+            ConcurrentMap<Channel, ClientChannelInfo> channelInfoConcurrentMap = consumerGroupInfo
+                    .getChannelInfoTable();
+            RopClientChannelCnx channelCnx = (RopClientChannelCnx) channelInfoConcurrentMap.get(channel);
+            return channelCnx.getServerCnx();
+        } catch (Exception e) {
+            log.info("PullMessageProcessor get client channel context error, wait client register consumer info.");
             return null;
         }
-
-        ConcurrentMap<Channel, ClientChannelInfo> channelInfoConcurrentMap = consumerGroupInfo.getChannelInfoTable();
-        RopClientChannelCnx channelCnx = (RopClientChannelCnx) channelInfoConcurrentMap.get(channel);
-        return channelCnx.getServerCnx();
     }
 
     @Override
@@ -229,6 +229,7 @@ public class PullMessageProcessor implements NettyRequestProcessor {
 
         final RopGetMessageResult ropGetMessageResult = serverCnxMsgStore
                 .getMessage(request, requestHeader, messageFilter);
+
         if (ropGetMessageResult != null) {
             response.setRemark(ropGetMessageResult.getStatus().name());
             responseHeader.setNextBeginOffset(ropGetMessageResult.getNextBeginOffset());

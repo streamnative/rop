@@ -22,10 +22,7 @@ import com.github.benmanes.caffeine.cache.AsyncLoadingCache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.RemovalCause;
 import io.netty.buffer.ByteBuf;
-import io.netty.channel.ChannelFuture;
-import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.FileRegion;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.concurrent.CompletableFuture;
@@ -47,22 +44,17 @@ import org.apache.pulsar.common.api.proto.PulsarApi.MessageMetadata;
 import org.apache.pulsar.common.compression.CompressionCodec;
 import org.apache.pulsar.common.compression.CompressionCodecProvider;
 import org.apache.pulsar.common.protocol.Commands;
-import org.apache.rocketmq.broker.pagecache.QueryMessageTransfer;
-import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.constant.LoggerName;
 import org.apache.rocketmq.common.message.MessageDecoder;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.protocol.RequestCode;
 import org.apache.rocketmq.common.protocol.ResponseCode;
-import org.apache.rocketmq.common.protocol.header.QueryMessageRequestHeader;
-import org.apache.rocketmq.common.protocol.header.QueryMessageResponseHeader;
 import org.apache.rocketmq.common.protocol.header.ViewMessageRequestHeader;
 import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
 import org.apache.rocketmq.remoting.exception.RemotingCommandException;
 import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
-import org.apache.rocketmq.store.QueryMessageResult;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import org.streamnative.pulsar.handlers.rocketmq.inner.format.RopEntryFormatter;
 import org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils;
@@ -78,7 +70,7 @@ public class QueryMessageProcessor implements NettyRequestProcessor {
     private final RocketMQBrokerController brokerController;
     private final RopEntryFormatter entryFormatter = new RopEntryFormatter();
 
-    private final String queryMessageLedgerName = "queryMessageProcessor_ledger";
+    private static final String queryMessageLedgerName = "queryMessageProcessor_ledger";
 
     public QueryMessageProcessor(final RocketMQBrokerController brokerController) {
         this.brokerController = brokerController;
@@ -122,56 +114,56 @@ public class QueryMessageProcessor implements NettyRequestProcessor {
 
     public RemotingCommand queryMessage(ChannelHandlerContext ctx, RemotingCommand request)
             throws RemotingCommandException {
-        final RemotingCommand response =
-                RemotingCommand.createResponseCommand(QueryMessageResponseHeader.class);
-        final QueryMessageResponseHeader responseHeader =
-                (QueryMessageResponseHeader) response.readCustomHeader();
-        final QueryMessageRequestHeader requestHeader =
-                (QueryMessageRequestHeader) request
-                        .decodeCommandCustomHeader(QueryMessageRequestHeader.class);
-
-        response.setOpaque(request.getOpaque());
-
-        String isUniqueKey = request.getExtFields().get(MixAll.UNIQUE_MSG_QUERY_FLAG);
-        if (isUniqueKey != null && isUniqueKey.equals("true")) {
-            requestHeader.setMaxNum(this.brokerController.getServerConfig().getDefaultQueryMaxNum());
-        }
-
-        final QueryMessageResult queryMessageResult = null
-                /*TODO this.brokerController.getMessageStore().queryMessage(requestHeader.getTopic(),
-                        requestHeader.getKey(), requestHeader.getMaxNum(), requestHeader.getBeginTimestamp(),
-                        requestHeader.getEndTimestamp())*/;
-        assert queryMessageResult != null;
-
-        responseHeader.setIndexLastUpdatePhyoffset(queryMessageResult.getIndexLastUpdatePhyoffset());
-        responseHeader.setIndexLastUpdateTimestamp(queryMessageResult.getIndexLastUpdateTimestamp());
-
-        if (queryMessageResult.getBufferTotalSize() > 0) {
-            response.setCode(ResponseCode.SUCCESS);
-            response.setRemark(null);
-
-            try {
-                FileRegion fileRegion =
-                        new QueryMessageTransfer(response.encodeHeader(queryMessageResult
-                                .getBufferTotalSize()), queryMessageResult);
-                ctx.channel().writeAndFlush(fileRegion).addListener(new ChannelFutureListener() {
-                    @Override
-                    public void operationComplete(ChannelFuture future) throws Exception {
-                        queryMessageResult.release();
-                        if (!future.isSuccess()) {
-                            log.error("transfer query message by page cache failed, ", future.cause());
-                        }
-                    }
-                });
-            } catch (Throwable e) {
-                log.error("", e);
-                queryMessageResult.release();
-            }
-            return null;
-        }
-        response.setCode(ResponseCode.QUERY_NOT_FOUND);
-        response.setRemark("can not find message, maybe time range not correct");
-        return response;
+//        final RemotingCommand response =
+//                RemotingCommand.createResponseCommand(QueryMessageResponseHeader.class);
+//        final QueryMessageResponseHeader responseHeader =
+//                (QueryMessageResponseHeader) response.readCustomHeader();
+//        final QueryMessageRequestHeader requestHeader =
+//                (QueryMessageRequestHeader) request
+//                        .decodeCommandCustomHeader(QueryMessageRequestHeader.class);
+//
+//        response.setOpaque(request.getOpaque());
+//
+//        String isUniqueKey = request.getExtFields().get(MixAll.UNIQUE_MSG_QUERY_FLAG);
+//        if (isUniqueKey != null && isUniqueKey.equals("true")) {
+//            requestHeader.setMaxNum(this.brokerController.getServerConfig().getDefaultQueryMaxNum());
+//        }
+//
+//        final QueryMessageResult queryMessageResult = null;
+//                /*TODO this.brokerController.getMessageStore().queryMessage(requestHeader.getTopic(),
+//                        requestHeader.getKey(), requestHeader.getMaxNum(), requestHeader.getBeginTimestamp(),
+//                        requestHeader.getEndTimestamp())*/
+//
+//        responseHeader.setIndexLastUpdatePhyoffset(queryMessageResult.getIndexLastUpdatePhyoffset());
+//        responseHeader.setIndexLastUpdateTimestamp(queryMessageResult.getIndexLastUpdateTimestamp());
+//
+//        if (queryMessageResult.getBufferTotalSize() > 0) {
+//            response.setCode(ResponseCode.SUCCESS);
+//            response.setRemark(null);
+//
+//            try {
+//                FileRegion fileRegion =
+//                        new QueryMessageTransfer(response.encodeHeader(queryMessageResult
+//                                .getBufferTotalSize()), queryMessageResult);
+//                ctx.channel().writeAndFlush(fileRegion).addListener(new ChannelFutureListener() {
+//                    @Override
+//                    public void operationComplete(ChannelFuture future) throws Exception {
+//                        queryMessageResult.release();
+//                        if (!future.isSuccess()) {
+//                            log.error("transfer query message by page cache failed, ", future.cause());
+//                        }
+//                    }
+//                });
+//            } catch (Throwable e) {
+//                log.error("", e);
+//                queryMessageResult.release();
+//            }
+//            return null;
+//        }
+//        response.setCode(ResponseCode.QUERY_NOT_FOUND);
+//        response.setRemark("can not find message, maybe time range not correct");
+//        return response;
+        return null;
     }
 
     /**

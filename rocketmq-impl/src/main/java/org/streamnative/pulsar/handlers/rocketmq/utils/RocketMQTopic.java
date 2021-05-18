@@ -38,16 +38,20 @@ public class RocketMQTopic {
     private static final TopicDomain domain = TopicDomain.persistent;
     private static final Collection<String> ROCKETMQ_SYSTEM_TOPICS = Arrays
             .asList(MixAll.AUTO_CREATE_TOPIC_KEY_TOPIC, MixAll.BENCHMARK_TOPIC);
-    public static String defaultTenant = "rocketmq";
-    public static String defaultNamespace = "public";
-    public static String metaTenant = "rocketmq";
-    public static String metaNamespace = "__rocketmq";
     @Getter
-    private TopicName pulsarTopicName;
+    private static String defaultTenant = "rocketmq";
+    @Getter
+    private static String defaultNamespace = "public";
+    @Getter
+    private static String metaTenant = "rocketmq";
+    @Getter
+    private static String metaNamespace = "__rocketmq";
+    @Getter
+    private final TopicName pulsarTopicName;
     private String rocketmqTenant = Strings.EMPTY;
     private String rocketmqNs = Strings.EMPTY;
 
-    //rocketmq topicname => namespace%originaltopic   namespace%DLQ%originaltopic  originaltopic %DLQ%originaltopic
+    //rocketmq topicName => namespace%originalTopic   namespace%DLQ%originalTopic  originalTopic %DLQ%originalTopic
     public RocketMQTopic(String defaultTenant, String defaultNamespace, String rmqTopicName) {
         String prefix = NamespaceUtil.getNamespaceFromResource(rmqTopicName);
         if (Strings.isNotBlank(prefix)) {
@@ -74,7 +78,7 @@ public class RocketMQTopic {
         this(defaultTenant, defaultNamespace, rmqTopicName);
     }
 
-    public static final void init(String metaTenant, String metaNamespace, String defaultTenant,
+    public static void init(String metaTenant, String metaNamespace, String defaultTenant,
             String defaultNamespace) {
         RocketMQTopic.defaultTenant = defaultTenant;
         RocketMQTopic.defaultNamespace = defaultNamespace;
@@ -82,23 +86,23 @@ public class RocketMQTopic {
         RocketMQTopic.metaNamespace = metaNamespace;
     }
 
-    public static final String getPulsarOrigNoDomainTopic(String rmqTopic) {
+    public static String getPulsarOrigNoDomainTopic(String rmqTopic) {
         return new RocketMQTopic(rmqTopic).getOrigNoDomainTopicName();
     }
 
-    public static final String getPulsarMetaNoDomainTopic(String rmqTopic) {
+    public static String getPulsarMetaNoDomainTopic(String rmqTopic) {
         return new RocketMQTopic(rmqTopic).getMetaNoDomainTopic();
     }
 
-    public static final String getPulsarDefaultNoDomainTopic(String rmqTopic) {
+    public static String getPulsarDefaultNoDomainTopic(String rmqTopic) {
         return new RocketMQTopic(rmqTopic).getDefaultNoDomainTopic();
     }
 
-    public static final RocketMQTopic getRocketMQMetaTopic(String rmqTopic) {
+    public static RocketMQTopic getRocketMQMetaTopic(String rmqTopic) {
         return new RocketMQTopic(RocketMQTopic.metaTenant, RocketMQTopic.metaNamespace, rmqTopic);
     }
 
-    public static final RocketMQTopic getRocketMQDefaultTopic(String rmqTopic) {
+    public static RocketMQTopic getRocketMQDefaultTopic(String rmqTopic) {
         return new RocketMQTopic(RocketMQTopic.metaTenant, RocketMQTopic.metaNamespace, rmqTopic);
     }
 

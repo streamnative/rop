@@ -14,7 +14,6 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner;
 
-import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
@@ -67,7 +66,6 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ProducerManager;
 public class RocketMQBrokerController {
 
     private final RocketMQServiceConfiguration serverConfig;
-
     private final ConsumerOffsetManager consumerOffsetManager;
     private final ConsumerManager consumerManager;
     private final ProducerManager producerManager;
@@ -77,7 +75,7 @@ public class RocketMQBrokerController {
     private final MessageArrivingListener messageArrivingListener;
     private final SubscriptionGroupManager subscriptionGroupManager;
     private final ConsumerIdsChangeListener consumerIdsChangeListener;
-    private final RebalancedLockManager rebalanceLockManager = new RebalancedLockManager();
+    private final RebalancedLockManager rebalancedLockManager = new RebalancedLockManager();
     private final ScheduledExecutorService scheduledExecutorService = Executors
             .newSingleThreadScheduledExecutor(new ThreadFactoryImpl(
                     "BrokerControllerScheduledThread"));
@@ -107,7 +105,7 @@ public class RocketMQBrokerController {
     private ExecutorService consumerManageExecutor;
     private ExecutorService endTransactionExecutor;
     private BrokerStats brokerStats;
-    private InetSocketAddress storeHost;
+    private String brokerHost;
     private TransactionalMessageCheckService transactionalMessageCheckService;
     private TransactionalMessageService transactionalMessageService;
     private AbstractTransactionalMessageCheckListener transactionalMessageCheckListener;
@@ -147,111 +145,105 @@ public class RocketMQBrokerController {
         this.brokerStatsManager = new BrokerStatsManager(serverConfig.getBrokerName());
         this.remotingServer = new RocketMQRemoteServer(this.serverConfig, this.clientHousekeepingService);
         this.delayedMessageService = new ScheduleMessageService(this, serverConfig);
-
-//        RopRestServer.start(serverConfig.getRopRestServerPort());
     }
 
-    public boolean initialize() throws Exception {
-        boolean result = true;
-        if (result) {
-            this.sendMessageExecutor = new BrokerFixedThreadPoolExecutor(
-                    this.serverConfig.getSendMessageThreadPoolNums(),
-                    this.serverConfig.getSendMessageThreadPoolNums(),
-                    1000 * 60,
-                    TimeUnit.MILLISECONDS,
-                    this.sendThreadPoolQueue,
-                    new ThreadFactoryImpl("SendMessageThread_"));
+    public void initialize() throws Exception {
+        this.sendMessageExecutor = new BrokerFixedThreadPoolExecutor(
+                this.serverConfig.getSendMessageThreadPoolNums(),
+                this.serverConfig.getSendMessageThreadPoolNums(),
+                1000 * 60,
+                TimeUnit.MILLISECONDS,
+                this.sendThreadPoolQueue,
+                new ThreadFactoryImpl("SendMessageThread_"));
 
-            this.pullMessageExecutor = new BrokerFixedThreadPoolExecutor(
-                    this.serverConfig.getPullMessageThreadPoolNums(),
-                    this.serverConfig.getPullMessageThreadPoolNums(),
-                    1000 * 60,
-                    TimeUnit.MILLISECONDS,
-                    this.pullThreadPoolQueue,
-                    new ThreadFactoryImpl("PullMessageThread_"));
+        this.pullMessageExecutor = new BrokerFixedThreadPoolExecutor(
+                this.serverConfig.getPullMessageThreadPoolNums(),
+                this.serverConfig.getPullMessageThreadPoolNums(),
+                1000 * 60,
+                TimeUnit.MILLISECONDS,
+                this.pullThreadPoolQueue,
+                new ThreadFactoryImpl("PullMessageThread_"));
 
-            this.queryMessageExecutor = new BrokerFixedThreadPoolExecutor(
-                    this.serverConfig.getQueryMessageThreadPoolNums(),
-                    this.serverConfig.getQueryMessageThreadPoolNums(),
-                    1000 * 60,
-                    TimeUnit.MILLISECONDS,
-                    this.queryThreadPoolQueue,
-                    new ThreadFactoryImpl("QueryMessageThread_"));
+        this.queryMessageExecutor = new BrokerFixedThreadPoolExecutor(
+                this.serverConfig.getQueryMessageThreadPoolNums(),
+                this.serverConfig.getQueryMessageThreadPoolNums(),
+                1000 * 60,
+                TimeUnit.MILLISECONDS,
+                this.queryThreadPoolQueue,
+                new ThreadFactoryImpl("QueryMessageThread_"));
 
-            this.adminBrokerExecutor =
-                    Executors
-                            .newFixedThreadPool(this.serverConfig.getAdminBrokerThreadPoolNums(), new ThreadFactoryImpl(
-                                    "AdminBrokerThread_"));
+        this.adminBrokerExecutor =
+                Executors
+                        .newFixedThreadPool(this.serverConfig.getAdminBrokerThreadPoolNums(), new ThreadFactoryImpl(
+                                "AdminBrokerThread_"));
 
-            this.clientManageExecutor = new ThreadPoolExecutor(
-                    this.serverConfig.getClientManageThreadPoolNums(),
-                    this.serverConfig.getClientManageThreadPoolNums(),
-                    1000 * 60,
-                    TimeUnit.MILLISECONDS,
-                    this.clientManagerThreadPoolQueue,
-                    new ThreadFactoryImpl("ClientManageThread_"));
+        this.clientManageExecutor = new ThreadPoolExecutor(
+                this.serverConfig.getClientManageThreadPoolNums(),
+                this.serverConfig.getClientManageThreadPoolNums(),
+                1000 * 60,
+                TimeUnit.MILLISECONDS,
+                this.clientManagerThreadPoolQueue,
+                new ThreadFactoryImpl("ClientManageThread_"));
 
-            this.heartbeatExecutor = new BrokerFixedThreadPoolExecutor(
-                    this.serverConfig.getHeartbeatThreadPoolNums(),
-                    this.serverConfig.getHeartbeatThreadPoolNums(),
-                    1000 * 60,
-                    TimeUnit.MILLISECONDS,
-                    this.heartbeatThreadPoolQueue,
-                    new ThreadFactoryImpl("HeartbeatThread_", true));
+        this.heartbeatExecutor = new BrokerFixedThreadPoolExecutor(
+                this.serverConfig.getHeartbeatThreadPoolNums(),
+                this.serverConfig.getHeartbeatThreadPoolNums(),
+                1000 * 60,
+                TimeUnit.MILLISECONDS,
+                this.heartbeatThreadPoolQueue,
+                new ThreadFactoryImpl("HeartbeatThread_", true));
 
-            this.endTransactionExecutor = new BrokerFixedThreadPoolExecutor(
-                    this.serverConfig.getEndTransactionThreadPoolNums(),
-                    this.serverConfig.getEndTransactionThreadPoolNums(),
-                    1000 * 60,
-                    TimeUnit.MILLISECONDS,
-                    this.endTransactionThreadPoolQueue,
-                    new ThreadFactoryImpl("EndTransactionThread_"));
+        this.endTransactionExecutor = new BrokerFixedThreadPoolExecutor(
+                this.serverConfig.getEndTransactionThreadPoolNums(),
+                this.serverConfig.getEndTransactionThreadPoolNums(),
+                1000 * 60,
+                TimeUnit.MILLISECONDS,
+                this.endTransactionThreadPoolQueue,
+                new ThreadFactoryImpl("EndTransactionThread_"));
 
-            this.consumerManageExecutor =
-                    Executors.newFixedThreadPool(this.serverConfig.getConsumerManageThreadPoolNums(),
-                            new ThreadFactoryImpl(
-                                    "ConsumerManageThread_"));
+        this.consumerManageExecutor =
+                Executors.newFixedThreadPool(this.serverConfig.getConsumerManageThreadPoolNums(),
+                        new ThreadFactoryImpl(
+                                "ConsumerManageThread_"));
 
-            this.registerProcessor();
+        this.registerProcessor();
 
-            final long initialDelay = UtilAll.computeNextMorningTimeMillis() - System.currentTimeMillis();
-            final long period = 1000 * 60 * 60 * 24;
-            this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
-                @Override
-                public void run() {
-                    try {
-                        RocketMQBrokerController.this.getBrokerStats().record();
-                    } catch (Throwable e) {
-                        log.error("schedule record error.", e);
-                    }
+        final long initialDelay = UtilAll.computeNextMorningTimeMillis() - System.currentTimeMillis();
+        final long period = 1000 * 60 * 60 * 24;
+        this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    RocketMQBrokerController.this.getBrokerStats().record();
+                } catch (Throwable e) {
+                    log.error("schedule record error.", e);
                 }
-            }, initialDelay, period, TimeUnit.MILLISECONDS);
+            }
+        }, initialDelay, period, TimeUnit.MILLISECONDS);
 
-            this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
-                @Override
-                public void run() {
-                    try {
-                        RocketMQBrokerController.this.consumerOffsetManager.persist();
-                    } catch (Throwable e) {
-                        log.error("schedule persist consumerOffset error.", e);
-                    }
+        this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    RocketMQBrokerController.this.consumerOffsetManager.persist();
+                } catch (Throwable e) {
+                    log.error("schedule persist consumerOffset error.", e);
                 }
-            }, 1000 * 10, this.serverConfig.getFlushConsumerOffsetInterval(), TimeUnit.MILLISECONDS);
+            }
+        }, 1000 * 10, this.serverConfig.getFlushConsumerOffsetInterval(), TimeUnit.MILLISECONDS);
 
-            this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
-                @Override
-                public void run() {
-                    try {
-                        RocketMQBrokerController.this.printWaterMark();
-                    } catch (Throwable e) {
-                        log.error("printWaterMark error.", e);
-                    }
+        this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    RocketMQBrokerController.this.printWaterMark();
+                } catch (Throwable e) {
+                    log.error("printWaterMark error.", e);
                 }
-            }, 60, 30, TimeUnit.SECONDS);
+            }
+        }, 60, 30, TimeUnit.SECONDS);
 
-            initialTransaction();
-        }
-        return result;
+        initialTransaction();
     }
 
     private void initialTransaction() {
@@ -275,9 +267,8 @@ public class RocketMQBrokerController {
     }
 
     public void registerProcessor() throws PulsarServerException {
-        /**
-         * SendMessageProcessor
-         */
+
+        // SendMessageProcessor
         SendMessageProcessor sendProcessor = new SendMessageProcessor(this);
         sendProcessor.registerSendMessageHook(sendMessageHookList);
         sendProcessor.registerConsumeMessageHook(consumeMessageHookList);
@@ -287,24 +278,20 @@ public class RocketMQBrokerController {
         this.remotingServer.registerProcessor(RequestCode.SEND_BATCH_MESSAGE, sendProcessor, this.sendMessageExecutor);
         this.remotingServer
                 .registerProcessor(RequestCode.CONSUMER_SEND_MSG_BACK, sendProcessor, this.sendMessageExecutor);
-        /**
-         * PullMessageProcessor
-         */
+
+        // PullMessageProcessor
         this.remotingServer
                 .registerProcessor(RequestCode.PULL_MESSAGE, this.pullMessageProcessor, this.pullMessageExecutor);
         this.pullMessageProcessor.registerConsumeMessageHook(consumeMessageHookList);
 
-        /**
-         * QueryMessageProcessor
-         */
+        // QueryMessageProcessor
         NettyRequestProcessor queryProcessor = new QueryMessageProcessor(this);
         this.remotingServer.registerProcessor(RequestCode.QUERY_MESSAGE, queryProcessor, this.queryMessageExecutor);
         this.remotingServer
                 .registerProcessor(RequestCode.VIEW_MESSAGE_BY_ID, queryProcessor, this.queryMessageExecutor);
 
-        /**
-         * ClientManageProcessor
-         */
+
+        // ClientManageProcessor
         ClientManageProcessor clientProcessor = new ClientManageProcessor(this);
         this.remotingServer.registerProcessor(RequestCode.HEART_BEAT, clientProcessor, this.heartbeatExecutor);
         this.remotingServer
@@ -312,9 +299,8 @@ public class RocketMQBrokerController {
         this.remotingServer
                 .registerProcessor(RequestCode.CHECK_CLIENT_CONFIG, clientProcessor, this.clientManageExecutor);
 
-        /**
-         * ConsumerManageProcessor
-         */
+
+        // ConsumerManageProcessor
         ConsumerManageProcessor consumerManageProcessor = new ConsumerManageProcessor(this);
         this.remotingServer.registerProcessor(RequestCode.GET_CONSUMER_LIST_BY_GROUP, consumerManageProcessor,
                 this.consumerManageExecutor);
@@ -323,15 +309,13 @@ public class RocketMQBrokerController {
         this.remotingServer.registerProcessor(RequestCode.QUERY_CONSUMER_OFFSET, consumerManageProcessor,
                 this.consumerManageExecutor);
 
-        /**
-         * EndTransactionProcessor
-         */
+
+        // EndTransactionProcessor
         this.remotingServer.registerProcessor(RequestCode.END_TRANSACTION, new EndTransactionProcessor(this),
                 this.endTransactionExecutor);
 
-        /**
-         * NameserverProcessor
-         */
+
+        // NameserverProcessor
         NameserverProcessor namesvrProcessor = new NameserverProcessor(this);
         this.remotingServer.registerProcessor(RequestCode.PUT_KV_CONFIG, namesvrProcessor, this.adminBrokerExecutor);
         this.remotingServer.registerProcessor(RequestCode.GET_KV_CONFIG, namesvrProcessor, this.adminBrokerExecutor);
@@ -368,9 +352,8 @@ public class RocketMQBrokerController {
         this.remotingServer
                 .registerProcessor(RequestCode.GET_NAMESRV_CONFIG, namesvrProcessor, this.adminBrokerExecutor);
 
-        /**
-         * Default
-         */
+
+        // Default
         AdminBrokerProcessor adminProcessor = new AdminBrokerProcessor(this);
         this.remotingServer.registerDefaultProcessor(adminProcessor, this.adminBrokerExecutor);
     }
