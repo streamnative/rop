@@ -941,8 +941,8 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
                         requestHeader.getClientAddr());
     }
 
-    private RemotingCommand queryTopicConsumeByWho(ChannelHandlerContext ctx,
-            RemotingCommand request) throws RemotingCommandException {
+    private RemotingCommand queryTopicConsumeByWho(ChannelHandlerContext ctx, RemotingCommand request)
+            throws RemotingCommandException {
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
         QueryTopicConsumeByWhoRequestHeader requestHeader =
                 (QueryTopicConsumeByWhoRequestHeader) request
@@ -950,15 +950,11 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
 
         String rmqTopicName = requestHeader.getTopic();
 
-        HashSet<String> groups = this.brokerController.getConsumerManager()
-                .queryTopicConsumeByWho(rmqTopicName);
+        HashSet<String> groups = this.brokerController.getConsumerManager().queryTopicConsumeByWho(rmqTopicName);
 
-        Set<String> groupInOffset = this.brokerController.getConsumerOffsetManager()
-                .whichGroupByTopic(rmqTopicName);
-        if (groupInOffset != null && !groupInOffset.isEmpty()) {
-            groups.addAll(groupInOffset);
-        }
+        Set<String> groupInOffset = this.brokerController.getConsumerOffsetManager().whichGroupByTopic(rmqTopicName);
 
+        // If the group in offset manager is not belong to the topic, exclude this group.
         PulsarAdmin pulsarAdmin = null;
         try {
             pulsarAdmin = this.brokerController.getBrokerService().pulsar().getAdminClient();
@@ -971,11 +967,16 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
             try {
                 PartitionedTopicStats partitionedTopicStats =
                         pulsarAdmin.topics().getPartitionedStats(pulsarTopicName, false);
-                groups.removeIf(g -> !partitionedTopicStats.subscriptions
+                groupInOffset.removeIf(g -> !partitionedTopicStats.subscriptions
                         .containsKey(new ClientGroupName(g).getPulsarGroupName()));
             } catch (PulsarAdminException e) {
                 log.warn("queryTopicConsumeByWho getPartitionedStats failed", e);
             }
+        }
+
+        // Merge group in offset manager and consumer manager into group table.
+        if (groupInOffset != null && !groupInOffset.isEmpty()) {
+            groups.addAll(groupInOffset);
         }
 
         GroupList groupList = new GroupList();
