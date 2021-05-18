@@ -30,6 +30,9 @@ jobs:
       - name: Style check
         run: mvn checkstyle:check
 
+      - name: Spotbugs check
+        run: mvn spotbugs:check
+
       - name: rocketmq-impl test after build
         run: mvn test -DfailIfNoTests=false -pl rocketmq-impl
 
