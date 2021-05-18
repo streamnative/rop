@@ -239,7 +239,7 @@ public class RocketMQStandalone implements AutoCloseable {
     public void start() throws Exception {
 
         if (config == null) {
-            System.exit(1);
+            throw new RuntimeException("The config file is null");
         }
 
         log.debug("--- setup PulsarStandaloneStarter ---");
@@ -324,8 +324,6 @@ public class RocketMQStandalone implements AutoCloseable {
             broker.getTransactionMetadataStoreService().addTransactionMetadataStore(TransactionCoordinatorID.get(0));
         }
 
-        final String cluster = config.getClusterName();
-
         if (!config.isTlsEnabled()) {
             URL webServiceUrl = new URL(
                     String.format("http://%s:%d", config.getAdvertisedAddress(), config.getWebServicePort().get()));
@@ -355,6 +353,7 @@ public class RocketMQStandalone implements AutoCloseable {
             }
 
             admin = builder.build();
+            log.info("Build pulsar admin client: {}", admin.getServiceUrl());
         }
 
         log.debug("--- setup completed ---");

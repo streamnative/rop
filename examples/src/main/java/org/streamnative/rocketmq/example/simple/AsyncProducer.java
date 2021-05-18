@@ -64,7 +64,11 @@ public class AsyncProducer {
                 e.printStackTrace();
             }
         }
-        countDownLatch.await(5, TimeUnit.SECONDS);
+        try {
+            countDownLatch.await(5, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
         producer.shutdown();
     }
 }

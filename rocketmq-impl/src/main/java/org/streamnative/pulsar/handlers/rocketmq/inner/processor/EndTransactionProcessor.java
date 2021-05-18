@@ -32,7 +32,6 @@ import org.apache.rocketmq.remoting.exception.RemotingCommandException;
 import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.store.MessageExtBrokerInner;
-import org.apache.rocketmq.store.PutMessageResult;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 
 /**
@@ -214,52 +213,53 @@ public class EndTransactionProcessor implements NettyRequestProcessor {
     }
 
     private RemotingCommand sendFinalMessage(MessageExtBrokerInner msgInner) {
-        final RemotingCommand response = RemotingCommand.createResponseCommand(null);
-        final PutMessageResult putMessageResult = null/*this.brokerController.getMessageStore().putMessage(msgInner)*/;
-        if (putMessageResult != null) {
-            switch (putMessageResult.getPutMessageStatus()) {
-                // Success
-                case PUT_OK:
-                case FLUSH_DISK_TIMEOUT:
-                case FLUSH_SLAVE_TIMEOUT:
-                case SLAVE_NOT_AVAILABLE:
-                    response.setCode(ResponseCode.SUCCESS);
-                    response.setRemark(null);
-                    break;
-                // Failed
-                case CREATE_MAPEDFILE_FAILED:
-                    response.setCode(ResponseCode.SYSTEM_ERROR);
-                    response.setRemark("Create mapped file failed.");
-                    break;
-                case MESSAGE_ILLEGAL:
-                case PROPERTIES_SIZE_EXCEEDED:
-                    response.setCode(ResponseCode.MESSAGE_ILLEGAL);
-                    response.setRemark(
-                            "The message is illegal, maybe msg body or properties length not matched. "
-                                    + "msg body length limit 128k, msg properties length limit 32k.");
-                    break;
-                case SERVICE_NOT_AVAILABLE:
-                    response.setCode(ResponseCode.SERVICE_NOT_AVAILABLE);
-                    response.setRemark("Service not available now.");
-                    break;
-                case OS_PAGECACHE_BUSY:
-                    response.setCode(ResponseCode.SYSTEM_ERROR);
-                    response.setRemark("OS page cache busy, please try another machine");
-                    break;
-                case UNKNOWN_ERROR:
-                    response.setCode(ResponseCode.SYSTEM_ERROR);
-                    response.setRemark("UNKNOWN_ERROR");
-                    break;
-                default:
-                    response.setCode(ResponseCode.SYSTEM_ERROR);
-                    response.setRemark("UNKNOWN_ERROR DEFAULT");
-                    break;
-            }
-            return response;
-        } else {
-            response.setCode(ResponseCode.SYSTEM_ERROR);
-            response.setRemark("store putMessage return null");
-        }
-        return response;
+//        final RemotingCommand response = RemotingCommand.createResponseCommand(null);
+//        final PutMessageResult putMessageResult = null/*this.brokerController.getMessageStore().putMessage(msgInner);
+//        if (putMessageResult != null) {
+//            switch (putMessageResult.getPutMessageStatus()) {
+//                // Success
+//                case PUT_OK:
+//                case FLUSH_DISK_TIMEOUT:
+//                case FLUSH_SLAVE_TIMEOUT:
+//                case SLAVE_NOT_AVAILABLE:
+//                    response.setCode(ResponseCode.SUCCESS);
+//                    response.setRemark(null);
+//                    break;
+//                // Failed
+//                case CREATE_MAPEDFILE_FAILED:
+//                    response.setCode(ResponseCode.SYSTEM_ERROR);
+//                    response.setRemark("Create mapped file failed.");
+//                    break;
+//                case MESSAGE_ILLEGAL:
+//                case PROPERTIES_SIZE_EXCEEDED:
+//                    response.setCode(ResponseCode.MESSAGE_ILLEGAL);
+//                    response.setRemark(
+//                            "The message is illegal, maybe msg body or properties length not matched. "
+//                                    + "msg body length limit 128k, msg properties length limit 32k.");
+//                    break;
+//                case SERVICE_NOT_AVAILABLE:
+//                    response.setCode(ResponseCode.SERVICE_NOT_AVAILABLE);
+//                    response.setRemark("Service not available now.");
+//                    break;
+//                case OS_PAGECACHE_BUSY:
+//                    response.setCode(ResponseCode.SYSTEM_ERROR);
+//                    response.setRemark("OS page cache busy, please try another machine");
+//                    break;
+//                case UNKNOWN_ERROR:
+//                    response.setCode(ResponseCode.SYSTEM_ERROR);
+//                    response.setRemark("UNKNOWN_ERROR");
+//                    break;
+//                default:
+//                    response.setCode(ResponseCode.SYSTEM_ERROR);
+//                    response.setRemark("UNKNOWN_ERROR DEFAULT");
+//                    break;
+//            }
+//            return response;
+//        } else {
+//            response.setCode(ResponseCode.SYSTEM_ERROR);
+//            response.setRemark("store putMessage return null");
+//        }
+//        return response;
+        return null;
     }
 }

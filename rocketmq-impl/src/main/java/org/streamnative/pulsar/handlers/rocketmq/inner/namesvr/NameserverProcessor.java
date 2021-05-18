@@ -185,27 +185,29 @@ public class NameserverProcessor implements NettyRequestProcessor {
         if (Strings.isNotBlank(requestTopic)) {
             RocketMQTopic mqTopic = new RocketMQTopic(requestTopic);
             Map<Integer, InetSocketAddress> topicBrokerAddr =
-                    mqTopicManager.getTopicBrokerAddr(mqTopic.getPulsarTopicName(), "");
+                    mqTopicManager.getTopicBrokerAddr(mqTopic.getPulsarTopicName(), Strings.EMPTY);
             try {
                 if (topicBrokerAddr != null && topicBrokerAddr.size() > 0) {
-                    topicBrokerAddr.forEach((i, addr) -> {
-                        String hostName = addr.getHostName();
-                        String ropBrokerAddress = getBrokerAddressByListenerName(hostName, listenerName);
+                    Set<String> brokerNames = Sets.newHashSet();
+                    topicBrokerAddr.forEach((i, addr) -> brokerNames.add(addr.getHostName()));
+
+                    for (String brokerName : brokerNames) {
+                        String ropBrokerAddress = getBrokerAddressByListenerName(brokerName, listenerName);
 
                         HashMap<Long, String> brokerAddrs = new HashMap<>();
                         brokerAddrs.put(0L, ropBrokerAddress);
-                        BrokerData brokerData = new BrokerData(clusterName, hostName, brokerAddrs);
+                        BrokerData brokerData = new BrokerData(clusterName, brokerName, brokerAddrs);
                         brokerDatas.add(brokerData);
                         topicRouteData.setBrokerDatas(brokerDatas);
 
                         QueueData queueData = new QueueData();
-                        queueData.setBrokerName(hostName);
+                        queueData.setBrokerName(brokerName);
                         queueData.setReadQueueNums(topicBrokerAddr.size());
                         queueData.setWriteQueueNums(topicBrokerAddr.size());
                         queueData.setPerm(PERM_WRITE | PERM_READ);
                         queueDatas.add(queueData);
                         topicRouteData.setQueueDatas(queueDatas);
-                    });
+                    }
 
                     byte[] content = topicRouteData.encode();
                     response.setBody(content);

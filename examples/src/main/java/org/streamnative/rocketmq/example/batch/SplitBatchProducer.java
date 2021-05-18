@@ -35,7 +35,8 @@ public class SplitBatchProducer {
         String topic = "BatchTest";
         List<Message> messages = new ArrayList<>(100 * 1000);
         for (int i = 0; i < 100 * 1000; i++) {
-            messages.add(new Message(topic, "Tag", "OrderID" + i, ("Hello world " + i).getBytes()));
+            messages.add(new Message(topic, "Tag", "OrderID" + i, ("Hello world " + i)
+                    .getBytes("GBK")));
         }
 
         //split the large batch into small ones:

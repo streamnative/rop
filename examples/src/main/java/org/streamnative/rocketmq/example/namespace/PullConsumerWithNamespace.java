@@ -14,6 +14,7 @@
 
 package org.streamnative.rocketmq.example.namespace;
 
+import java.io.UnsupportedEncodingException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
@@ -82,10 +83,18 @@ public class PullConsumerWithNamespace {
         if (null == pullResult || pullResult.getMsgFoundList().isEmpty()) {
             return;
         }
-        pullResult.getMsgFoundList().stream().forEach(
-                (msg) -> System.out
-                        .printf("Payload is: %s, Topic is:%s, msgId is:%s%n", new String(msg.getBody()), msg.getTopic(),
-                                msg.getMsgId()));
+        pullResult.getMsgFoundList().forEach(
+                (msg) -> {
+                    try {
+                        System.out
+                                .printf("Payload is: %s, Topic is:%s, msgId is:%s%n",
+                                        new String(msg.getBody(), "GBK"),
+                                        msg.getTopic(),
+                                        msg.getMsgId());
+                    } catch (UnsupportedEncodingException e) {
+                        e.printStackTrace();
+                    }
+                });
     }
 
     private static void putMessageQueueOffset(MessageQueue mq, long offset) {

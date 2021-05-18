@@ -47,6 +47,7 @@ public class PullRequestHoldService extends ServiceThread {
 
     public void suspendPullRequest(final String topic, final int queueId, final PullRequest pullRequest) {
         String key = this.buildKey(topic, queueId);
+
         ManyPullRequest mpr = this.pullRequestTable.get(key);
         if (null == mpr) {
             mpr = new ManyPullRequest();
@@ -99,18 +100,21 @@ public class PullRequestHoldService extends ServiceThread {
             if (2 == kArray.length) {
                 String topic = kArray[0];
                 int queueId = Integer.parseInt(kArray[1]);
-                long offset;
+                long offset = Long.MAX_VALUE;
                 try {
-                    offset = this.brokerController.getConsumerOffsetManager()
-                            .getMaxOffsetInQueue(new ClientTopicName(topic), queueId);
-                } catch (Exception e) {
-                    offset = Long.MAX_VALUE;
-                    log.warn("check hold request failed. topic: {}, queueId: {} ", topic, queueId, e);
+                    ClientTopicName clientTopicName = new ClientTopicName(topic);
+                    if (this.brokerController.getTopicConfigManager()
+                            .isPartitionTopicOwner(clientTopicName.toPulsarTopicName(), queueId)) {
+                        offset = this.brokerController.getConsumerOffsetManager()
+                                .getMaxOffsetInQueue(new ClientTopicName(topic), queueId);
+                    }
+                } catch (RopPersistentTopicException e) {
+                    //
                 }
                 try {
                     this.notifyMessageArriving(topic, queueId, offset);
-                } catch (Throwable e) {
-                    log.error("check hold request failed. topic={}, queueId={}", topic, queueId, e);
+                } catch (Throwable th) {
+                    log.warn("check hold request failed. topic: {}, queueId: {} ", topic, queueId, th);
                 }
             }
         }

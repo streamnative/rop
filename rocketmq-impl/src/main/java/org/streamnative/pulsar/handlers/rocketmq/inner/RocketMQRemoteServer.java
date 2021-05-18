@@ -136,9 +136,6 @@ public class RocketMQRemoteServer extends NettyRemotingAbstract implements Remot
 
     @Override
     public void start() {
-        //Preconditions.checkNotNull(this.rocketMQChannel, "RocketMQ channel isn't initialized.");
-        //this.port = this.rocketMQChannel.localAddress().getPort();
-
         if (this.channelEventListener != null) {
             this.nettyEventExecutor.start();
         }

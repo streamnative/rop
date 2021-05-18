@@ -49,7 +49,7 @@
         <jcommander.version>1.48</jcommander.version>
         <log4j2.version>2.13.3</log4j2.version>
         <lombok.version>1.18.0</lombok.version>
-        <netty.version>4.1.34.Final</netty.version>
+        <netty.version>4.1.63.Final</netty.version>
         <mockito.version>2.22.0</mockito.version>
         <slf4j.version>1.7.25</slf4j.version>
         <!-- core dependencies-->
@@ -58,6 +58,7 @@
         <pulsar.version>2.7.1</pulsar.version>
         <license-maven-plugin.version>3.0.rc1</license-maven-plugin.version>
         <spotbugs-annotations.version>3.1.8</spotbugs-annotations.version>
+        <spotbugs-maven-plugin.version>3.1.8</spotbugs-maven-plugin.version>
         <maven-checkstyle-plugin.version>3.0.0</maven-checkstyle-plugin.version>
         <puppycrawl.checkstyle.version>6.19</puppycrawl.checkstyle.version>
         <maven.compiler.source>8</maven.compiler.source>
@@ -307,6 +308,15 @@
             </plugins>
         </pluginManagement>
         <plugins>
+            <plugin>
+                <groupId>com.github.spotbugs</groupId>
+                <artifactId>spotbugs-maven-plugin</artifactId>
+                <version>${spotbugs-maven-plugin.version}</version>
+                <configuration>
+                    <excludeFilterFile>resources/findbugsExclude.xml</excludeFilterFile>
+                </configuration>
+            </plugin>
+
             <plugin>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>${maven-surefire-plugin.version}</version>

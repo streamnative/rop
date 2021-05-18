@@ -25,7 +25,6 @@ import lombok.ToString;
 import org.apache.pulsar.common.naming.TopicName;
 import org.apache.rocketmq.common.protocol.NamespaceUtil;
 import org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils;
-import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 
 /**
  * Client topic name.
@@ -40,21 +39,16 @@ public class ClientTopicName implements Serializable {
 
     public ClientTopicName(String rmqTopicName) {
         this.rmqTopicName = rmqTopicName;
-        this.pulsarTopicName = CommonUtils.tdmqGroupName(this.rmqTopicName);
+        this.pulsarTopicName = CommonUtils.pulsarGroupName(this.rmqTopicName);
     }
 
     public ClientTopicName(TopicName pulsarTopicName) {
         TopicName tempTopic = TopicName.get(pulsarTopicName.getPartitionedTopicName());
         this.pulsarTopicName = Joiner.on(SLASH_CHAR)
                 .join(tempTopic.getTenant(), tempTopic.getNamespacePortion(), tempTopic.getLocalName());
-        if (pulsarTopicName.getTenant() == RocketMQTopic.metaTenant
-                && (pulsarTopicName.getNamespacePortion() == RocketMQTopic.metaNamespace
-                || pulsarTopicName.getNamespacePortion() == RocketMQTopic.defaultNamespace)) {
-            this.rmqTopicName = tempTopic.getLocalName();
-        } else {
-            String rmqNamespace = tempTopic.getTenant() + VERTICAL_LINE_CHAR + tempTopic.getNamespacePortion();
-            this.rmqTopicName = NamespaceUtil.wrapNamespace(rmqNamespace, tempTopic.getLocalName());
-        }
+
+        String rmqNamespace = tempTopic.getTenant() + VERTICAL_LINE_CHAR + tempTopic.getNamespacePortion();
+        this.rmqTopicName = NamespaceUtil.wrapNamespace(rmqNamespace, tempTopic.getLocalName());
     }
 
     public TopicName toPulsarTopicName() {

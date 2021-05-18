@@ -19,6 +19,7 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.rocketmq.broker.transaction.OperationResult;
@@ -49,8 +50,8 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
     private static final int PULL_MSG_RETRY_NUMBER = 1;
     private static final int MAX_PROCESS_TIME_LIMIT = 60000;
     private static final int MAX_RETRY_COUNT_WHEN_HALF_NULL = 1;
-    private TransactionalMessageBridge transactionalMessageBridge;
-    private ConcurrentHashMap<MessageQueue, MessageQueue> opQueueMap = new ConcurrentHashMap<>();
+    private final TransactionalMessageBridge transactionalMessageBridge;
+    private final Map<MessageQueue, MessageQueue> opQueueMap = new ConcurrentHashMap<>();
 
     public TransactionalMessageServiceImpl(TransactionalMessageBridge transactionBridge) {
         this.transactionalMessageBridge = transactionBridge;
@@ -77,14 +78,14 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
     }
 
     private boolean needSkip(MessageExt msgExt) {
-        long valueOfCurrentMinusBorn = System.currentTimeMillis() - msgExt.getBornTimestamp();
-/* TODO:       if (valueOfCurrentMinusBorn
-                > transactionalMessageBridge.getBrokerController().getMessageStoreConfig().getFileReservedTime()
-                * 3600L * 1000) {
-            log.info("Half message exceed file reserved time ,so skip it.messageId {},bornTime {}",
-                    msgExt.getMsgId(), msgExt.getBornTimestamp());
-            return true;
-        }*/
+//        long valueOfCurrentMinusBorn = System.currentTimeMillis() - msgExt.getBornTimestamp();
+//        if (valueOfCurrentMinusBorn
+//                > transactionalMessageBridge.getBrokerController().getMessageStoreConfig().getFileReservedTime()
+//                * 3600L * 1000) {
+//            log.info("Half message exceed file reserved time ,so skip it.messageId {},bornTime {}",
+//                    msgExt.getMsgId(), msgExt.getBornTimestamp());
+//            return true;
+//        }
         return false;
     }
 

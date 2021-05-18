@@ -25,7 +25,6 @@ import lombok.EqualsAndHashCode;
 import lombok.ToString;
 import org.apache.pulsar.common.naming.TopicName;
 import org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils;
-import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 
 /**
  * Client Group Name, consists of rmqGroupName and pulsarGroupName.
@@ -40,22 +39,17 @@ public class ClientGroupName implements Serializable {
 
     public ClientGroupName(String rmqGroupName) {
         this.rmqGroupName = rmqGroupName;
-        this.pulsarGroupName = CommonUtils.tdmqGroupName(this.rmqGroupName);
+        this.pulsarGroupName = CommonUtils.pulsarGroupName(this.rmqGroupName);
     }
 
     public ClientGroupName(TopicName pulsarGroupName) {
         this.pulsarGroupName = Joiner.on(SLASH_CHAR)
                 .join(pulsarGroupName.getTenant(), pulsarGroupName.getNamespacePortion(),
                         pulsarGroupName.getLocalName());
-        if (pulsarGroupName.getTenant() == RocketMQTopic.metaTenant
-                && (pulsarGroupName.getNamespacePortion() == RocketMQTopic.metaNamespace
-                || pulsarGroupName.getNamespacePortion() == RocketMQTopic.defaultNamespace)) {
-            this.rmqGroupName = pulsarGroupName.getLocalName();
-        } else {
-            this.rmqGroupName =
-                    pulsarGroupName.getTenant() + VERTICAL_LINE_CHAR + pulsarGroupName.getNamespacePortion()
-                            + PERCENTAGE_CHAR + pulsarGroupName
-                            .getLocalName();
-        }
+
+        this.rmqGroupName =
+                pulsarGroupName.getTenant() + VERTICAL_LINE_CHAR + pulsarGroupName.getNamespacePortion()
+                        + PERCENTAGE_CHAR + pulsarGroupName
+                        .getLocalName();
     }
 }
