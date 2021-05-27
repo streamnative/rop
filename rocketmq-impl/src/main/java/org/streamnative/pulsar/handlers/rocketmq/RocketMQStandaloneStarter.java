@@ -85,9 +85,6 @@ public class RocketMQStandaloneStarter extends RocketMQStandalone {
         Runtime.getRuntime().addShutdownHook(new Thread() {
             public void run() {
                 try {
-                    if (fnWorkerService != null) {
-                        fnWorkerService.stop();
-                    }
 
                     if (broker != null) {
                         broker.close();

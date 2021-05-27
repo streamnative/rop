@@ -14,17 +14,13 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.utils;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.apache.logging.log4j.util.Strings;
 import org.apache.pulsar.client.api.SubscriptionInitialPosition;
 import org.apache.pulsar.client.api.SubscriptionType;
-import org.apache.pulsar.common.api.proto.PulsarApi.CommandSubscribe.InitialPosition;
-import org.apache.pulsar.common.api.proto.PulsarApi.CommandSubscribe.SubType;
-import org.apache.pulsar.common.api.proto.PulsarApi.KeyValue;
+import org.apache.pulsar.common.api.proto.CommandSubscribe.InitialPosition;
+import org.apache.pulsar.common.api.proto.CommandSubscribe.SubType;
 
 /**
  * Pulsar utils class.
@@ -57,20 +53,6 @@ public class PulsarUtil {
             default:
                 return SubType.Exclusive;
         }
-    }
-
-    public static List<KeyValue> convertFromStringMap(Map<String, String> stringMap) {
-        List<KeyValue> keyValueList = new ArrayList<>();
-        for (Map.Entry<String, String> entry : stringMap.entrySet()) {
-            KeyValue build = KeyValue.newBuilder()
-                    .setKey(entry.getKey())
-                    .setValue(entry.getValue())
-                    .build();
-
-            keyValueList.add(build);
-        }
-
-        return keyValueList;
     }
 
     public static String getBrokerHost(String brokerAddress) {

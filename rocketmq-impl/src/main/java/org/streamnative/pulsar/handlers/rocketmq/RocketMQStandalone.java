@@ -29,7 +29,6 @@ import org.apache.pulsar.broker.ServiceConfigurationUtils;
 import org.apache.pulsar.client.admin.PulsarAdmin;
 import org.apache.pulsar.client.admin.PulsarAdminBuilder;
 import org.apache.pulsar.functions.worker.WorkerConfig;
-import org.apache.pulsar.functions.worker.WorkerService;
 import org.apache.pulsar.transaction.coordinator.TransactionCoordinatorID;
 import org.apache.pulsar.zookeeper.LocalBookkeeperEnsemble;
 import org.slf4j.Logger;
@@ -46,7 +45,6 @@ public class RocketMQStandalone implements AutoCloseable {
     PulsarAdmin admin;
     LocalBookkeeperEnsemble bkEnsemble;
     ServiceConfiguration config;
-    WorkerService fnWorkerService;
     @Parameter(names = {"-c", "--config"}, description = "Configuration file path", required = true)
     private String configFile;
     @Parameter(names = {"--wipe-data"}, description = "Clean up previous ZK/BK data")
@@ -102,10 +100,6 @@ public class RocketMQStandalone implements AutoCloseable {
 
     public void setBkEnsemble(LocalBookkeeperEnsemble bkEnsemble) {
         this.bkEnsemble = bkEnsemble;
-    }
-
-    public void setFnWorkerService(WorkerService fnWorkerService) {
-        this.fnWorkerService = fnWorkerService;
     }
 
     public ServiceConfiguration getConfig() {
@@ -307,13 +301,11 @@ public class RocketMQStandalone implements AutoCloseable {
 
             // inherit super users
             workerConfig.setSuperUserRoles(config.getSuperUserRoles());
-
-            fnWorkerService = new WorkerService(workerConfig);
         }
 
         // Start Broker
         broker = new PulsarService(config,
-                Optional.ofNullable(fnWorkerService),
+                Optional.empty(),
                 (exitCode) -> {
                     log.info("Halting standalone process with code {}", exitCode);
                     Runtime.getRuntime().halt(exitCode);
@@ -362,9 +354,6 @@ public class RocketMQStandalone implements AutoCloseable {
     @Override
     public void close() {
         try {
-            if (fnWorkerService != null) {
-                fnWorkerService.stop();
-            }
 
             if (broker != null) {
                 broker.close();
