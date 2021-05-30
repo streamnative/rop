@@ -20,6 +20,7 @@ import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
+import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import java.net.SocketAddress;
@@ -37,6 +38,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang.exception.ExceptionUtils;
 import org.apache.pulsar.broker.PulsarServerException;
 import org.apache.pulsar.broker.service.BrokerService;
+import org.apache.pulsar.broker.service.persistent.PersistentTopic;
 import org.apache.pulsar.client.api.Message;
 import org.apache.pulsar.client.api.MessageId;
 import org.apache.pulsar.client.api.Producer;
@@ -194,36 +196,57 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             }
         }
 
-        long producerId = buildPulsarProducerId(producerGroup, pTopic, ctx.channel().remoteAddress().toString());
         try {
-            Producer<byte[]> producer = this.producers.get(producerId);
-            if (producer == null) {
-                log.info("putMessage creating producer[id={}] and channl=[{}].", producerId, ctx.channel());
-                synchronized (this.producers) {
-                    if (this.producers.get(producerId) == null) {
-                        producer = this.service.pulsar().getClient()
-                                .newProducer()
-                                .topic(pTopic)
-                                .maxPendingMessages(500)
-                                .producerName(producerGroup + CommonUtils.UNDERSCORE_CHAR + producerId)
-                                .sendTimeout(sendTimeoutInSec, TimeUnit.MILLISECONDS)
-                                .enableBatching(false)
-                                .create();
-                        Producer<byte[]> oldProducer = this.producers.put(producerId, producer);
-                        if (oldProducer != null) {
-                            oldProducer.closeAsync();
+            List<byte[]> body = this.entryFormatter.encode(messageInner, 1);
+            long offset;
+
+            // TODO: hanmz 2021/5/30 优化写消息生产性能: 如果节点是当前主题的owner，直接使用PersistentTopic接口进行消息发送
+            if (this.brokerController.getTopicConfigManager()
+                    .isPartitionTopicOwner(rmqTopic.getPulsarTopicName(), partitionId)) {
+                ByteBuf headersAndPayload = this.entryFormatter.encode(body.get(0));
+                try {
+                    PersistentTopic persistentTopic = this.brokerController.getConsumerOffsetManager()
+                            .getPulsarPersistentTopic(new ClientTopicName(rmqTopic.getPulsarTopicName()), partitionId);
+
+                    CompletableFuture<Long> offsetFuture = new CompletableFuture<>();
+                    persistentTopic.publishMessage(headersAndPayload, RopMessagePublishContext
+                            .get(offsetFuture, persistentTopic, System.nanoTime(), partitionId));
+                    offset = offsetFuture.get(sendTimeoutInSec, TimeUnit.MILLISECONDS);
+                } finally {
+                    headersAndPayload.release();
+                }
+            } else {
+                long producerId = buildPulsarProducerId(producerGroup, pTopic,
+                        ctx.channel().remoteAddress().toString());
+                Producer<byte[]> producer = this.producers.get(producerId);
+                if (producer == null) {
+                    log.info("putMessage creating producer[id={}] and channl=[{}].", producerId, ctx.channel());
+                    synchronized (this.producers) {
+                        if (this.producers.get(producerId) == null) {
+                            producer = this.service.pulsar().getClient()
+                                    .newProducer()
+                                    .topic(pTopic)
+                                    .maxPendingMessages(500)
+                                    .producerName(producerGroup + CommonUtils.UNDERSCORE_CHAR + producerId)
+                                    .sendTimeout(sendTimeoutInSec, TimeUnit.MILLISECONDS)
+                                    .enableBatching(false)
+                                    .create();
+                            Producer<byte[]> oldProducer = this.producers.put(producerId, producer);
+                            if (oldProducer != null) {
+                                oldProducer.closeAsync();
+                            }
                         }
                     }
                 }
+                MessageIdImpl messageId = (MessageIdImpl) this.producers.get(producerId).send(body.get(0));
+                offset = MessageIdUtils.getOffset(messageId.getLedgerId(), messageId.getEntryId(), partitionId);
             }
-            List<byte[]> body = this.entryFormatter.encode(messageInner, 1);
-            MessageIdImpl messageId = (MessageIdImpl) this.producers.get(producerId).send(body.get(0));
-            long offset = MessageIdUtils.getOffset(messageId.getLedgerId(), messageId.getEntryId(), partitionId);
+
             AppendMessageResult appendMessageResult = new AppendMessageResult(AppendMessageStatus.PUT_OK);
             appendMessageResult.setMsgNum(1);
             appendMessageResult.setWroteBytes(body.get(0).length);
-            appendMessageResult.setMsgId(CommonUtils.createMessageId(this.ctx.channel().localAddress(), localListenPort,
-                    offset));
+            appendMessageResult.setMsgId(
+                    CommonUtils.createMessageId(this.ctx.channel().localAddress(), localListenPort, offset));
             appendMessageResult.setLogicsOffset(offset);
             appendMessageResult.setWroteOffset(offset);
             return new PutMessageResult(PutMessageStatus.PUT_OK, appendMessageResult);
