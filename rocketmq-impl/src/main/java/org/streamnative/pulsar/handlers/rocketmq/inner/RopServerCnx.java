@@ -200,7 +200,11 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             List<byte[]> body = this.entryFormatter.encode(messageInner, 1);
             long offset;
 
-            // TODO: hanmz 2021/5/30 优化写消息生产性能: 如果节点是当前主题的owner，直接使用PersistentTopic接口进行消息发送
+            /*
+             * Optimize the production performance of publish messages.
+             * If the broker is the owner of the current partitioned topic, directly use the PersistentTopic interface
+             * for publish message.
+             */
             if (this.brokerController.getTopicConfigManager()
                     .isPartitionTopicOwner(rmqTopic.getPulsarTopicName(), partitionId)) {
                 ByteBuf headersAndPayload = this.entryFormatter.encode(body.get(0));
