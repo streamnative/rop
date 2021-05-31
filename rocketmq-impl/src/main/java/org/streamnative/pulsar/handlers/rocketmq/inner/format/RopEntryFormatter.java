@@ -19,6 +19,7 @@ import static org.apache.pulsar.common.protocol.Commands.hasChecksum;
 import com.google.common.base.Preconditions;
 import com.scurrilous.circe.checksum.Crc32cIntChecksum;
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 import java.nio.ByteBuffer;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -31,6 +32,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.pulsar.client.api.Message;
 import org.apache.pulsar.client.impl.MessageIdImpl;
 import org.apache.pulsar.client.impl.TopicMessageImpl;
+import org.apache.pulsar.common.api.proto.PulsarApi;
 import org.apache.pulsar.common.api.proto.PulsarApi.MessageIdData;
 import org.apache.pulsar.common.protocol.Commands;
 import org.apache.rocketmq.common.UtilAll;
@@ -90,6 +92,24 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
             return convertRocketmq2Pulsar(msg);
         }
         throw new RopEncodeException("UNKNOWN Message Type");
+    }
+
+    public ByteBuf encode(byte[] record) {
+        final ByteBuf recordsWrapper = Unpooled.wrappedBuffer(record);
+        final ByteBuf buf = Commands.serializeMetadataAndPayload(
+                Commands.ChecksumType.None,
+                getDefaultMessageMetadata(),
+                recordsWrapper);
+        recordsWrapper.release();
+        return buf;
+    }
+
+    private static PulsarApi.MessageMetadata getDefaultMessageMetadata() {
+        final PulsarApi.MessageMetadata.Builder builder = PulsarApi.MessageMetadata.newBuilder();
+        builder.setProducerName("");
+        builder.setSequenceId(0L);
+        builder.setPublishTime(0L);
+        return builder.build();
     }
 
     private boolean verifyChecksum(ByteBuf headersAndPayload, MessageIdData messageId) {
