@@ -14,16 +14,15 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.format;
 
-import java.nio.ByteBuffer;
+import io.netty.buffer.ByteBuf;
 import java.util.function.Predicate;
-import org.apache.pulsar.client.api.Message;
 import org.apache.rocketmq.common.filter.ExpressionType;
 import org.apache.rocketmq.common.protocol.heartbeat.SubscriptionData;
 
 /**
  * Rop message filter.
  */
-public class RopMessageFilter implements Predicate<Message> {
+public class RopMessageFilter implements Predicate<ByteBuf> {
 
     protected final SubscriptionData subscriptionData;
 
@@ -32,19 +31,15 @@ public class RopMessageFilter implements Predicate<Message> {
     }
 
     @Override
-    public boolean test(Message message) {
-        if (this.subscriptionData != null && message != null
+    public boolean test(ByteBuf payload) {
+        if (this.subscriptionData != null && payload != null
                 && ExpressionType.isTagType(subscriptionData.getExpressionType())) {
             if (subscriptionData.getSubString().equals(SubscriptionData.SUB_ALL)) {
                 return true;
             }
 
-            byte[] body = message.getData();
-            Long tagsCode = null;
-            if (body != null && body.length >= 8) {
-                tagsCode = ByteBuffer.wrap(body).getLong();
-            }
-            return (tagsCode != null) && subscriptionData.getCodeSet().contains(tagsCode.intValue());
+            long tagsCode = payload.slice().readLong();
+            return subscriptionData.getCodeSet().contains((int) tagsCode);
         }
         return true;
     }
