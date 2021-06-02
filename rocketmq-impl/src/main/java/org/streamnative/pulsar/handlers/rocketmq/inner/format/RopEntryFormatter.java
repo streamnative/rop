@@ -154,6 +154,22 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
         }
     }
 
+    public ByteBuffer decodePulsarMessage(ByteBuf headersAndPayload, long offset, Predicate<ByteBuf> predicate) {
+        Commands.skipMessageMetadata(headersAndPayload);
+        if (predicate != null && !predicate.test(headersAndPayload)) {
+            return null;
+        }
+        // skip tag hash code
+        headersAndPayload.readLong();
+        ByteBuffer wrap = ByteBuffer.allocate(headersAndPayload.readableBytes());
+        headersAndPayload.readBytes(wrap);
+        // set offset
+        wrap.putLong(20, offset);
+        wrap.putLong(28, offset);
+        wrap.flip();
+        return wrap;
+    }
+
     private List<byte[]> convertRocketmq2Pulsar(final MessageExtBatch messageExtBatch) throws RopEncodeException {
         ByteBuffer msgStoreItemMemory = msgStoreItemMemoryThreadLocal.get();
         List<ByteBuffer> result = new ArrayList<>();
