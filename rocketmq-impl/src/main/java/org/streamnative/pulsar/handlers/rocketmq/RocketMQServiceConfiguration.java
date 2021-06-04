@@ -370,4 +370,10 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
             doc = "rocketmq rest server port.\n"
     )
     private int ropRestServerPort = 9888;
+
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
+            doc = "rocketmq Acl feature switch.\n"
+    )
+    private boolean ropAclEnable = true;
 }

@@ -25,6 +25,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.logging.log4j.util.Strings;
 import org.apache.pulsar.broker.PulsarServerException;
 import org.apache.pulsar.broker.service.BrokerService;
 import org.apache.rocketmq.broker.client.ConsumerIdsChangeListener;
@@ -35,11 +36,14 @@ import org.apache.rocketmq.broker.util.ServiceProvider;
 import org.apache.rocketmq.common.ThreadFactoryImpl;
 import org.apache.rocketmq.common.UtilAll;
 import org.apache.rocketmq.common.protocol.RequestCode;
+import org.apache.rocketmq.remoting.RPCHook;
 import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
+import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.store.MessageArrivingListener;
 import org.apache.rocketmq.store.stats.BrokerStats;
 import org.apache.rocketmq.store.stats.BrokerStatsManager;
 import org.streamnative.pulsar.handlers.rocketmq.RocketMQServiceConfiguration;
+import org.streamnative.pulsar.handlers.rocketmq.inner.auth.ValidateAuthPermission;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.ConsumerManager;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.ConsumerOffsetManager;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.SubscriptionGroupManager;
@@ -57,6 +61,7 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.processor.PullMessageProc
 import org.streamnative.pulsar.handlers.rocketmq.inner.processor.QueryMessageProcessor;
 import org.streamnative.pulsar.handlers.rocketmq.inner.processor.SendMessageProcessor;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ProducerManager;
+import org.streamnative.pulsar.handlers.rocketmq.utils.ParseAclToken;
 
 /**
  * RocketMQ broker controller.
@@ -111,6 +116,8 @@ public class RocketMQBrokerController {
     private AbstractTransactionalMessageCheckListener transactionalMessageCheckListener;
     private volatile BrokerService brokerService;
     private ScheduleMessageService delayedMessageService;
+
+    public static String stringToken = Strings.EMPTY;
 
     public RocketMQBrokerController(final RocketMQServiceConfiguration serverConfig) throws PulsarServerException {
         this.serverConfig = serverConfig;
@@ -243,8 +250,31 @@ public class RocketMQBrokerController {
             }
         }, 60, 30, TimeUnit.SECONDS);
 
-        initialTransaction();
+        initialAcl();
+//        initialTransaction();
     }
+
+
+    private void initialAcl() {
+        if (!this.serverConfig.isRopAclEnable()) {
+            log.info("The broker dose not enable acl");
+            return;
+        }
+        getRemotingServer().registerRPCHook(new RPCHook() {
+            @Override
+            public void doBeforeRequest(String remoteAddr, RemotingCommand request) {
+                //Do not catch the exception
+                ValidateAuthPermission authPermission = new ValidateAuthPermission();
+                authPermission.setStringToken(ParseAclToken.parse(request, remoteAddr));
+            }
+
+            @Override
+            public void doAfterResponse(String remoteAddr, RemotingCommand request, RemotingCommand response) {
+            }
+        });
+
+    }
+
 
     private void initialTransaction() {
         this.transactionalMessageService = ServiceProvider
@@ -290,7 +320,6 @@ public class RocketMQBrokerController {
         this.remotingServer
                 .registerProcessor(RequestCode.VIEW_MESSAGE_BY_ID, queryProcessor, this.queryMessageExecutor);
 
-
         // ClientManageProcessor
         ClientManageProcessor clientProcessor = new ClientManageProcessor(this);
         this.remotingServer.registerProcessor(RequestCode.HEART_BEAT, clientProcessor, this.heartbeatExecutor);
@@ -298,7 +327,6 @@ public class RocketMQBrokerController {
                 .registerProcessor(RequestCode.UNREGISTER_CLIENT, clientProcessor, this.clientManageExecutor);
         this.remotingServer
                 .registerProcessor(RequestCode.CHECK_CLIENT_CONFIG, clientProcessor, this.clientManageExecutor);
-
 
         // ConsumerManageProcessor
         ConsumerManageProcessor consumerManageProcessor = new ConsumerManageProcessor(this);
@@ -309,11 +337,9 @@ public class RocketMQBrokerController {
         this.remotingServer.registerProcessor(RequestCode.QUERY_CONSUMER_OFFSET, consumerManageProcessor,
                 this.consumerManageExecutor);
 
-
         // EndTransactionProcessor
         this.remotingServer.registerProcessor(RequestCode.END_TRANSACTION, new EndTransactionProcessor(this),
                 this.endTransactionExecutor);
-
 
         // NameserverProcessor
         NameserverProcessor namesvrProcessor = new NameserverProcessor(this);
@@ -351,7 +377,6 @@ public class RocketMQBrokerController {
                 .registerProcessor(RequestCode.UPDATE_NAMESRV_CONFIG, namesvrProcessor, this.adminBrokerExecutor);
         this.remotingServer
                 .registerProcessor(RequestCode.GET_NAMESRV_CONFIG, namesvrProcessor, this.adminBrokerExecutor);
-
 
         // Default
         AdminBrokerProcessor adminProcessor = new AdminBrokerProcessor(this);
@@ -505,5 +530,9 @@ public class RocketMQBrokerController {
     public void registerConsumeMessageHook(final ConsumeMessageHook hook) {
         this.consumeMessageHookList.add(hook);
         log.info("register ConsumeMessageHook Hook, {}", hook.hookName());
+    }
+
+    public RocketMQRemoteServer getRemotingServer() {
+        return remotingServer;
     }
 }
