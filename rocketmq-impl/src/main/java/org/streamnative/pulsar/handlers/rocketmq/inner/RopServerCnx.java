@@ -216,17 +216,35 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
              */
             if (this.brokerController.getTopicConfigManager()
                     .isPartitionTopicOwner(rmqTopic.getPulsarTopicName(), partitionId)) {
-                ByteBuf headersAndPayload = this.entryFormatter.encode(body.get(0));
+                ByteBuf headersAndPayload = null;
                 try {
-                    PersistentTopic persistentTopic = this.brokerController.getConsumerOffsetManager()
-                            .getPulsarPersistentTopic(new ClientTopicName(rmqTopic.getPulsarTopicName()), partitionId);
+                    headersAndPayload = this.entryFormatter.encode(body.get(0));
+                    PersistentTopic persistentTopic = this.brokerController.getTopicConfigManager()
+                            .getPulsarPersistentTopic(pTopic);
+                    if (persistentTopic == null) {
+                        return new PutMessageResult(PutMessageStatus.SERVICE_NOT_AVAILABLE,
+                                new AppendMessageResult(AppendMessageStatus.UNKNOWN_ERROR));
+                    }
+
+                    org.apache.pulsar.broker.service.Producer producer = this.brokerController.getTopicConfigManager()
+                            .getReferenceProducer(pTopic, persistentTopic, this);
+                    if (producer != null) {
+                        producer.updateRates(1, headersAndPayload.readableBytes());
+                    }
+                    persistentTopic.incrementPublishCount(1, headersAndPayload.readableBytes());
 
                     CompletableFuture<Long> offsetFuture = new CompletableFuture<>();
                     persistentTopic.publishMessage(headersAndPayload, RopMessagePublishContext
                             .get(offsetFuture, persistentTopic, System.nanoTime(), partitionId));
                     offset = offsetFuture.get(sendTimeoutInSec, TimeUnit.MILLISECONDS);
+                } catch (Exception e) {
+                    log.error("Topic [{}] putMessage error", pTopic, e);
+                    return new PutMessageResult(PutMessageStatus.SERVICE_NOT_AVAILABLE,
+                            new AppendMessageResult(AppendMessageStatus.UNKNOWN_ERROR));
                 } finally {
-                    headersAndPayload.release();
+                    if (headersAndPayload != null) {
+                        headersAndPayload.release();
+                    }
                 }
             } else {
                 long producerId = buildPulsarProducerId(producerGroup, pTopic,
