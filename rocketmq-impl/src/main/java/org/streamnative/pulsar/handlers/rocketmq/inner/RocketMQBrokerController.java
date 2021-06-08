@@ -28,6 +28,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.logging.log4j.util.Strings;
 import org.apache.pulsar.broker.PulsarServerException;
 import org.apache.pulsar.broker.service.BrokerService;
+import org.apache.rocketmq.acl.common.SessionCredentials;
 import org.apache.rocketmq.broker.client.ConsumerIdsChangeListener;
 import org.apache.rocketmq.broker.latency.BrokerFixedThreadPoolExecutor;
 import org.apache.rocketmq.broker.mqtrace.ConsumeMessageHook;
@@ -61,7 +62,6 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.processor.PullMessageProc
 import org.streamnative.pulsar.handlers.rocketmq.inner.processor.QueryMessageProcessor;
 import org.streamnative.pulsar.handlers.rocketmq.inner.processor.SendMessageProcessor;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ProducerManager;
-import org.streamnative.pulsar.handlers.rocketmq.utils.ParseAclToken;
 
 /**
  * RocketMQ broker controller.
@@ -263,9 +263,14 @@ public class RocketMQBrokerController {
         getRemotingServer().registerRPCHook(new RPCHook() {
             @Override
             public void doBeforeRequest(String remoteAddr, RemotingCommand request) {
-                //Do not catch the exception
                 ValidateAuthPermission authPermission = new ValidateAuthPermission();
-                authPermission.setStringToken(ParseAclToken.parse(request, remoteAddr));
+                if (request.getExtFields() == null) {
+                    // If request's extFields is null,then return "".
+                    return;
+                }
+
+                authPermission.setStringToken(request.getExtFields().get(SessionCredentials.ACCESS_KEY));
+                log.debug("The string token value is: {}", authPermission.getStringToken());
             }
 
             @Override
