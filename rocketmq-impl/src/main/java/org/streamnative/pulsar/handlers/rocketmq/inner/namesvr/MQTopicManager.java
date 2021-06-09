@@ -14,19 +14,24 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.namesvr;
 
+import com.google.common.base.Function;
 import com.google.common.base.Joiner;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.RemovalNotification;
 import com.google.common.collect.Sets;
 import java.net.InetSocketAddress;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
+import javax.annotation.Nullable;
 import lombok.AllArgsConstructor;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
@@ -37,6 +42,8 @@ import org.apache.logging.log4j.util.Strings;
 import org.apache.pulsar.broker.PulsarService;
 import org.apache.pulsar.broker.namespace.NamespaceBundleOwnershipListener;
 import org.apache.pulsar.broker.service.BrokerService;
+import org.apache.pulsar.broker.service.Producer;
+import org.apache.pulsar.broker.service.Topic;
 import org.apache.pulsar.broker.service.persistent.PersistentTopic;
 import org.apache.pulsar.client.admin.PulsarAdmin;
 import org.apache.pulsar.client.admin.PulsarAdminException.ConflictException;
@@ -51,9 +58,11 @@ import org.apache.pulsar.common.policies.data.ClusterData;
 import org.apache.pulsar.common.policies.data.RetentionPolicies;
 import org.apache.pulsar.common.policies.data.TenantInfo;
 import org.apache.rocketmq.common.TopicConfig;
+import org.streamnative.pulsar.handlers.rocketmq.inner.InternalProducer;
+import org.streamnative.pulsar.handlers.rocketmq.inner.InternalServerCnx;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
+import org.streamnative.pulsar.handlers.rocketmq.inner.RopServerCnx;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientTopicName;
-import org.streamnative.pulsar.handlers.rocketmq.utils.PulsarUtil;
 import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 import org.testng.collections.Maps;
 
@@ -71,9 +80,8 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
             .newBuilder()
             .initialCapacity(maxCacheSize)
             .expireAfterWrite(maxCacheTimeInSec, TimeUnit.SECONDS)
-            .removalListener((RemovalNotification<LookupCacheKey, Map<Integer, InetSocketAddress>> notification) -> {
-                log.info("[key={}]========>[value={}].", notification.getKey().topicName, notification);
-            })
+            .removalListener((RemovalNotification<LookupCacheKey, Map<Integer, InetSocketAddress>> notification) ->
+                    log.info("[key={}]========>[value={}].", notification.getKey().topicName, notification))
             .build();
     private final Map<String, PulsarClient> pulsarClientMap = Maps.newConcurrentMap();
     private PulsarService pulsarService;
@@ -174,12 +182,31 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
      * @return if current broker is this partition topic owner return true else return false.
      */
     public boolean isPartitionTopicOwner(TopicName topicName, int queueId) {
-        String brokerServiceUrl = this.brokerController.getBrokerService().pulsar().getBrokerServiceUrl();
+//        String brokerServiceUrl = this.brokerController.getBrokerService().pulsar().getBrokerServiceUrl();
+//
+//        Map<Integer, InetSocketAddress> topicBrokerAddr = getTopicBrokerAddr(topicName, Strings.EMPTY);
+//        String brokerName = topicBrokerAddr.get(queueId).getHostName();
+//
+//        return PulsarUtil.getBrokerHost(brokerServiceUrl).equals(brokerName);
 
-        Map<Integer, InetSocketAddress> topicBrokerAddr = getTopicBrokerAddr(topicName, Strings.EMPTY);
-        String brokerName = topicBrokerAddr.get(queueId).getHostName();
+        return this.brokerController.getBrokerService().isTopicNsOwnedByBroker(topicName.getPartition(queueId));
+    }
 
-        return PulsarUtil.getBrokerHost(brokerServiceUrl).equals(brokerName);
+    /**
+     * Get pulsar persistent topic.
+     *
+     * @param topicName topic name
+     * @return persistent topic
+     */
+    public PersistentTopic getPulsarPersistentTopic(String topicName) {
+        PulsarService pulsarService = this.brokerController.getBrokerService().pulsar();
+        Optional<Topic> topic = pulsarService.getBrokerService().getTopicIfExists(topicName).join();
+        if (topic.isPresent()) {
+            return (PersistentTopic) topic.get();
+        } else {
+            log.warn("Not found pulsar persistentTopic [{}]", topicName);
+        }
+        return null;
     }
 
     // this method do the real lookup into Pulsar broker.
@@ -279,11 +306,12 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                                     partitionedTopic.getPartitionedTopicName());
                             this.brokerController.getConsumerOffsetManager()
                                     .removePulsarTopic(clientTopicName, partitionedTopic.getPartitionIndex());
+
+                            removeReferenceProducer(topic);
                         }
                     } else {
                         log.error("Failed to get owned topic list for "
-                                        + "OffsetAndTopicListener when triggering un-loading bundle {}.",
-                                bundle, ex);
+                                + "OffsetAndTopicListener when triggering un-loading bundle {}.", bundle, ex);
                     }
                 });
     }
@@ -469,6 +497,48 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
         public LookupCacheKey(TopicName topicName) {
             this.topicName = topicName;
             this.listenerName = Strings.EMPTY;
+        }
+    }
+
+    @Getter
+    private final ConcurrentHashMap<String, Producer> references = new ConcurrentHashMap<>();
+
+    public Producer getReferenceProducer(String topicName, PersistentTopic persistentTopic,
+            RopServerCnx ropServerCnx) {
+
+        return references.computeIfAbsent(topicName, new Function<String, Producer>() {
+            @Nullable
+            @Override
+            public Producer apply(@Nullable String s) {
+                try {
+                    return registerInPersistentTopic(persistentTopic, ropServerCnx);
+                } catch (Exception e) {
+                    log.warn("Register producer in persistentTopic [{}] failed", topicName, e);
+                }
+                return null;
+            }
+        });
+    }
+
+    private Producer registerInPersistentTopic(PersistentTopic persistentTopic, RopServerCnx ropServerCnx)
+            throws Exception {
+        Producer producer = new InternalProducer(persistentTopic, new InternalServerCnx(ropServerCnx),
+                ((PulsarClientImpl) (pulsarService.getClient())).newRequestId(),
+                brokerService.generateUniqueProducerName(), Collections.singletonMap("Type", "ROP"));
+
+        // this will register and add USAGE_COUNT_UPDATER.
+        persistentTopic.addProducer(producer);
+        return producer;
+    }
+
+    private void removeReferenceProducer(String topicName) {
+        Producer producer = references.remove(topicName);
+        if (producer != null) {
+            try {
+                producer.close(true);
+            } catch (Exception e) {
+                log.warn("[{}] producer close failed", topicName, e);
+            }
         }
     }
 

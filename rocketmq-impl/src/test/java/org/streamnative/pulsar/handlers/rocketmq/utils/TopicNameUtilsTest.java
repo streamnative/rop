@@ -52,4 +52,19 @@ public class TopicNameUtilsTest {
                 + topicName;
         assertEquals(expectedPulsarName3, topicName3.toString());
     }
+
+    @Test
+    public void testParseTopicName() {
+        String topicName1 = "test-topic-1";
+        String resTopic1 = TopicNameUtils.parseTopicName(topicName1);
+        assertEquals(resTopic1, "persistent://rocketmq/__rocketmq/test-topic-1");
+
+        String topicName2 = "tenant/namespace/test-topic-2";
+        String resTopic2 = TopicNameUtils.parseTopicName(topicName2);
+        assertEquals(resTopic2, "persistent://tenant/namespace/test-topic-2");
+
+        String topicName3 = "persistent://tenant/namespace/test-topic-3";
+        String resTopic3 = TopicNameUtils.parseTopicName(topicName3);
+        assertEquals(resTopic3, topicName3);
+    }
 }
