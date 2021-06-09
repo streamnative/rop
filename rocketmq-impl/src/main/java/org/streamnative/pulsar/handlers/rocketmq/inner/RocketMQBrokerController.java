@@ -23,11 +23,17 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import javax.naming.AuthenticationException;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.logging.log4j.util.Strings;
 import org.apache.pulsar.broker.PulsarServerException;
+import org.apache.pulsar.broker.authentication.AuthenticationDataCommand;
+import org.apache.pulsar.broker.authentication.AuthenticationProviderToken;
+import org.apache.pulsar.broker.authentication.AuthenticationService;
 import org.apache.pulsar.broker.service.BrokerService;
+import org.apache.pulsar.common.naming.TopicName;
+import org.apache.pulsar.common.policies.data.TopicOperation;
 import org.apache.rocketmq.acl.common.SessionCredentials;
 import org.apache.rocketmq.broker.client.ConsumerIdsChangeListener;
 import org.apache.rocketmq.broker.latency.BrokerFixedThreadPoolExecutor;
@@ -44,7 +50,6 @@ import org.apache.rocketmq.store.MessageArrivingListener;
 import org.apache.rocketmq.store.stats.BrokerStats;
 import org.apache.rocketmq.store.stats.BrokerStatsManager;
 import org.streamnative.pulsar.handlers.rocketmq.RocketMQServiceConfiguration;
-import org.streamnative.pulsar.handlers.rocketmq.inner.auth.ValidateAuthPermission;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.ConsumerManager;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.ConsumerOffsetManager;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.SubscriptionGroupManager;
@@ -250,7 +255,7 @@ public class RocketMQBrokerController {
             }
         }, 60, 30, TimeUnit.SECONDS);
 
-        initialAcl();
+//        initialAcl();
 //        initialTransaction();
     }
 
@@ -263,14 +268,42 @@ public class RocketMQBrokerController {
         getRemotingServer().registerRPCHook(new RPCHook() {
             @Override
             public void doBeforeRequest(String remoteAddr, RemotingCommand request) {
-                ValidateAuthPermission authPermission = new ValidateAuthPermission();
                 if (request.getExtFields() == null) {
                     // If request's extFields is null,then return "".
                     return;
                 }
 
-                authPermission.setStringToken(request.getExtFields().get(SessionCredentials.ACCESS_KEY));
-                log.debug("The string token value is: {}", authPermission.getStringToken());
+                // 对于不同的请求，来做对应的鉴权
+                switch (request.getCode()) {
+                    case RequestCode.SEND_MESSAGE:
+                    case RequestCode.SEND_MESSAGE_V2:
+                    case RequestCode.SEND_BATCH_MESSAGE:
+
+
+                }
+
+                // token authorization logic
+                String token = request.getExtFields().get(SessionCredentials.ACCESS_KEY);
+                AuthenticationProviderToken providerToken = new AuthenticationProviderToken();
+                if (!providerToken.getAuthMethodName().equals("token")) {
+                    log.error("Unsupported form of encryption is used, please check");
+                    return;
+                }
+
+                AuthenticationService authService = brokerService.getAuthenticationService();
+                AuthenticationDataCommand authCommand = new AuthenticationDataCommand(token);
+
+
+                try {
+                    String roleSubject = authService.authenticate(authCommand, "token");
+
+                    Boolean authOK = brokerService.getAuthorizationService()
+                            .allowTopicOperationAsync(TopicName.get("topic"), TopicOperation.CONSUME, roleSubject,
+                                    authCommand).get();
+
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
             }
 
             @Override
