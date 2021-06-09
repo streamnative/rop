@@ -17,6 +17,8 @@ package org.streamnative.pulsar.handlers.rocketmq.utils;
 import static org.apache.pulsar.common.naming.TopicName.PARTITIONED_TOPIC_SUFFIX;
 
 import com.google.common.base.Joiner;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.pulsar.common.naming.NamespaceName;
 import org.apache.pulsar.common.naming.TopicDomain;
 import org.apache.pulsar.common.naming.TopicName;
@@ -25,6 +27,7 @@ import org.apache.rocketmq.common.message.MessageQueue;
 /**
  * Topic name utils.
  */
+@Slf4j
 public class TopicNameUtils {
 
     public static TopicName pulsarTopicName(MessageQueue topicPartition, NamespaceName namespace) {
@@ -79,6 +82,30 @@ public class TopicNameUtils {
 
     public static String getNoDomainTopicName(TopicName topicName) {
         return Joiner.on("/").join(topicName.getTenant(), topicName.getNamespacePortion(), topicName.getLocalName());
+    }
+
+    public static String parseTopicName(String topicName) {
+        String topic = "";
+        log.info("the input topic name is: {}", topicName);
+        // The topic name can be in two different forms, one is fully qualified topic name,
+        // the other one is short topic name
+        if (!topicName.contains("://")) {
+            // The short topic name can be:
+            // - <topic>
+            // - <tenant>/<namespace>/<topic>
+            String[] parts = StringUtils.split(topicName, '/');
+            if (parts.length == 3) {
+                topic = TopicDomain.persistent.value() + "://" + topicName;
+            } else {
+                topic = TopicDomain.persistent.value() + "://" + "rocketmq" + "/" + "__rocketmq" + "/"
+                        + topicName;
+            }
+        } else {
+            topic = topicName;
+        }
+
+        log.info("The topic name is: {}", topic);
+        return topic;
     }
 
 }
