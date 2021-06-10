@@ -33,7 +33,7 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.locks.ReentrantLock;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
@@ -216,9 +216,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
              */
             if (this.brokerController.getTopicConfigManager()
                     .isPartitionTopicOwner(rmqTopic.getPulsarTopicName(), partitionId)) {
-                ByteBuf headersAndPayload = null;
                 try {
-                    headersAndPayload = this.entryFormatter.encode(body.get(0));
                     PersistentTopic persistentTopic = this.brokerController.getTopicConfigManager()
                             .getPulsarPersistentTopic(pTopic);
                     if (persistentTopic == null) {
@@ -226,25 +224,17 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                                 new AppendMessageResult(AppendMessageStatus.UNKNOWN_ERROR));
                     }
 
-                    org.apache.pulsar.broker.service.Producer producer = this.brokerController.getTopicConfigManager()
-                            .getReferenceProducer(pTopic, persistentTopic, this);
-                    if (producer != null) {
-                        producer.updateRates(1, headersAndPayload.readableBytes());
-                    }
-                    persistentTopic.incrementPublishCount(1, headersAndPayload.readableBytes());
-
-                    CompletableFuture<Long> offsetFuture = new CompletableFuture<>();
-                    persistentTopic.publishMessage(headersAndPayload, RopMessagePublishContext
-                            .get(offsetFuture, persistentTopic, System.nanoTime(), partitionId));
+                    CompletableFuture<Long> offsetFuture = publishMessage(body.get(0), persistentTopic, pTopic,
+                            partitionId);
                     offset = offsetFuture.get(sendTimeoutInSec, TimeUnit.MILLISECONDS);
+                } catch (TimeoutException e) {
+                    log.error("Topic [{}] putMessage timeout.", pTopic, e);
+                    return new PutMessageResult(PutMessageStatus.FLUSH_DISK_TIMEOUT,
+                            new AppendMessageResult(AppendMessageStatus.UNKNOWN_ERROR));
                 } catch (Exception e) {
-                    log.error("Topic [{}] putMessage error", pTopic, e);
+                    log.error("Topic [{}] putMessage error.", pTopic, e);
                     return new PutMessageResult(PutMessageStatus.SERVICE_NOT_AVAILABLE,
                             new AppendMessageResult(AppendMessageStatus.UNKNOWN_ERROR));
-                } finally {
-                    if (headersAndPayload != null) {
-                        headersAndPayload.release();
-                    }
                 }
             } else {
                 long producerId = buildPulsarProducerId(producerGroup, pTopic,
@@ -298,51 +288,100 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         RocketMQTopic rmqTopic = new RocketMQTopic(batchMessage.getTopic());
         int partitionId = batchMessage.getQueueId();
         String pTopic = rmqTopic.getPartitionName(partitionId);
-        long producerId = buildPulsarProducerId(producerGroup, pTopic, this.remoteAddress.toString());
+
         try {
-            Producer<byte[]> putMsgProducer = this.producers.get(producerId);
-            if (putMsgProducer == null) {
-                synchronized (this.producers) {
-                    if (this.producers.get(producerId) == null) {
-                        log.info("putMessages creating producer[id={}].", producerId);
-                        putMsgProducer = this.service.pulsar().getClient().newProducer()
-                                .topic(pTopic)
-                                .producerName(producerGroup + producerId)
-                                .batchingMaxPublishDelay(fetchTimeoutInMs, TimeUnit.MILLISECONDS)
-                                .sendTimeout(sendTimeoutInSec, TimeUnit.MILLISECONDS)
-                                .batchingMaxMessages(maxBatchMessageNum)
-                                .enableBatching(true)
-                                .create();
-                        log.info("putMessages create producer[id={}] conf=[{}] successfully.", producerId,
-                                ((ProducerImpl) putMsgProducer).getConfiguration());
-                        Producer<byte[]> oldProducer = this.producers.put(producerId, putMsgProducer);
-                        if (oldProducer != null) {
-                            oldProducer.closeAsync();
+            StringBuilder sb = new StringBuilder();
+            int totalBytesSize = 0;
+            int messageNum = 0;
+
+            /*
+             * Optimize the production performance of batch publish messages.
+             * If the broker is the owner of the current partitioned topic, directly use the PersistentTopic interface
+             * for publish message.
+             */
+            if (this.brokerController.getTopicConfigManager()
+                    .isPartitionTopicOwner(rmqTopic.getPulsarTopicName(), partitionId)) {
+                PersistentTopic persistentTopic = this.brokerController.getTopicConfigManager()
+                        .getPulsarPersistentTopic(pTopic);
+                if (persistentTopic == null) {
+                    return new PutMessageResult(PutMessageStatus.SERVICE_NOT_AVAILABLE,
+                            new AppendMessageResult(AppendMessageStatus.UNKNOWN_ERROR));
+                }
+
+                List<byte[]> bodies = this.entryFormatter.encode(batchMessage, 1);
+                List<CompletableFuture<Long>> batchMessageFutures = new ArrayList<>(bodies.size());
+                for (byte[] body : bodies) {
+                    try {
+                        CompletableFuture<Long> offsetFuture = publishMessage(body, persistentTopic, pTopic,
+                                partitionId);
+                        batchMessageFutures.add(offsetFuture);
+                        messageNum++;
+                        totalBytesSize += body.length;
+                    } catch (Exception e) {
+                        log.error("Topic [{}] putMessage error", pTopic, e);
+                        return new PutMessageResult(PutMessageStatus.SERVICE_NOT_AVAILABLE,
+                                new AppendMessageResult(AppendMessageStatus.UNKNOWN_ERROR));
+                    }
+                }
+                try {
+                    FutureUtil.waitForAll(batchMessageFutures).get(sendTimeoutInSec, TimeUnit.MILLISECONDS);
+                } catch (TimeoutException e) {
+                    log.error("Topic [{}] putMessages timeout.", pTopic, e);
+                    return new PutMessageResult(PutMessageStatus.FLUSH_DISK_TIMEOUT,
+                            new AppendMessageResult(AppendMessageStatus.UNKNOWN_ERROR));
+                }
+                for (CompletableFuture<Long> f : batchMessageFutures) {
+                    String msgId = CommonUtils
+                            .createMessageId(this.ctx.channel().localAddress(), localListenPort, f.get());
+                    sb.append(msgId).append(",");
+                }
+            } else {
+                long producerId = buildPulsarProducerId(producerGroup, pTopic, this.remoteAddress.toString());
+                Producer<byte[]> putMsgProducer = this.producers.get(producerId);
+                if (putMsgProducer == null) {
+                    synchronized (this.producers) {
+                        if (this.producers.get(producerId) == null) {
+                            log.info("putMessages creating producer[id={}].", producerId);
+                            putMsgProducer = this.service.pulsar().getClient().newProducer()
+                                    .topic(pTopic)
+                                    .producerName(producerGroup + producerId)
+                                    .batchingMaxPublishDelay(fetchTimeoutInMs, TimeUnit.MILLISECONDS)
+                                    .sendTimeout(sendTimeoutInSec, TimeUnit.MILLISECONDS)
+                                    .batchingMaxMessages(maxBatchMessageNum)
+                                    .enableBatching(true)
+                                    .create();
+                            log.info("putMessages create producer[id={}] conf=[{}] successfully.", producerId,
+                                    ((ProducerImpl) putMsgProducer).getConfiguration());
+                            Producer<byte[]> oldProducer = this.producers.put(producerId, putMsgProducer);
+                            if (oldProducer != null) {
+                                oldProducer.closeAsync();
+                            }
                         }
                     }
                 }
+
+                log.info("The producer [{}] putMessages begin to send message.", producerId);
+                List<byte[]> bodies = this.entryFormatter.encode(batchMessage, 1);
+                List<CompletableFuture<MessageId>> batchMessageFutures = new ArrayList<>(bodies.size());
+                for (byte[] body : bodies) {
+                    batchMessageFutures.add(this.producers.get(producerId).sendAsync(body));
+                    messageNum++;
+                    totalBytesSize += body.length;
+                }
+                FutureUtil.waitForAll(batchMessageFutures).get(sendTimeoutInSec, TimeUnit.MILLISECONDS);
+                for (CompletableFuture<MessageId> f : batchMessageFutures) {
+                    MessageIdImpl messageId = (MessageIdImpl) f.get();
+                    long ledgerId = messageId.getLedgerId();
+                    long entryId = messageId.getEntryId();
+                    String msgId = CommonUtils.createMessageId(this.ctx.channel().localAddress(), localListenPort,
+                            MessageIdUtils.getOffset(ledgerId, entryId, partitionId));
+                    sb.append(msgId).append(",");
+                }
             }
-            log.info("The producer [{}] putMessages begin to send message.", producerId);
-            List<CompletableFuture<MessageId>> batchMessageFutures = new ArrayList<>();
-            List<byte[]> body = this.entryFormatter.encode(batchMessage, 1);
-            AtomicInteger totalBytesSize = new AtomicInteger(0);
-            body.forEach(item -> {
-                batchMessageFutures.add(this.producers.get(producerId).sendAsync(item));
-                totalBytesSize.getAndAdd(item.length);
-            });
-            FutureUtil.waitForAll(batchMessageFutures).get(sendTimeoutInSec, TimeUnit.MILLISECONDS);
-            StringBuilder sb = new StringBuilder();
-            for (CompletableFuture<MessageId> f : batchMessageFutures) {
-                MessageIdImpl messageId = (MessageIdImpl) f.get();
-                long ledgerId = messageId.getLedgerId();
-                long entryId = messageId.getEntryId();
-                String msgId = CommonUtils.createMessageId(this.ctx.channel().localAddress(), localListenPort,
-                        MessageIdUtils.getOffset(ledgerId, entryId, partitionId));
-                sb.append(msgId).append(",");
-            }
+
             AppendMessageResult appendMessageResult = new AppendMessageResult(AppendMessageStatus.PUT_OK);
-            appendMessageResult.setMsgNum(batchMessageFutures.size());
-            appendMessageResult.setWroteBytes(totalBytesSize.get());
+            appendMessageResult.setMsgNum(messageNum);
+            appendMessageResult.setWroteBytes(totalBytesSize);
             appendMessageResult.setMsgId(sb.toString());
             return new PutMessageResult(PutMessageStatus.PUT_OK, appendMessageResult);
         } catch (RopEncodeException e) {
@@ -355,6 +394,31 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         PutMessageStatus status = PutMessageStatus.FLUSH_DISK_TIMEOUT;
         AppendMessageResult temp = new AppendMessageResult(AppendMessageStatus.UNKNOWN_ERROR);
         return new PutMessageResult(status, temp);
+    }
+
+    private CompletableFuture<Long> publishMessage(byte[] body, PersistentTopic persistentTopic, String pTopic,
+            long partitionId) {
+        ByteBuf headersAndPayload = null;
+        try {
+            headersAndPayload = this.entryFormatter.encode(body);
+
+            org.apache.pulsar.broker.service.Producer producer = this.brokerController.getTopicConfigManager()
+                    .getReferenceProducer(pTopic, persistentTopic, this);
+            if (producer != null) {
+                producer.updateRates(1, headersAndPayload.readableBytes());
+            }
+            persistentTopic.incrementPublishCount(1, headersAndPayload.readableBytes());
+
+            CompletableFuture<Long> offsetFuture = new CompletableFuture<>();
+            persistentTopic.publishMessage(headersAndPayload, RopMessagePublishContext
+                    .get(offsetFuture, persistentTopic, System.nanoTime(), partitionId));
+
+            return offsetFuture;
+        } finally {
+            if (headersAndPayload != null) {
+                headersAndPayload.release();
+            }
+        }
     }
 
     @Override
