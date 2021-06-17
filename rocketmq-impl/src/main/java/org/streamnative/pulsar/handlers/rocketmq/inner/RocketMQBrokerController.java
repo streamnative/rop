@@ -290,52 +290,49 @@ public class RocketMQBrokerController {
                 AuthenticationService authService = brokerService.getAuthenticationService();
                 AuthenticationDataCommand authCommand = new AuthenticationDataCommand(token);
 
-                switch (request.getCode()) {
-                    // send logic
-                    case RequestCode.SEND_MESSAGE:
-                    case RequestCode.SEND_MESSAGE_V2:
-                    case RequestCode.CONSUMER_SEND_MSG_BACK:
-                    case RequestCode.SEND_BATCH_MESSAGE:
-                        try {
-                            SendMessageRequestHeader requestHeader = SendMessageProcessor.parseRequestHeader(request);
-                            if (requestHeader == null) {
-                                log.warn("Parse send message request header.");
-                                return;
-                            }
+                if (RequestCode.SEND_MESSAGE == request.getCode()
+                        || RequestCode.SEND_MESSAGE_V2 == request.getCode()
+                        || RequestCode.CONSUMER_SEND_MSG_BACK == request.getCode()
+                        || RequestCode.SEND_BATCH_MESSAGE == request.getCode()) {
 
-                            String roleSubject = authService.authenticate(authCommand, "token");
-                            String topicName = TopicNameUtils.parseTopicName(requestHeader.getTopic());
-                            Boolean authOK = brokerService.getAuthorizationService()
-                                    .allowTopicOperationAsync(TopicName.get(topicName), TopicOperation.PRODUCE,
-                                            roleSubject,
-                                            authCommand).get();
-                            if (!authOK) {
-                                log.error("[PRODUCE] Token authentication failed, please check");
-                                return;
-                            }
-                        } catch (Exception e) {
-                            e.printStackTrace();
+                    try {
+                        SendMessageRequestHeader requestHeader = SendMessageProcessor
+                                .parseRequestHeader(request);
+                        if (requestHeader == null) {
+                            log.warn("Parse send message request header.");
+                            return;
                         }
 
-                    case RequestCode.PULL_MESSAGE:
-                        try {
-                            final PullMessageRequestHeader requestHeader =
-                                    (PullMessageRequestHeader) request
-                                            .decodeCommandCustomHeader(PullMessageRequestHeader.class);
-
-                            String roleSubject = authService.authenticate(authCommand, "token");
-                            String topicName = TopicNameUtils.parseTopicName(requestHeader.getTopic());
-                            Boolean authOK = brokerService.getAuthorizationService()
-                                    .allowTopicOperationAsync(TopicName.get(topicName), TopicOperation.PRODUCE,
-                                            roleSubject,
-                                            authCommand).get();
-                            if (!authOK) {
-                                log.error("[CONSUME] Token authentication failed, please check");
-                                return;
-                            }
-                        } catch (Exception e) {
-                            e.printStackTrace();
+                        String roleSubject = authService.authenticate(authCommand, "token");
+                        String topicName = TopicNameUtils.parseTopicName(requestHeader.getTopic());
+                        Boolean authOK = brokerService.getAuthorizationService()
+                                .allowTopicOperationAsync(TopicName.get(topicName), TopicOperation.PRODUCE,
+                                        roleSubject,
+                                        authCommand).get();
+                        if (!authOK) {
+                            log.error("[PRODUCE] Token authentication failed, please check");
                         }
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                } else if (RequestCode.PULL_MESSAGE == request.getCode()) {
+                    try {
+                        final PullMessageRequestHeader requestHeader =
+                                (PullMessageRequestHeader) request
+                                        .decodeCommandCustomHeader(PullMessageRequestHeader.class);
+
+                        String roleSubject = authService.authenticate(authCommand, "token");
+                        String topicName = TopicNameUtils.parseTopicName(requestHeader.getTopic());
+                        Boolean authOK = brokerService.getAuthorizationService()
+                                .allowTopicOperationAsync(TopicName.get(topicName), TopicOperation.PRODUCE,
+                                        roleSubject,
+                                        authCommand).get();
+                        if (!authOK) {
+                            log.error("[CONSUME] Token authentication failed, please check");
+                        }
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
                 }
             }
 
