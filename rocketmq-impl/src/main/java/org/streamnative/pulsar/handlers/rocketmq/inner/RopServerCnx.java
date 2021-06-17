@@ -525,7 +525,6 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             return getResult;
         }
 
-        // queueOffset 是要拉取消息的起始位置
         long queueOffset = requestHeader.getQueueOffset();
         int maxMsgNums = requestHeader.getMaxMsgNums();
         if (maxMsgNums < 1) {
@@ -569,7 +568,6 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 PersistentTopic persistentTopic = brokerController.getConsumerOffsetManager()
                         .getPulsarPersistentTopic(new ClientTopicName(rmqTopic.getPulsarTopicName()), queueId);
                 ManagedLedgerImpl managedLedger = (ManagedLedgerImpl) persistentTopic.getManagedLedger();
-//                PositionImpl previousPosition = managedLedger.getPreviousPosition(startPosition);
                 return managedLedger.newNonDurableCursor(startPosition, "Rop-cursor-" + readerId);
             } catch (Exception e) {
                 log.warn("Topic [{}] create managedLedger failed", pTopic, e);

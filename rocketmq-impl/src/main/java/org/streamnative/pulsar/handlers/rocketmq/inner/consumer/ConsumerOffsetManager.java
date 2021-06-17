@@ -193,7 +193,8 @@ public class ConsumerOffsetManager {
             return;
         }
 
-        log.debug("=======================> [{}@{}] ---> {}", topic, queueId, MessageIdUtils.getMessageId(offset));
+        log.debug("When commit offset, the [topic@queueId] is [{}@{}] and the messageID is: {}", topic, queueId,
+                MessageIdUtils.getMessageId(offset));
         ClientGroupAndTopicName clientGroupAndTopicName = new ClientGroupAndTopicName(group, topic);
         MessageIdImpl messageId = MessageIdUtils.getMessageId(offset);
         long fixedOffset = messageId.getEntryId() > 0 ? offset - 1 : offset; // fixed rocketmq client commit offset + 1

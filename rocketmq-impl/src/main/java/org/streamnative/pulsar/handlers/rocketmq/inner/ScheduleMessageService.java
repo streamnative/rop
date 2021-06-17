@@ -202,7 +202,7 @@ public class ScheduleMessageService {
             this.pulsarService = ScheduleMessageService.this.pulsarBroker.pulsar();
             this.timeoutTimer = SystemTimer.builder().executorName("DeliverDelayedMessageTimeWheelExecutor").build();
             try {
-                log.warn("1 =======> The client config value: [{}]",
+                log.warn("Before create delayed consumer, the client config value: [{}]",
                         ((PulsarClientImpl) this.pulsarService.getClient()).getConfiguration());
                 this.delayedConsumer = this.pulsarService.getClient()
                         .newConsumer()
@@ -214,7 +214,7 @@ public class ScheduleMessageService {
                         .subscriptionInitialPosition(SubscriptionInitialPosition.Earliest)
                         .subscribe();
 
-                log.warn("2 =======> The client config value: [{}]",
+                log.warn("The client config value: [{}]",
                         ((PulsarClientImpl) this.pulsarService.getClient()).getConfiguration());
             } catch (Exception e) {
                 log.error("create delayed topic[delayLevel={}] consumer error.", delayLevel, e);
@@ -250,7 +250,7 @@ public class ScheduleMessageService {
                     long diff = deliveryTime - Instant.now().toEpochMilli();
                     diff = diff < 0 ? 0 : diff;
                     log.debug(
-                            "retry delayedTime ======> delayLeve=[{}], delayTime=[{}], "
+                            "Retry delayedTime: delayLeve=[{}], delayTime=[{}], "
                                     + "bornTime=[{}], storeTime=[{}], deliveryTime=[{}].",
                             new Object[]{delayLevel, delayLevelTable.get(delayLevel), messageExt.getBornTimestamp(),
                                     messageExt.getStoreTimestamp(), deliveryTime});
@@ -258,7 +258,7 @@ public class ScheduleMessageService {
                         @Override
                         public void run() {
                             try {
-                                log.info("retry delayedTime ======> needDelayMs=[{}],real diff =[{}].", this.delayMs,
+                                log.info("Retry delayedTime: needDelayMs=[{}],real diff =[{}].", this.delayMs,
                                         deliveryTime - Instant.now().toEpochMilli());
                                 MessageExtBrokerInner msgInner = messageTimeup(messageExt);
                                 if (MixAll.RMQ_SYS_TRANS_HALF_TOPIC.equals(messageExt.getTopic())) {
