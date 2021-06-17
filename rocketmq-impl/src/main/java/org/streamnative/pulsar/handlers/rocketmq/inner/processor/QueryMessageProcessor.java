@@ -188,7 +188,7 @@ public class QueryMessageProcessor implements NettyRequestProcessor {
             ManagedLedgerImpl managedLedger = (ManagedLedgerImpl) ledgerCache.get(queryMessageLedgerName).get(10,
                     TimeUnit.SECONDS);
             if (managedLedger != null) {
-                // 通过offset来取出要开始消费的messageId的位置
+                // Use the offset to retrieve the position of the messageId to start consumption.
                 managedLedger.asyncReadEntry(new PositionImpl(messageId.getLedgerId(),
                         messageId.getEntryId()), new AsyncCallbacks.ReadEntryCallback() {
                     @Override

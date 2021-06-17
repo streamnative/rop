@@ -81,7 +81,8 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
             .initialCapacity(maxCacheSize)
             .expireAfterWrite(maxCacheTimeInSec, TimeUnit.SECONDS)
             .removalListener((RemovalNotification<LookupCacheKey, Map<Integer, InetSocketAddress>> notification) ->
-                    log.info("[key={}]========>[value={}].", notification.getKey().topicName, notification))
+                    log.info("Remove Listener [key={}]========>[value={}] from Guava cache.",
+                            notification.getKey().topicName, notification))
             .build();
     private final Map<String, PulsarClient> pulsarClientMap = Maps.newConcurrentMap();
     private PulsarService pulsarService;
@@ -442,7 +443,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
 //                lookupTopics(fullTopicName);
             }
         } catch (Exception e) {
-            log.warn("Topic {} create or update partition failed", fullTopicName, e);
+            log.warn("[CREATE] Topic {} create or update partition failed", fullTopicName, e);
         }
     }
 
@@ -459,7 +460,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                 adminClient.topics().deletePartitionedTopic(fullTopicName, true);
             }
         } catch (Exception e) {
-            log.warn("Topic {} create or update partition failed", fullTopicName, e);
+            log.warn("[DELETE] Topic {} create or update partition failed", fullTopicName, e);
         }
 
     }
@@ -537,7 +538,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
             try {
                 producer.close(true);
             } catch (Exception e) {
-                log.warn("[{}] producer close failed", topicName, e);
+                log.warn("The [{}] producer close failed", topicName, e);
             }
         }
     }

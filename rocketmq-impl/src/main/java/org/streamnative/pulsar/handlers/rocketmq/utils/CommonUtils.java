@@ -312,7 +312,6 @@ public class CommonUtils {
     }
 
     public static ByteBuffer decode(Message<byte[]> message) {
-        // 去除 tags 标记位的 8 个字节之后，将原先的 byteBuffer 返回
         ByteBuffer wrap = ByteBuffer.wrap(message.getData());
         MessageIdImpl messageId = (MessageIdImpl) message.getMessageId();
         long physicalOffset = MessageIdUtils

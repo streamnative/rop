@@ -108,7 +108,7 @@ public class NameserverProcessor implements NettyRequestProcessor {
             case GET_ROUTEINTO_BY_TOPIC:
                 // TODO return this.getRouteInfoByTopic(ctx, request);
                 return handleTopicMetadata(ctx, request);
-            case RequestCode.GET_BROKER_CLUSTER_INFO:  // 需要 | 管控端需要
+            case RequestCode.GET_BROKER_CLUSTER_INFO:
                 return this.getBrokerClusterInfo(ctx, request);
             case RequestCode.WIPE_WRITE_PERM_OF_BROKER:
             case RequestCode.GET_ALL_TOPIC_LIST_FROM_NAMESERVER:
@@ -153,7 +153,8 @@ public class NameserverProcessor implements NettyRequestProcessor {
 
         String clusterName = config.getClusterName();
 
-        // 如果主题名和clusterName相同，返回集群中任意一个节点到客户端。这里为了兼容客户端创建主题操作
+        // If the topic name and clusterName are the same, any node in the cluster is returned to the client.
+        // Here to create a theme operation for compatibility with the client
         if (clusterName.equals(requestHeader.getTopic())) {
             try {
                 PulsarAdmin adminClient = brokerController.getBrokerService().pulsar().getAdminClient();
@@ -180,7 +181,7 @@ public class NameserverProcessor implements NettyRequestProcessor {
 
         String listenerName = getListenerName(ctx);
 
-        // 根据传入的请求获取指定的topic
+        // Obtain the specified topic according to the incoming request.
         String requestTopic = requestHeader.getTopic();
         if (Strings.isNotBlank(requestTopic)) {
             RocketMQTopic mqTopic = new RocketMQTopic(requestTopic);

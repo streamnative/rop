@@ -172,7 +172,7 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
 
     private List<byte[]> convertRocketmq2Pulsar(final MessageExtBatch messageExtBatch) throws RopEncodeException {
         ByteBuffer msgStoreItemMemory = msgStoreItemMemoryThreadLocal.get();
-        List<ByteBuffer> result = new ArrayList<>();
+        List<byte[]> result = new ArrayList<>();
         int totalMsgLen = 0;
         ByteBuffer messagesByteBuff = messageExtBatch.wrap();
         int sysFlag = messageExtBatch.getSysFlag();
@@ -181,7 +181,6 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
         ByteBuffer bornHostHolder = ByteBuffer.allocate(bornHostLength);
         ByteBuffer storeHostHolder = ByteBuffer.allocate(storeHostLength);
 
-        msgStoreItemMemory.clear();
         while (messagesByteBuff.hasRemaining()) {
             // 1 TOTALSIZE
             messagesByteBuff.getInt();
@@ -234,7 +233,7 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
                 }
             }
 
-            ByteBuffer tempBuffer = msgStoreItemMemory.slice();
+            msgStoreItemMemory.clear();
             //TAGSCODE
             msgStoreItemMemory.putLong(tagsCode);
             // 1 TOTALSIZE
@@ -256,10 +255,12 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
             // 9 BORNTIMESTAMP
             msgStoreItemMemory.putLong(messageExtBatch.getBornTimestamp());
             // 10 BORNHOST
+            bornHostHolder.clear();
             msgStoreItemMemory.put(messageExtBatch.getBornHostBytes(bornHostHolder));
             // 11 STORETIMESTAMP
             msgStoreItemMemory.putLong(Instant.now().toEpochMilli());
             // 12 STOREHOSTADDRESS
+            storeHostHolder.clear();
             msgStoreItemMemory.put(messageExtBatch.getStoreHostBytes(storeHostHolder));
             // 13 RECONSUMETIMES
             msgStoreItemMemory.putInt(messageExtBatch.getReconsumeTimes());
@@ -278,14 +279,15 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
             if (propertiesLen > 0) {
                 msgStoreItemMemory.put(messagesByteBuff.array(), propertiesPos, propertiesLen);
             }
-            tempBuffer.limit(msgStoreItemMemory.position());
-            result.add(tempBuffer);
+
+            // Write messages to the queue buffer
+            msgStoreItemMemory.flip();
+            byte[] msgBytes = new byte[msgStoreItemMemory.limit()];
+            msgStoreItemMemory.get(msgBytes);
+
+            result.add(msgBytes);
         }
-        return result.stream().collect(ArrayList::new, (arr, item) -> {
-            byte[] msgBytes = new byte[item.limit()];
-            item.get(msgBytes);
-            arr.add(msgBytes);
-        }, ArrayList::addAll);
+        return result;
     }
 
 
