@@ -216,11 +216,12 @@ public class PullMessageProcessor implements NettyRequestProcessor {
         }
 
         RopMessageFilter messageFilter = new RopMessageFilter(subscriptionData);
-        // 从 message store 中获取接收消息的数据并处理
+        // Obtain and process the received message data from the message store.
         PulsarMessageStore serverCnxMsgStore = this
                 .getServerCnxMsgStore(channel, request, requestHeader.getConsumerGroup());
 
-        // 如果获取 serverCnxMsgStore 对象失败，则进入重试阶段，等待 heartbeat 请求注册上来
+        // If obtaining the serverCnxMsgStore object fails, enter the retry phase
+        // and wait for the heartbeat request to register.
         if (null == serverCnxMsgStore) {
             response.setCode(ResponseCode.PULL_RETRY_IMMEDIATELY);
             response.setRemark("store getMessage return null");
