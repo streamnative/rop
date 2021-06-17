@@ -23,7 +23,6 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import javax.naming.AuthenticationException;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.logging.log4j.util.Strings;
@@ -43,6 +42,8 @@ import org.apache.rocketmq.broker.util.ServiceProvider;
 import org.apache.rocketmq.common.ThreadFactoryImpl;
 import org.apache.rocketmq.common.UtilAll;
 import org.apache.rocketmq.common.protocol.RequestCode;
+import org.apache.rocketmq.common.protocol.header.PullMessageRequestHeader;
+import org.apache.rocketmq.common.protocol.header.SendMessageRequestHeader;
 import org.apache.rocketmq.remoting.RPCHook;
 import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
@@ -67,6 +68,7 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.processor.PullMessageProc
 import org.streamnative.pulsar.handlers.rocketmq.inner.processor.QueryMessageProcessor;
 import org.streamnative.pulsar.handlers.rocketmq.inner.processor.SendMessageProcessor;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ProducerManager;
+import org.streamnative.pulsar.handlers.rocketmq.utils.TopicNameUtils;
 
 /**
  * RocketMQ broker controller.
@@ -255,8 +257,13 @@ public class RocketMQBrokerController {
             }
         }, 60, 30, TimeUnit.SECONDS);
 
-//        initialAcl();
-//        initialTransaction();
+        if (this.serverConfig.isRopAclEnable()) {
+            initialAcl();
+        }
+
+        if (this.serverConfig.isRopTransactionEnable()) {
+            initialTransaction();
+        }
     }
 
 
@@ -273,15 +280,6 @@ public class RocketMQBrokerController {
                     return;
                 }
 
-                // 对于不同的请求，来做对应的鉴权
-                switch (request.getCode()) {
-                    case RequestCode.SEND_MESSAGE:
-                    case RequestCode.SEND_MESSAGE_V2:
-                    case RequestCode.SEND_BATCH_MESSAGE:
-
-
-                }
-
                 // token authorization logic
                 String token = request.getExtFields().get(SessionCredentials.ACCESS_KEY);
                 AuthenticationProviderToken providerToken = new AuthenticationProviderToken();
@@ -289,20 +287,55 @@ public class RocketMQBrokerController {
                     log.error("Unsupported form of encryption is used, please check");
                     return;
                 }
-
                 AuthenticationService authService = brokerService.getAuthenticationService();
                 AuthenticationDataCommand authCommand = new AuthenticationDataCommand(token);
 
+                switch (request.getCode()) {
+                    // send logic
+                    case RequestCode.SEND_MESSAGE:
+                    case RequestCode.SEND_MESSAGE_V2:
+                    case RequestCode.CONSUMER_SEND_MSG_BACK:
+                    case RequestCode.SEND_BATCH_MESSAGE:
+                        try {
+                            SendMessageRequestHeader requestHeader = SendMessageProcessor.parseRequestHeader(request);
+                            if (requestHeader == null) {
+                                log.warn("Parse send message request header.");
+                                return;
+                            }
 
-                try {
-                    String roleSubject = authService.authenticate(authCommand, "token");
+                            String roleSubject = authService.authenticate(authCommand, "token");
+                            String topicName = TopicNameUtils.parseTopicName(requestHeader.getTopic());
+                            Boolean authOK = brokerService.getAuthorizationService()
+                                    .allowTopicOperationAsync(TopicName.get(topicName), TopicOperation.PRODUCE,
+                                            roleSubject,
+                                            authCommand).get();
+                            if (!authOK) {
+                                log.error("[PRODUCE] Token authentication failed, please check");
+                                return;
+                            }
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
 
-                    Boolean authOK = brokerService.getAuthorizationService()
-                            .allowTopicOperationAsync(TopicName.get("topic"), TopicOperation.CONSUME, roleSubject,
-                                    authCommand).get();
+                    case RequestCode.PULL_MESSAGE:
+                        try {
+                            final PullMessageRequestHeader requestHeader =
+                                    (PullMessageRequestHeader) request
+                                            .decodeCommandCustomHeader(PullMessageRequestHeader.class);
 
-                } catch (Exception e) {
-                    e.printStackTrace();
+                            String roleSubject = authService.authenticate(authCommand, "token");
+                            String topicName = TopicNameUtils.parseTopicName(requestHeader.getTopic());
+                            Boolean authOK = brokerService.getAuthorizationService()
+                                    .allowTopicOperationAsync(TopicName.get(topicName), TopicOperation.PRODUCE,
+                                            roleSubject,
+                                            authCommand).get();
+                            if (!authOK) {
+                                log.error("[CONSUME] Token authentication failed, please check");
+                                return;
+                            }
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
                 }
             }
 
@@ -312,7 +345,6 @@ public class RocketMQBrokerController {
         });
 
     }
-
 
     private void initialTransaction() {
         this.transactionalMessageService = ServiceProvider

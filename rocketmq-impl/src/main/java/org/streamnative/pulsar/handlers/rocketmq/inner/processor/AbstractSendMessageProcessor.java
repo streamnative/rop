@@ -276,7 +276,7 @@ public abstract class AbstractSendMessageProcessor implements NettyRequestProces
         }
     }
 
-    protected SendMessageRequestHeader parseRequestHeader(RemotingCommand request)
+    public static SendMessageRequestHeader parseRequestHeader(RemotingCommand request)
             throws RemotingCommandException {
 
         SendMessageRequestHeaderV2 requestHeaderV2 = null;

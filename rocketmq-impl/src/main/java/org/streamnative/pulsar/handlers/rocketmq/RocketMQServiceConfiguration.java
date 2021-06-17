@@ -375,5 +375,11 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
             category = CATEGORY_ROCKETMQ,
             doc = "rocketmq Acl feature switch.\n"
     )
-    private boolean ropAclEnable = true;
+    private boolean ropAclEnable = false;
+
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
+            doc = "rocketmq Transaction feature switch.\n"
+    )
+    private boolean ropTransactionEnable = false;
 }
