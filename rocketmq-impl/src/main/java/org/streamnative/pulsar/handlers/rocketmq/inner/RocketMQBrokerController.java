@@ -272,6 +272,9 @@ public class RocketMQBrokerController {
             log.info("The broker dose not enable acl");
             return;
         }
+
+        String authToken = this.serverConfig.getBrokerClientAuthenticationParameters();
+
         getRemotingServer().registerRPCHook(new RPCHook() {
             @Override
             public void doBeforeRequest(String remoteAddr, RemotingCommand request) {
@@ -282,6 +285,10 @@ public class RocketMQBrokerController {
 
                 // token authorization logic
                 String token = request.getExtFields().get(SessionCredentials.ACCESS_KEY);
+                if (Strings.EMPTY.equals(token)) {
+                    log.error("The access key is null, please check.");
+                    return;
+                }
                 AuthenticationProviderToken providerToken = new AuthenticationProviderToken();
                 if (!providerToken.getAuthMethodName().equals("token")) {
                     log.error("Unsupported form of encryption is used, please check");
@@ -311,6 +318,7 @@ public class RocketMQBrokerController {
                                         authCommand).get();
                         if (!authOK) {
                             log.error("[PRODUCE] Token authentication failed, please check");
+                            return;
                         }
                     } catch (Exception e) {
                         e.printStackTrace();
@@ -329,11 +337,25 @@ public class RocketMQBrokerController {
                                         authCommand).get();
                         if (!authOK) {
                             log.error("[CONSUME] Token authentication failed, please check");
+                            return;
                         }
                     } catch (Exception e) {
                         e.printStackTrace();
                     }
+                } else if (RequestCode.UPDATE_AND_CREATE_TOPIC == request.getCode()
+                        || RequestCode.DELETE_TOPIC_IN_BROKER == request.getCode()
+                        || RequestCode.UPDATE_BROKER_CONFIG == request.getCode()
+                        || RequestCode.UPDATE_AND_CREATE_SUBSCRIPTIONGROUP == request.getCode()
+                        || RequestCode.DELETE_SUBSCRIPTIONGROUP == request.getCode()
+                        || RequestCode.INVOKE_BROKER_TO_RESET_OFFSET == request.getCode()){
+
+                    if (!authToken.equals(token)) {
+                        log.error("[ADMIN] Token authentication failed, please check");
+                        return;
+                    }
                 }
+
+                log.info("No auth check.");
             }
 
             @Override
