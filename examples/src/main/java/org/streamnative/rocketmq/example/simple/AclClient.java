@@ -14,7 +14,6 @@
 
 package org.streamnative.rocketmq.example.simple;
 
-import java.io.UnsupportedEncodingException;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.List;
