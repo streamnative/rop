@@ -25,8 +25,15 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.logging.log4j.util.Strings;
 import org.apache.pulsar.broker.PulsarServerException;
+import org.apache.pulsar.broker.authentication.AuthenticationDataCommand;
+import org.apache.pulsar.broker.authentication.AuthenticationProviderToken;
+import org.apache.pulsar.broker.authentication.AuthenticationService;
 import org.apache.pulsar.broker.service.BrokerService;
+import org.apache.pulsar.common.naming.TopicName;
+import org.apache.pulsar.common.policies.data.TopicOperation;
+import org.apache.rocketmq.acl.common.SessionCredentials;
 import org.apache.rocketmq.broker.client.ConsumerIdsChangeListener;
 import org.apache.rocketmq.broker.latency.BrokerFixedThreadPoolExecutor;
 import org.apache.rocketmq.broker.mqtrace.ConsumeMessageHook;
@@ -35,7 +42,11 @@ import org.apache.rocketmq.broker.util.ServiceProvider;
 import org.apache.rocketmq.common.ThreadFactoryImpl;
 import org.apache.rocketmq.common.UtilAll;
 import org.apache.rocketmq.common.protocol.RequestCode;
+import org.apache.rocketmq.common.protocol.header.PullMessageRequestHeader;
+import org.apache.rocketmq.common.protocol.header.SendMessageRequestHeader;
+import org.apache.rocketmq.remoting.RPCHook;
 import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
+import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.store.MessageArrivingListener;
 import org.apache.rocketmq.store.stats.BrokerStats;
 import org.apache.rocketmq.store.stats.BrokerStatsManager;
@@ -57,6 +68,7 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.processor.PullMessageProc
 import org.streamnative.pulsar.handlers.rocketmq.inner.processor.QueryMessageProcessor;
 import org.streamnative.pulsar.handlers.rocketmq.inner.processor.SendMessageProcessor;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ProducerManager;
+import org.streamnative.pulsar.handlers.rocketmq.utils.TopicNameUtils;
 
 /**
  * RocketMQ broker controller.
@@ -111,6 +123,8 @@ public class RocketMQBrokerController {
     private AbstractTransactionalMessageCheckListener transactionalMessageCheckListener;
     private volatile BrokerService brokerService;
     private ScheduleMessageService delayedMessageService;
+
+    public static String stringToken = Strings.EMPTY;
 
     public RocketMQBrokerController(final RocketMQServiceConfiguration serverConfig) throws PulsarServerException {
         this.serverConfig = serverConfig;
@@ -243,7 +257,112 @@ public class RocketMQBrokerController {
             }
         }, 60, 30, TimeUnit.SECONDS);
 
-        initialTransaction();
+        if (this.serverConfig.isRopAclEnable()) {
+            initialAcl();
+        }
+
+        if (this.serverConfig.isRopTransactionEnable()) {
+            initialTransaction();
+        }
+    }
+
+
+    private void initialAcl() {
+        if (!this.serverConfig.isRopAclEnable()) {
+            log.info("The broker dose not enable acl");
+            return;
+        }
+
+        String authToken = this.serverConfig.getBrokerClientAuthenticationParameters();
+
+        getRemotingServer().registerRPCHook(new RPCHook() {
+            @Override
+            public void doBeforeRequest(String remoteAddr, RemotingCommand request) {
+                if (request.getExtFields() == null) {
+                    // If request's extFields is null,then return "".
+                    return;
+                }
+
+                // token authorization logic
+                String token = request.getExtFields().get(SessionCredentials.ACCESS_KEY);
+                if (Strings.EMPTY.equals(token)) {
+                    log.error("The access key is null, please check.");
+                    return;
+                }
+                AuthenticationProviderToken providerToken = new AuthenticationProviderToken();
+                if (!providerToken.getAuthMethodName().equals("token")) {
+                    log.error("Unsupported form of encryption is used, please check");
+                    return;
+                }
+                AuthenticationService authService = brokerService.getAuthenticationService();
+                AuthenticationDataCommand authCommand = new AuthenticationDataCommand(token);
+
+                if (RequestCode.SEND_MESSAGE == request.getCode()
+                        || RequestCode.SEND_MESSAGE_V2 == request.getCode()
+                        || RequestCode.CONSUMER_SEND_MSG_BACK == request.getCode()
+                        || RequestCode.SEND_BATCH_MESSAGE == request.getCode()) {
+
+                    try {
+                        SendMessageRequestHeader requestHeader = SendMessageProcessor
+                                .parseRequestHeader(request);
+                        if (requestHeader == null) {
+                            log.warn("Parse send message request header.");
+                            return;
+                        }
+
+                        String roleSubject = authService.authenticate(authCommand, "token");
+                        String topicName = TopicNameUtils.parseTopicName(requestHeader.getTopic());
+                        Boolean authOK = brokerService.getAuthorizationService()
+                                .allowTopicOperationAsync(TopicName.get(topicName), TopicOperation.PRODUCE,
+                                        roleSubject,
+                                        authCommand).get();
+                        if (!authOK) {
+                            log.error("[PRODUCE] Token authentication failed, please check");
+                            return;
+                        }
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                } else if (RequestCode.PULL_MESSAGE == request.getCode()) {
+                    try {
+                        final PullMessageRequestHeader requestHeader =
+                                (PullMessageRequestHeader) request
+                                        .decodeCommandCustomHeader(PullMessageRequestHeader.class);
+
+                        String roleSubject = authService.authenticate(authCommand, "token");
+                        String topicName = TopicNameUtils.parseTopicName(requestHeader.getTopic());
+                        Boolean authOK = brokerService.getAuthorizationService()
+                                .allowTopicOperationAsync(TopicName.get(topicName), TopicOperation.PRODUCE,
+                                        roleSubject,
+                                        authCommand).get();
+                        if (!authOK) {
+                            log.error("[CONSUME] Token authentication failed, please check");
+                            return;
+                        }
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                } else if (RequestCode.UPDATE_AND_CREATE_TOPIC == request.getCode()
+                        || RequestCode.DELETE_TOPIC_IN_BROKER == request.getCode()
+                        || RequestCode.UPDATE_BROKER_CONFIG == request.getCode()
+                        || RequestCode.UPDATE_AND_CREATE_SUBSCRIPTIONGROUP == request.getCode()
+                        || RequestCode.DELETE_SUBSCRIPTIONGROUP == request.getCode()
+                        || RequestCode.INVOKE_BROKER_TO_RESET_OFFSET == request.getCode()){
+
+                    if (!authToken.equals(token)) {
+                        log.error("[ADMIN] Token authentication failed, please check");
+                        return;
+                    }
+                }
+
+                log.info("No auth check.");
+            }
+
+            @Override
+            public void doAfterResponse(String remoteAddr, RemotingCommand request, RemotingCommand response) {
+            }
+        });
+
     }
 
     private void initialTransaction() {
@@ -290,7 +409,6 @@ public class RocketMQBrokerController {
         this.remotingServer
                 .registerProcessor(RequestCode.VIEW_MESSAGE_BY_ID, queryProcessor, this.queryMessageExecutor);
 
-
         // ClientManageProcessor
         ClientManageProcessor clientProcessor = new ClientManageProcessor(this);
         this.remotingServer.registerProcessor(RequestCode.HEART_BEAT, clientProcessor, this.heartbeatExecutor);
@@ -298,7 +416,6 @@ public class RocketMQBrokerController {
                 .registerProcessor(RequestCode.UNREGISTER_CLIENT, clientProcessor, this.clientManageExecutor);
         this.remotingServer
                 .registerProcessor(RequestCode.CHECK_CLIENT_CONFIG, clientProcessor, this.clientManageExecutor);
-
 
         // ConsumerManageProcessor
         ConsumerManageProcessor consumerManageProcessor = new ConsumerManageProcessor(this);
@@ -309,11 +426,9 @@ public class RocketMQBrokerController {
         this.remotingServer.registerProcessor(RequestCode.QUERY_CONSUMER_OFFSET, consumerManageProcessor,
                 this.consumerManageExecutor);
 
-
         // EndTransactionProcessor
         this.remotingServer.registerProcessor(RequestCode.END_TRANSACTION, new EndTransactionProcessor(this),
                 this.endTransactionExecutor);
-
 
         // NameserverProcessor
         NameserverProcessor namesvrProcessor = new NameserverProcessor(this);
@@ -351,7 +466,6 @@ public class RocketMQBrokerController {
                 .registerProcessor(RequestCode.UPDATE_NAMESRV_CONFIG, namesvrProcessor, this.adminBrokerExecutor);
         this.remotingServer
                 .registerProcessor(RequestCode.GET_NAMESRV_CONFIG, namesvrProcessor, this.adminBrokerExecutor);
-
 
         // Default
         AdminBrokerProcessor adminProcessor = new AdminBrokerProcessor(this);
@@ -505,5 +619,9 @@ public class RocketMQBrokerController {
     public void registerConsumeMessageHook(final ConsumeMessageHook hook) {
         this.consumeMessageHookList.add(hook);
         log.info("register ConsumeMessageHook Hook, {}", hook.hookName());
+    }
+
+    public RocketMQRemoteServer getRemotingServer() {
+        return remotingServer;
     }
 }
