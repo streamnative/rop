@@ -33,6 +33,7 @@ import org.apache.pulsar.broker.authentication.AuthenticationService;
 import org.apache.pulsar.broker.service.BrokerService;
 import org.apache.pulsar.common.naming.TopicName;
 import org.apache.pulsar.common.policies.data.TopicOperation;
+import org.apache.rocketmq.acl.common.AclException;
 import org.apache.rocketmq.acl.common.SessionCredentials;
 import org.apache.rocketmq.broker.client.ConsumerIdsChangeListener;
 import org.apache.rocketmq.broker.latency.BrokerFixedThreadPoolExecutor;
@@ -287,12 +288,12 @@ public class RocketMQBrokerController {
                 String token = request.getExtFields().get(SessionCredentials.ACCESS_KEY);
                 if (Strings.EMPTY.equals(token)) {
                     log.error("The access key is null, please check.");
-                    return;
+                    throw new AclException("No accessKey is configured");
                 }
                 AuthenticationProviderToken providerToken = new AuthenticationProviderToken();
                 if (!providerToken.getAuthMethodName().equals("token")) {
                     log.error("Unsupported form of encryption is used, please check");
-                    return;
+                    throw new AclException("Unsupported form of encryption is used");
                 }
                 AuthenticationService authService = brokerService.getAuthenticationService();
                 AuthenticationDataCommand authCommand = new AuthenticationDataCommand(token);
@@ -318,7 +319,7 @@ public class RocketMQBrokerController {
                                         authCommand).get();
                         if (!authOK) {
                             log.error("[PRODUCE] Token authentication failed, please check");
-                            return;
+                            throw new AclException("[PRODUCE] Token authentication failed, please check");
                         }
                     } catch (Exception e) {
                         e.printStackTrace();
@@ -337,7 +338,7 @@ public class RocketMQBrokerController {
                                         authCommand).get();
                         if (!authOK) {
                             log.error("[CONSUME] Token authentication failed, please check");
-                            return;
+                            throw new AclException("[CONSUME] Token authentication failed, please check");
                         }
                     } catch (Exception e) {
                         e.printStackTrace();
@@ -351,7 +352,7 @@ public class RocketMQBrokerController {
 
                     if (!authToken.equals(token)) {
                         log.error("[ADMIN] Token authentication failed, please check");
-                        return;
+                        throw new AclException("[ADMIN] Token authentication failed, please check");
                     }
                 }
 
