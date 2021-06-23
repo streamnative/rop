@@ -19,7 +19,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import org.apache.logging.log4j.util.Strings;
 import org.apache.rocketmq.acl.common.AclClientRPCHook;
 import org.apache.rocketmq.acl.common.SessionCredentials;
 import org.apache.rocketmq.client.consumer.DefaultMQPullConsumer;
@@ -46,27 +45,28 @@ public class AclClient {
 
     private static final Map<MessageQueue, Long> OFFSE_TABLE = new HashMap<MessageQueue, Long>();
 
-    private static final String ACL_ACCESS_KEY = "eyJrZXlJZCI6InB1bHNhci04xxxxxxxxxxUzI1NiJ9."
-            + "eyJzdWIiOiJwdWxxxxxx3QtMTExMTExIn0.cIsxxGtnuXxxxxxES-0WccDZjPEGUFzT-th-f6I";
+    private static final String ACL_ACCESS_KEY = "eyJrZXlJZCxxxxWQiLCJhbGciOiJIUzI1NiJ9.eyJzdWIixxzdXBlcnVzZXIifQ."
+            + "PRUels3nR4IxxLBIkgt8Dabz4Nk7Uay4r5KbW6LlvU";
+    private static final String ACL_SECRET_KEY = "rop";
 
     public static void main(String[] args) throws MQClientException, InterruptedException {
         producer();
-        pushConsumer();
-        pullConsumer();
+//        pushConsumer();
+//        pullConsumer();
     }
 
     public static void producer() throws MQClientException {
-        DefaultMQProducer producer = new DefaultMQProducer("ProducerGroupName", getAclRPCHook());
+        DefaultMQProducer producer = new DefaultMQProducer("ProducerGroupName111", getAclRPCHook());
         producer.setNamesrvAddr("127.0.0.1:9876");
         producer.start();
 
-        for (int i = 0; i < 128; i++) {
+        for (int i = 0; i < 10; i++) {
             try {
                 {
-                    Message msg = new Message("TopicTest",
+                    Message msg = new Message("TopicTest2222",
                             "TagA",
-                            "OrderID188",
-                            "Hello world".getBytes(RemotingHelper.DEFAULT_CHARSET));
+                            "OrderID1881",
+                            "Hello world1".getBytes(RemotingHelper.DEFAULT_CHARSET));
                     SendResult sendResult = producer.send(msg);
                     System.out.printf("%s%n", sendResult);
                 }
@@ -169,7 +169,7 @@ public class AclClient {
     }
 
     static RPCHook getAclRPCHook() {
-        return new AclClientRPCHook(new SessionCredentials(ACL_ACCESS_KEY, Strings.EMPTY));
+        return new AclClientRPCHook(new SessionCredentials(ACL_ACCESS_KEY, ACL_SECRET_KEY));
     }
 
 }
