@@ -51,22 +51,22 @@ public class AclClient {
 
     public static void main(String[] args) throws MQClientException, InterruptedException {
         producer();
-//        pushConsumer();
-//        pullConsumer();
+        pushConsumer();
+        pullConsumer();
     }
 
     public static void producer() throws MQClientException {
-        DefaultMQProducer producer = new DefaultMQProducer("ProducerGroupName111", getAclRPCHook());
+        DefaultMQProducer producer = new DefaultMQProducer("ProducerGroupName", getAclRPCHook());
         producer.setNamesrvAddr("127.0.0.1:9876");
         producer.start();
 
         for (int i = 0; i < 10; i++) {
             try {
                 {
-                    Message msg = new Message("TopicTest2222",
+                    Message msg = new Message("TopicTest",
                             "TagA",
-                            "OrderID1881",
-                            "Hello world1".getBytes(RemotingHelper.DEFAULT_CHARSET));
+                            "OrderID188",
+                            "Hello world".getBytes(RemotingHelper.DEFAULT_CHARSET));
                     SendResult sendResult = producer.send(msg);
                     System.out.printf("%s%n", sendResult);
                 }
