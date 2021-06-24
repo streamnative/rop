@@ -25,10 +25,10 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.util.Strings;
 import org.apache.pulsar.broker.PulsarServerException;
 import org.apache.pulsar.broker.authentication.AuthenticationDataCommand;
-import org.apache.pulsar.broker.authentication.AuthenticationProviderToken;
 import org.apache.pulsar.broker.authentication.AuthenticationService;
 import org.apache.pulsar.broker.service.BrokerService;
 import org.apache.pulsar.common.naming.TopicName;
@@ -68,8 +68,8 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.processor.EndTransactionP
 import org.streamnative.pulsar.handlers.rocketmq.inner.processor.PullMessageProcessor;
 import org.streamnative.pulsar.handlers.rocketmq.inner.processor.QueryMessageProcessor;
 import org.streamnative.pulsar.handlers.rocketmq.inner.processor.SendMessageProcessor;
+import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientTopicName;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ProducerManager;
-import org.streamnative.pulsar.handlers.rocketmq.utils.TopicNameUtils;
 
 /**
  * RocketMQ broker controller.
@@ -260,6 +260,7 @@ public class RocketMQBrokerController {
 
         if (this.serverConfig.isRopAclEnable()) {
             initialAcl();
+            initialRpcHooks();
         }
 
         if (this.serverConfig.isRopTransactionEnable()) {
@@ -274,7 +275,14 @@ public class RocketMQBrokerController {
             return;
         }
 
-        String authToken = this.serverConfig.getBrokerClientAuthenticationParameters();
+        String originalAuthToken = this.serverConfig.getBrokerClientAuthenticationParameters();
+        if (Strings.EMPTY.equals(originalAuthToken)) {
+            log.error("Get the broker client auth token is null, please check.");
+            throw new AclException("Get the broker client auth token is null, please check.");
+        }
+
+        String[] parts = StringUtils.split(originalAuthToken, ":");
+        String authToken = parts[1];
 
         getRemotingServer().registerRPCHook(new RPCHook() {
             @Override
@@ -290,14 +298,10 @@ public class RocketMQBrokerController {
                     log.error("The access key is null, please check.");
                     throw new AclException("No accessKey is configured");
                 }
-                AuthenticationProviderToken providerToken = new AuthenticationProviderToken();
-                if (!providerToken.getAuthMethodName().equals("token")) {
-                    log.error("Unsupported form of encryption is used, please check");
-                    throw new AclException("Unsupported form of encryption is used");
-                }
                 AuthenticationService authService = brokerService.getAuthenticationService();
                 AuthenticationDataCommand authCommand = new AuthenticationDataCommand(token);
 
+                log.info("The user upload token is: {} and the superuser token is: {}", token, authToken);
                 if (RequestCode.SEND_MESSAGE == request.getCode()
                         || RequestCode.SEND_MESSAGE_V2 == request.getCode()
                         || RequestCode.CONSUMER_SEND_MSG_BACK == request.getCode()
@@ -311,8 +315,16 @@ public class RocketMQBrokerController {
                             return;
                         }
 
+                        log.info("The use topic is: {}", requestHeader.getTopic());
                         String roleSubject = authService.authenticate(authCommand, "token");
-                        String topicName = TopicNameUtils.parseTopicName(requestHeader.getTopic());
+                        if (Strings.EMPTY.equals(roleSubject)) {
+                            log.error("The upload token:{} is wrong.", token);
+                            throw new AclException("[PRODUCE] The uploaded token is wrong");
+                        }
+
+                        ClientTopicName clientTopicName = new ClientTopicName(requestHeader.getTopic());
+                        String topicName = clientTopicName.getPulsarTopicName();
+
                         Boolean authOK = brokerService.getAuthorizationService()
                                 .allowTopicOperationAsync(TopicName.get(topicName), TopicOperation.PRODUCE,
                                         roleSubject,
@@ -321,8 +333,11 @@ public class RocketMQBrokerController {
                             log.error("[PRODUCE] Token authentication failed, please check");
                             throw new AclException("[PRODUCE] Token authentication failed, please check");
                         }
+
+                        log.info("Successfully for send auth: {}", authOK);
                     } catch (Exception e) {
-                        e.printStackTrace();
+                        log.error("[PRODUCE] Throws exception:{}", e.getMessage());
+                        throw new RuntimeException(e);
                     }
                 } else if (RequestCode.PULL_MESSAGE == request.getCode()) {
                     try {
@@ -331,7 +346,13 @@ public class RocketMQBrokerController {
                                         .decodeCommandCustomHeader(PullMessageRequestHeader.class);
 
                         String roleSubject = authService.authenticate(authCommand, "token");
-                        String topicName = TopicNameUtils.parseTopicName(requestHeader.getTopic());
+                        if (Strings.EMPTY.equals(roleSubject)) {
+                            log.error("The upload token:{} is wrong.", token);
+                            throw new AclException("[CONSUME] The uploaded token is wrong");
+                        }
+
+                        ClientTopicName clientTopicName = new ClientTopicName(requestHeader.getTopic());
+                        String topicName = clientTopicName.getPulsarTopicName();
                         Boolean authOK = brokerService.getAuthorizationService()
                                 .allowTopicOperationAsync(TopicName.get(topicName), TopicOperation.PRODUCE,
                                         roleSubject,
@@ -340,23 +361,28 @@ public class RocketMQBrokerController {
                             log.error("[CONSUME] Token authentication failed, please check");
                             throw new AclException("[CONSUME] Token authentication failed, please check");
                         }
+                        log.info("Successfully for receive auth");
                     } catch (Exception e) {
-                        e.printStackTrace();
+                        log.error("[CONSUME] Throws exception:{}", e.getMessage());
+                        throw new RuntimeException(e);
                     }
                 } else if (RequestCode.UPDATE_AND_CREATE_TOPIC == request.getCode()
                         || RequestCode.DELETE_TOPIC_IN_BROKER == request.getCode()
                         || RequestCode.UPDATE_BROKER_CONFIG == request.getCode()
                         || RequestCode.UPDATE_AND_CREATE_SUBSCRIPTIONGROUP == request.getCode()
                         || RequestCode.DELETE_SUBSCRIPTIONGROUP == request.getCode()
-                        || RequestCode.INVOKE_BROKER_TO_RESET_OFFSET == request.getCode()){
+                        || RequestCode.INVOKE_BROKER_TO_RESET_OFFSET == request.getCode()) {
 
+                    log.info("Into admin auth logic and the check is: {}", authToken.equals(token));
                     if (!authToken.equals(token)) {
                         log.error("[ADMIN] Token authentication failed, please check");
                         throw new AclException("[ADMIN] Token authentication failed, please check");
                     }
+                    log.info("Successfully for admin auth");
+                } else {
+                    log.info("No auth check.");
                 }
 
-                log.info("No auth check.");
             }
 
             @Override
@@ -364,6 +390,21 @@ public class RocketMQBrokerController {
             }
         });
 
+    }
+
+    private void initialRpcHooks() {
+
+        List<RPCHook> rpcHooks = ServiceProvider.load(ServiceProvider.RPC_HOOK_ID, RPCHook.class);
+        if (rpcHooks == null || rpcHooks.isEmpty()) {
+            return;
+        }
+        for (RPCHook rpcHook : rpcHooks) {
+            this.registerServerRPCHook(rpcHook);
+        }
+    }
+
+    public void registerServerRPCHook(RPCHook rpcHook) {
+        getRemotingServer().registerRPCHook(rpcHook);
     }
 
     private void initialTransaction() {

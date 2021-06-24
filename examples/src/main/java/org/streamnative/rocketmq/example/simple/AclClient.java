@@ -19,7 +19,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import org.apache.logging.log4j.util.Strings;
 import org.apache.rocketmq.acl.common.AclClientRPCHook;
 import org.apache.rocketmq.acl.common.SessionCredentials;
 import org.apache.rocketmq.client.consumer.DefaultMQPullConsumer;
@@ -46,24 +45,26 @@ public class AclClient {
 
     private static final Map<MessageQueue, Long> OFFSE_TABLE = new HashMap<MessageQueue, Long>();
 
-    private static final String ACL_ACCESS_KEY = "eyJrZXlJZCI6InB1bHNhci04xxxxxxxxxxUzI1NiJ9."
-            + "eyJzdWIiOiJwdWxxxxxx3QtMTExMTExIn0.cIsxxGtnuXxxxxxES-0WccDZjPEGUFzT-th-f6I";
+    private static final String ACL_ACCESS_KEY = "eyJrZXlJZCI6InJvY2tldG1xLW13bmI3bWFwMjhqZSIsImFsZyI6IkhTMjU2In0."
+            + "eyJzdWIiOiJyb2NrZXRtcS1td25iN21hcDI4amVfdGVzdCJ9.BDOjqqY25a6apnZTMZCqg0I0pxVFcqz7fvZbaTqkf5U";
+    private static final String ACL_SECRET_KEY = "rop";
 
     public static void main(String[] args) throws MQClientException, InterruptedException {
         producer();
         pushConsumer();
-        pullConsumer();
+//        pullConsumer();
     }
 
     public static void producer() throws MQClientException {
-        DefaultMQProducer producer = new DefaultMQProducer("ProducerGroupName", getAclRPCHook());
+        DefaultMQProducer producer = new DefaultMQProducer("rocketmq-mwnb7map28je|nit", "ProducerGroupName",
+                getAclRPCHook());
         producer.setNamesrvAddr("127.0.0.1:9876");
         producer.start();
 
-        for (int i = 0; i < 128; i++) {
+        for (int i = 0; i < 10; i++) {
             try {
                 {
-                    Message msg = new Message("TopicTest",
+                    Message msg = new Message("nit-topic",
                             "TagA",
                             "OrderID188",
                             "Hello world".getBytes(RemotingHelper.DEFAULT_CHARSET));
@@ -81,10 +82,11 @@ public class AclClient {
 
     public static void pushConsumer() throws MQClientException {
 
-        DefaultMQPushConsumer consumer = new DefaultMQPushConsumer("please_rename_unique_group_name_5", getAclRPCHook(),
+        DefaultMQPushConsumer consumer = new DefaultMQPushConsumer("rocketmq-mwnb7map28je|nit",
+                "please_rename_unique_group_name_5", getAclRPCHook(),
                 new AllocateMessageQueueAveragely());
         consumer.setNamesrvAddr("127.0.0.1:9876");
-        consumer.subscribe("TopicTest", "*");
+        consumer.subscribe("nit-topic", "*");
         consumer.setConsumeFromWhere(ConsumeFromWhere.CONSUME_FROM_FIRST_OFFSET);
         // Wrong time format 2017_0422_221800
         consumer.setConsumeTimestamp("20180422221800");
@@ -102,12 +104,13 @@ public class AclClient {
     }
 
     public static void pullConsumer() throws MQClientException {
-        DefaultMQPullConsumer consumer = new DefaultMQPullConsumer("please_rename_unique_group_name_6",
+        DefaultMQPullConsumer consumer = new DefaultMQPullConsumer("rocketmq-mwnb7map28je|nit",
+                "please_rename_unique_group_name_6",
                 getAclRPCHook());
         consumer.setNamesrvAddr("127.0.0.1:9876");
         consumer.start();
 
-        Set<MessageQueue> mqs = consumer.fetchSubscribeMessageQueues("TopicTest");
+        Set<MessageQueue> mqs = consumer.fetchSubscribeMessageQueues("nit-topic");
         for (MessageQueue mq : mqs) {
             System.out.printf("Consume from the queue: %s%n", mq);
             SINGLE_MQ:
@@ -169,7 +172,7 @@ public class AclClient {
     }
 
     static RPCHook getAclRPCHook() {
-        return new AclClientRPCHook(new SessionCredentials(ACL_ACCESS_KEY, Strings.EMPTY));
+        return new AclClientRPCHook(new SessionCredentials(ACL_ACCESS_KEY, ACL_SECRET_KEY));
     }
 
 }

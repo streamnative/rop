@@ -60,7 +60,7 @@
         <spotbugs-annotations.version>3.1.8</spotbugs-annotations.version>
         <spotbugs-maven-plugin.version>3.1.8</spotbugs-maven-plugin.version>
         <maven-checkstyle-plugin.version>3.0.0</maven-checkstyle-plugin.version>
-        <puppycrawl.checkstyle.version>8.29</puppycrawl.checkstyle.version>
+        <puppycrawl.checkstyle.version>6.19</puppycrawl.checkstyle.version>
         <maven.compiler.source>8</maven.compiler.source>
         <maven.compiler.target>8</maven.compiler.target>
         <commons-lang.version>2.6</commons-lang.version>
