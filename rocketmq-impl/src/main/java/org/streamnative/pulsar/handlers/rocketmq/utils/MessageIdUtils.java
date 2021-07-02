@@ -53,7 +53,7 @@ public class MessageIdUtils {
 
         Preconditions.checkArgument(ledgerId <= MAX_LEDGER_ID, "ledgerId has overflow in rop.");
         Preconditions.checkArgument(entryId <= MAX_ENTRY_ID, "entryId has overflow in rop.");
-        Preconditions.checkArgument(partitionId <= MAX_PARTITION_ID, "entryId has overflow in rop.");
+        Preconditions.checkArgument(partitionId <= MAX_PARTITION_ID, "partitionId has overflow in rop.");
         ledgerId = ledgerId + 1L;
         entryId = entryId + 1L;
         partitionId = partitionId + 1;
