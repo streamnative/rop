@@ -97,7 +97,7 @@ protocolHandlerDirectory=./protocols
 loadManagerClassName=org.apache.pulsar.broker.loadbalance.impl.ModularLoadManagerImpl
 ```
 
-1. Set RocketMQ service listeners
+2. Set RocketMQ service listeners
 
 Set RocketMQ service `listeners`. Note that the hostname value in listeners is the same as Pulsar
 broker's `advertisedListeners`.
