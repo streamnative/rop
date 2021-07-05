@@ -84,8 +84,8 @@ config file, such as `broker.conf` or `standalone.conf`.
 
 1. Protocol handler configuration
 
-You need to add `messagingProtocols`(the default value is `null`) and  `protocolHandlerDirectory` (
-the default value is "./protocols"), in Pulsar configuration files, such as `broker.conf`
+You need to add `messagingProtocols`(the default value is `null`), `protocolHandlerDirectory` (
+the default value is "./protocols") and `loadManagerClassName=org.apache.pulsar.broker.loadbalance.impl.ModularLoadManagerImpl`, in Pulsar configuration files, such as `broker.conf`
 or `standalone.conf`. For RoP, the value for `messagingProtocols` is `rocketmq`; the value
 for `protocolHandlerDirectory` is the directory of RoP nar file.
 
@@ -94,9 +94,10 @@ The following is an example.
 ```access transformers
 messagingProtocols=rocketmq
 protocolHandlerDirectory=./protocols
+loadManagerClassName=org.apache.pulsar.broker.loadbalance.impl.ModularLoadManagerImpl
 ```
 
-2. Set RocketMQ service listeners
+1. Set RocketMQ service listeners
 
 Set RocketMQ service `listeners`. Note that the hostname value in listeners is the same as Pulsar
 broker's `advertisedListeners`.
