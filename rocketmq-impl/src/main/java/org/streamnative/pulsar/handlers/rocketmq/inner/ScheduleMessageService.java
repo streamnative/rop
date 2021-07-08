@@ -192,34 +192,15 @@ public class ScheduleMessageService {
         private static final int MAX_BATCH_SIZE = 500;
         private final PulsarService pulsarService;
         private final int delayLevel;
-        private final Consumer<byte[]> delayedConsumer;
         private final RopEntryFormatter formatter = new RopEntryFormatter();
         private final SystemTimer timeoutTimer;
 
+        private Consumer<byte[]> delayedConsumer = null;
+
         public DeliverDelayedMessageTimerTask(int delayLevel) {
             this.delayLevel = delayLevel;
-            String delayTopic = getDelayedTopicName(delayLevel);
             this.pulsarService = ScheduleMessageService.this.pulsarBroker.pulsar();
             this.timeoutTimer = SystemTimer.builder().executorName("DeliverDelayedMessageTimeWheelExecutor").build();
-            try {
-                log.warn("Before create delayed consumer, the client config value: [{}]",
-                        ((PulsarClientImpl) this.pulsarService.getClient()).getConfiguration());
-                this.delayedConsumer = this.pulsarService.getClient()
-                        .newConsumer()
-                        .receiverQueueSize(MAX_FETCH_MESSAGE_NUM)
-                        .subscriptionMode(SubscriptionMode.Durable)
-                        .subscriptionType(SubscriptionType.Failover)
-                        .subscriptionName(getDelayedTopicConsumerName(delayLevel))
-                        .topic(delayTopic)
-                        .subscriptionInitialPosition(SubscriptionInitialPosition.Earliest)
-                        .subscribe();
-
-                log.warn("The client config value: [{}]",
-                        ((PulsarClientImpl) this.pulsarService.getClient()).getConfiguration());
-            } catch (Exception e) {
-                log.error("create delayed topic[delayLevel={}] consumer error.", delayLevel, e);
-                throw new RuntimeException("Create delayed topic error");
-            }
         }
 
         public void close() {
@@ -236,7 +217,9 @@ public class ScheduleMessageService {
         @Override
         public void run() {
             try {
-                Preconditions.checkNotNull(this.delayedConsumer);
+                if (delayedConsumer == null) {
+                    createConsumer();
+                }
                 int i = 0;
                 while (i++ < MAX_BATCH_SIZE && timeoutTimer.size() < MAX_BATCH_SIZE
                         && ScheduleMessageService.this.isStarted()) {
@@ -329,6 +312,30 @@ public class ScheduleMessageService {
                 if (!ScheduleMessageService.this.isStarted()) {
                     Thread.interrupted();
                 }
+            }
+        }
+
+        private synchronized void createConsumer() {
+            if (this.delayedConsumer != null) {
+                return;
+            }
+            try {
+                log.debug("Before create delayed consumer, the client config value: [{}]",
+                        ((PulsarClientImpl) this.pulsarService.getClient()).getConfiguration());
+                this.delayedConsumer = this.pulsarService.getClient()
+                        .newConsumer()
+                        .receiverQueueSize(MAX_FETCH_MESSAGE_NUM)
+                        .subscriptionMode(SubscriptionMode.Durable)
+                        .subscriptionType(SubscriptionType.Failover)
+                        .subscriptionName(getDelayedTopicConsumerName(delayLevel))
+                        .topic(getDelayedTopicName(delayLevel))
+                        .subscriptionInitialPosition(SubscriptionInitialPosition.Earliest)
+                        .subscribe();
+                log.debug("The client config value: [{}]",
+                        ((PulsarClientImpl) this.pulsarService.getClient()).getConfiguration());
+            } catch (Exception e) {
+                log.error("Create delayed topic[delayLevel={}] consumer error.", delayLevel, e);
+                throw new RuntimeException("Create delay consumer error");
             }
         }
 
