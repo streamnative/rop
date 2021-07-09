@@ -354,7 +354,7 @@ public class RocketMQBrokerController {
                         ClientTopicName clientTopicName = new ClientTopicName(requestHeader.getTopic());
                         String topicName = clientTopicName.getPulsarTopicName();
                         Boolean authOK = brokerService.getAuthorizationService()
-                                .allowTopicOperationAsync(TopicName.get(topicName), TopicOperation.PRODUCE,
+                                .allowTopicOperationAsync(TopicName.get(topicName), TopicOperation.CONSUME,
                                         roleSubject,
                                         authCommand).get();
                         if (!authOK) {
