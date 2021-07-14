@@ -31,6 +31,9 @@ jobs:
           docker rmi $(docker images -q) -f
           df -h
 
+      - name: Build with Maven skipTests
+        run: mvn clean install -DskipTests
+
       - name: rocketmq-impl test after build
         run: mvn test -DfailIfNoTests=false -pl tests
 
