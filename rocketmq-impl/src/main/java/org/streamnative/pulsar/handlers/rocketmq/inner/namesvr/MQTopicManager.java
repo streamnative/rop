@@ -24,6 +24,7 @@ import java.net.InetSocketAddress;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -52,6 +53,7 @@ import org.apache.pulsar.client.api.PulsarClient;
 import org.apache.pulsar.client.impl.Backoff;
 import org.apache.pulsar.client.impl.PulsarClientImpl;
 import org.apache.pulsar.common.naming.NamespaceBundle;
+import org.apache.pulsar.common.naming.NamespaceName;
 import org.apache.pulsar.common.naming.TopicName;
 import org.apache.pulsar.common.partition.PartitionedTopicMetadata;
 import org.apache.pulsar.common.policies.data.ClusterData;
@@ -319,7 +321,12 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
 
     @Override
     public boolean test(NamespaceBundle namespaceBundle) {
-        return true;
+        NamespaceName namespaceObject = namespaceBundle.getNamespaceObject();
+        String tenant = namespaceObject.getTenant();
+        if (null == tenant || Strings.EMPTY.equals(tenant)) {
+            return false;
+        }
+        return tenant.toLowerCase(Locale.ROOT).startsWith(config.getRocketmqTenant());
     }
 
     private void createSysResource() throws Exception {
