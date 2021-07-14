@@ -1,4 +1,4 @@
-name: rop mvn build check and rocketmq-impl test
+name: rop mvn build check integration test
 
 on:
   pull_request:
@@ -31,18 +31,6 @@ jobs:
           docker rmi $(docker images -q) -f
           df -h
 
-      - name: License check
-        run: mvn license:check
-
-      - name: Build with Maven skipTests
-        run: mvn clean install -DskipTests
-
-      - name: Style check
-        run: mvn checkstyle:check
-
-      - name: Spotbugs check
-        run: mvn spotbugs:check
-
       - name: rocketmq-impl test after build
-        run: mvn test -DfailIfNoTests=false -pl rocketmq-impl
+        run: mvn test -DfailIfNoTests=false -pl tests
 
