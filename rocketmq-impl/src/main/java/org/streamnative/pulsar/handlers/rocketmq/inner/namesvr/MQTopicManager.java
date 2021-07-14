@@ -326,7 +326,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
         if (null == tenant || Strings.EMPTY.equals(tenant)) {
             return false;
         }
-        return tenant.toLowerCase(Locale.ROOT).startsWith("rocketmq");
+        return tenant.toLowerCase(Locale.ROOT).startsWith(config.getRocketmqTenant());
     }
 
     private void createSysResource() throws Exception {
