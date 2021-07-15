@@ -34,7 +34,7 @@ import org.testng.annotations.Test;
 @Slf4j
 public class ProducerTestCase extends RocketMQTestBase {
 
-    @Test(timeOut = 1000 * 20)
+    @Test(timeOut = 1000 * 60)
     public void simpleProducerTest() throws Exception {
         DefaultMQProducer producer = new DefaultMQProducer("test_producer_group_name");
         String nameSrvAddr = "127.0.0.1:" + getRocketmqBrokerPortList().get(0);
@@ -69,7 +69,7 @@ public class ProducerTestCase extends RocketMQTestBase {
         producer.shutdown();
     }
 
-    @Test(timeOut = 1000 * 20)
+    @Test(timeOut = 1000 * 60)
     public void producerWithNamespace() throws Exception{
         DefaultMQProducer producer = new DefaultMQProducer("test1|InstanceTest", "pidTest");
         String nameSrvAddr = "127.0.0.1:" + getRocketmqBrokerPortList().get(0);
@@ -88,7 +88,7 @@ public class ProducerTestCase extends RocketMQTestBase {
         producer.shutdown();
     }
 
-    @Test(timeOut = 20 * 1000)
+    @Test(timeOut = 60 * 1000)
     public void batchProducerTest() throws Exception {
         DefaultMQProducer producer = new DefaultMQProducer("BatchProducerGroupName");
         String nameSrvAddr = "127.0.0.1:" + getRocketmqBrokerPortList().get(0);
@@ -109,7 +109,7 @@ public class ProducerTestCase extends RocketMQTestBase {
         Assert.assertEquals(sendResult.getMessageQueue().getBrokerName(), "127.0.0.1");
     }
 
-    @Test(timeOut = 20 * 1000)
+    @Test(timeOut = 60 * 1000)
     public void orderProducer() throws Exception {
         DefaultMQProducer producer = new DefaultMQProducer("order_producer_name");
         String nameSrvAddr = "127.0.0.1:" + getRocketmqBrokerPortList().get(0);
