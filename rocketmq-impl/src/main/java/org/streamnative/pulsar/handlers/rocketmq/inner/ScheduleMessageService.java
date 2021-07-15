@@ -189,7 +189,6 @@ public class ScheduleMessageService {
 
         private static final int PULL_MESSAGE_TIMEOUT_MS = 500;
         private static final int SEND_MESSAGE_TIMEOUT_MS = 3000;
-        private static final int MAX_BATCH_SIZE = 500;
         private final PulsarService pulsarService;
         private final int delayLevel;
         private final RopEntryFormatter formatter = new RopEntryFormatter();
@@ -221,7 +220,8 @@ public class ScheduleMessageService {
                     createConsumer();
                 }
                 int i = 0;
-                while (i++ < MAX_BATCH_SIZE && timeoutTimer.size() < MAX_BATCH_SIZE
+                while (i++ < config.getMaxScheduleMsgBatchSize()
+                        && timeoutTimer.size() < config.getMaxScheduleMsgBatchSize()
                         && ScheduleMessageService.this.isStarted()) {
                     Message<byte[]> message = this.delayedConsumer
                             .receive(PULL_MESSAGE_TIMEOUT_MS, TimeUnit.MILLISECONDS);
