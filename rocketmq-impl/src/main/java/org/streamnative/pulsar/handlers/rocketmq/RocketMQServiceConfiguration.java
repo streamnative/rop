@@ -373,6 +373,12 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
 
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
+            doc = "The maximum number of messages processed by a timerTask.\n"
+    )
+    private int maxScheduleMsgBatchSize = 500;
+
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
             doc = "rocketmq Acl feature switch.\n"
     )
     private boolean ropAclEnable = true;
