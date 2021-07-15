@@ -357,6 +357,7 @@
                     <excludes>
                         <exclude>LICENSE</exclude>
                         <exclude>NOTICE</exclude>
+                        <exclude>**/conf/**</exclude>
                         <exclude>Jenkinsfile</exclude>
                         <exclude>resources/license.template</exclude>
                         <exclude>resources/findbugsExclude.xml</exclude>
