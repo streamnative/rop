@@ -106,7 +106,6 @@ public class ProducerTestCase extends RocketMQTestBase {
         SendResult sendResult = producer.send(messages);
         Assert.assertEquals(sendResult.getSendStatus(), SendStatus.SEND_OK);
         Assert.assertEquals(sendResult.getMessageQueue().getTopic(), "BatchTest");
-        Assert.assertEquals(sendResult.getMessageQueue().getBrokerName(), "127.0.0.1");
     }
 
     @Test(timeOut = 60 * 1000)
@@ -133,7 +132,6 @@ public class ProducerTestCase extends RocketMQTestBase {
 
             Assert.assertEquals(sendResult.getSendStatus(), SendStatus.SEND_OK);
             Assert.assertEquals(sendResult.getMessageQueue().getTopic(), "OrderTopic");
-            Assert.assertEquals(sendResult.getMessageQueue().getBrokerName(), "127.0.0.1");
         }
 
         producer.shutdown();
