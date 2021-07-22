@@ -26,8 +26,9 @@ public class AclClient {
 
     private static final String ACL_ACCESS_KEY = "eyJrZXlJZCI6InB1bHNhci04xxxxxxxxxxUzI1NiJ9."
             + "eyJzdWIiOiJwdWxxxxxx3QtMTExMTExIn0.cIsxxGtnuXxxxxxES-0WccDZjPEGUFzT-th-f6I";
+    private static final String ACL_SECRET_KEY = "rop";
 
     static RPCHook getAclRPCHook() {
-        return new AclClientRPCHook(new SessionCredentials(ACL_ACCESS_KEY, Strings.EMPTY));
+        return new AclClientRPCHook(new SessionCredentials(ACL_ACCESS_KEY, ACL_SECRET_KEY));
     }
 }
