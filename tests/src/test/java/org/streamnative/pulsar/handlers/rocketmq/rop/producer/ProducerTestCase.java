@@ -110,6 +110,7 @@ public class ProducerTestCase extends RocketMQTestBase {
     }
 
     @Test(timeOut = 60 * 1000)
+    @Ignore
     public void orderProducer() throws Exception {
         DefaultMQProducer producer = new DefaultMQProducer("order_producer_name");
         String nameSrvAddr = "127.0.0.1:" + getRocketmqBrokerPortList().get(0);
