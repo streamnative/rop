@@ -14,7 +14,6 @@
 
 package org.streamnative.rocketmq.example.benchmark;
 
-import org.apache.logging.log4j.util.Strings;
 import org.apache.rocketmq.acl.common.AclClientRPCHook;
 import org.apache.rocketmq.acl.common.SessionCredentials;
 import org.apache.rocketmq.remoting.RPCHook;
