@@ -224,6 +224,10 @@ public class PullMessageProcessor implements NettyRequestProcessor {
         // and wait for the heartbeat request to register.
         if (null == serverCnxMsgStore) {
             response.setCode(ResponseCode.PULL_RETRY_IMMEDIATELY);
+            responseHeader.setMaxOffset(requestHeader.getQueueOffset());
+            responseHeader.setNextBeginOffset(requestHeader.getQueueOffset());
+            responseHeader.setMinOffset(requestHeader.getQueueOffset());
+            responseHeader.setSuggestWhichBrokerId(0L);
             response.setRemark("store getMessage return null");
             return response;
         }
