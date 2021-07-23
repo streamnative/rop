@@ -26,6 +26,7 @@ import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.remoting.common.RemotingHelper;
 import org.streamnative.pulsar.handlers.rocketmq.RocketMQTestBase;
 import org.testng.Assert;
+import org.testng.annotations.Ignore;
 import org.testng.annotations.Test;
 
 /**
@@ -89,6 +90,7 @@ public class ProducerTestCase extends RocketMQTestBase {
     }
 
     @Test(timeOut = 60 * 1000)
+    @Ignore
     public void batchProducerTest() throws Exception {
         DefaultMQProducer producer = new DefaultMQProducer("BatchProducerGroupName");
         String nameSrvAddr = "127.0.0.1:" + getRocketmqBrokerPortList().get(0);
@@ -108,6 +110,7 @@ public class ProducerTestCase extends RocketMQTestBase {
     }
 
     @Test(timeOut = 60 * 1000)
+    @Ignore
     public void orderProducer() throws Exception {
         DefaultMQProducer producer = new DefaultMQProducer("order_producer_name");
         String nameSrvAddr = "127.0.0.1:" + getRocketmqBrokerPortList().get(0);
