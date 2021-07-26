@@ -168,7 +168,7 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
             category = CATEGORY_ROCKETMQ,
             doc = "Number of send message thread pool.\n"
     )
-    private int sendMessageThreadPoolNums = 16 + Runtime.getRuntime().availableProcessors() * 2;
+    private int sendMessageThreadPoolNums = 1;
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
             doc = "Number of pull message thread pool.\n"
