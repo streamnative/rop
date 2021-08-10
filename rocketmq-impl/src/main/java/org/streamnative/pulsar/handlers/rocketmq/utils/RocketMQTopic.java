@@ -33,11 +33,12 @@ import org.apache.rocketmq.common.protocol.NamespaceUtil;
  */
 public class RocketMQTopic {
 
+    public static final String GROUP_METADATA_TOPIC_NAME = "__consumer_offsets";
     private static final char TENANT_NAMESPACE_SEP = '|';
     private static final char ROCKETMQ_NAMESPACE_TOPIC_SEP = NamespaceUtil.NAMESPACE_SEPARATOR;
     private static final TopicDomain domain = TopicDomain.persistent;
     private static final Collection<String> ROCKETMQ_SYSTEM_TOPICS = Arrays
-            .asList(MixAll.AUTO_CREATE_TOPIC_KEY_TOPIC, MixAll.BENCHMARK_TOPIC);
+            .asList(MixAll.AUTO_CREATE_TOPIC_KEY_TOPIC, MixAll.BENCHMARK_TOPIC, GROUP_METADATA_TOPIC_NAME);
     @Getter
     private static String defaultTenant = "rocketmq";
     @Getter
@@ -156,6 +157,10 @@ public class RocketMQTopic {
     public boolean isRetryTopic() {
         return Strings.isNotBlank(pulsarTopicName.getLocalName())
                 && NamespaceUtil.isRetryTopic(pulsarTopicName.getLocalName());
+    }
+
+    public static RocketMQTopic getGroupMetaTopic() {
+        return new RocketMQTopic(RocketMQTopic.metaTenant, RocketMQTopic.metaNamespace, GROUP_METADATA_TOPIC_NAME);
     }
 
 }

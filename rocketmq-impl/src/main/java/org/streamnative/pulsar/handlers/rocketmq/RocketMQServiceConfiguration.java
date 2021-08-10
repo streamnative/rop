@@ -27,6 +27,11 @@ import org.apache.rocketmq.common.constant.PermName;
 @Data
 public class RocketMQServiceConfiguration extends ServiceConfiguration {
 
+    // offset configuration
+    private static final int OffsetsRetentionMinutes = 3 * 24 * 60;
+    public static final int DefaultOffsetsTopicNumPartitions = 50;
+    private static final int OffsetsMessageTTL = 3 * 24 * 3600;
+
     @Category
     private static final String CATEGORY_ROCKETMQ = "RocketMQ on Pulsar";
 
@@ -388,4 +393,22 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
             doc = "rocketmq Transaction feature switch.\n"
     )
     private boolean ropTransactionEnable = false;
+
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
+            doc = "Number of partitions for the offsets topic.\n"
+    )
+    private int offsetsTopicNumPartitions = DefaultOffsetsTopicNumPartitions;
+
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
+            doc = "Offsets older than this retention period will be discarded.\n"
+    )
+    private long offsetsRetentionMinutes = OffsetsRetentionMinutes;
+
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
+            doc = "Offsets message ttl in seconds. default is 259200.\n"
+    )
+    private int offsetsMessageTTL = OffsetsMessageTTL;
 }
