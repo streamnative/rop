@@ -14,6 +14,7 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner;
 
+import io.netty.buffer.ByteBuf;
 import io.netty.util.Recycler;
 import io.netty.util.Recycler.Handle;
 import java.util.concurrent.CompletableFuture;
@@ -21,7 +22,8 @@ import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.pulsar.broker.service.Topic;
 import org.apache.pulsar.broker.service.Topic.PublishContext;
-import org.streamnative.pulsar.handlers.rocketmq.utils.MessageIdUtils;
+import org.apache.pulsar.client.api.MessageId;
+import org.apache.pulsar.client.impl.MessageIdImpl;
 
 /**
  * Implementation for PublishContext.
@@ -29,7 +31,7 @@ import org.streamnative.pulsar.handlers.rocketmq.utils.MessageIdUtils;
 @Slf4j
 public final class RopMessagePublishContext implements PublishContext {
 
-    private CompletableFuture<Long> offsetFuture;
+    private CompletableFuture<MessageId> messageIdFuture;
     private Topic topic;
     private long startTimeNs;
     private long partitionId;
@@ -43,7 +45,7 @@ public final class RopMessagePublishContext implements PublishContext {
         if (exception != null) {
             log.error("Failed write entry: ledgerId: {}, entryId: {}. triggered send callback.",
                     ledgerId, entryId);
-            offsetFuture.completeExceptionally(exception);
+            messageIdFuture.completeExceptionally(exception);
         } else {
             if (log.isDebugEnabled()) {
                 log.debug("Success write topic: {}, ledgerId: {}, entryId: {}"
@@ -53,19 +55,19 @@ public final class RopMessagePublishContext implements PublishContext {
 
             topic.recordAddLatency(System.nanoTime() - startTimeNs, TimeUnit.MICROSECONDS);
 
-            offsetFuture.complete(MessageIdUtils.getOffset(ledgerId, entryId, partitionId));
+            messageIdFuture.complete(new MessageIdImpl(ledgerId, entryId, (int) partitionId));
         }
 
         recycle();
     }
 
     // recycler
-    public static RopMessagePublishContext get(CompletableFuture<Long> offsetFuture,
+    public static RopMessagePublishContext get(CompletableFuture<MessageId> messageIdFuture,
             Topic topic,
             long startTimeNs,
             long partitionId) {
         RopMessagePublishContext callback = RECYCLER.get();
-        callback.offsetFuture = offsetFuture;
+        callback.messageIdFuture = messageIdFuture;
         callback.topic = topic;
         callback.startTimeNs = startTimeNs;
         callback.partitionId = partitionId;
@@ -86,7 +88,7 @@ public final class RopMessagePublishContext implements PublishContext {
     };
 
     public void recycle() {
-        offsetFuture = null;
+        messageIdFuture = null;
         topic = null;
         startTimeNs = -1;
         recyclerHandle.recycle(this);
