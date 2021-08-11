@@ -32,7 +32,7 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupName;
 public class SubscriptionGroupManager {
 
     private final ConcurrentMap<ClientGroupName, SubscriptionGroupConfig> subscriptionGroupTable =
-            new ConcurrentHashMap(512);
+            new ConcurrentHashMap(1024);
     private final DataVersion dataVersion = new DataVersion();
     private final RocketMQBrokerController brokerController;
 

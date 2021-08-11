@@ -251,10 +251,12 @@ public class PulsarUtil {
     public static void createSubscriptionIfNotExist(final PulsarAdmin admin,
             final String topic,
             final String subscriptionName,
-            final MessageId messageId) throws PulsarAdminException {
+            final MessageId messageId) {
         try {
-            MessageId startPos = messageId == null ? MessageId.earliest : messageId;
-            admin.topics().createSubscription(topic, subscriptionName, startPos);
+            if(!admin.topics().getSubscriptions(topic).contains(subscriptionName)) {
+                MessageId startPos = messageId == null ? MessageId.earliest : messageId;
+                admin.topics().createSubscription(topic, subscriptionName, startPos);
+            }
         } catch (PulsarAdminException e) {
             log.info("Resources creating for subscription:{} of topic : {}, caused by : {}", subscriptionName, topic,
                     e.getMessage());

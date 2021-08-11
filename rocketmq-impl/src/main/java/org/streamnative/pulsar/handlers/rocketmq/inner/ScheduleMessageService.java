@@ -27,11 +27,15 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.stream.IntStream;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.pulsar.broker.PulsarServerException;
 import org.apache.pulsar.broker.PulsarService;
 import org.apache.pulsar.broker.service.BrokerService;
+import org.apache.pulsar.client.admin.PulsarAdmin;
 import org.apache.pulsar.client.api.Consumer;
 import org.apache.pulsar.client.api.Message;
+import org.apache.pulsar.client.api.MessageId;
 import org.apache.pulsar.client.api.Producer;
 import org.apache.pulsar.client.api.PulsarClientException;
 import org.apache.pulsar.client.api.SubscriptionInitialPosition;
@@ -51,6 +55,7 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopEncodeExcept
 import org.streamnative.pulsar.handlers.rocketmq.inner.format.RopEntryFormatter;
 import org.streamnative.pulsar.handlers.rocketmq.inner.timer.SystemTimer;
 import org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils;
+import org.streamnative.pulsar.handlers.rocketmq.utils.PulsarUtil;
 import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 
 /**
@@ -121,8 +126,7 @@ public class ScheduleMessageService {
     public String getDelayedTopicConsumerName(int timeDelayedLevel) {
         String delayedTopicName = ScheduleMessageService.this.scheduleTopicPrefix + CommonUtils.UNDERSCORE_CHAR
                 + delayLevelArray[timeDelayedLevel - 1];
-        RocketMQTopic rocketMQTopic = RocketMQTopic.getRocketMQMetaTopic(delayedTopicName);
-        return rocketMQTopic.getOrigNoDomainTopicName() + CommonUtils.UNDERSCORE_CHAR + "consumer";
+        return delayedTopicName + CommonUtils.UNDERSCORE_CHAR + "consumer";
     }
 
     public long computeDeliverTimestamp(final int delayLevel, final long storeTimestamp) {
@@ -133,9 +137,10 @@ public class ScheduleMessageService {
         return storeTimestamp + 1000;
     }
 
-    public void start() {
+    public void start() throws Exception {
         if (started.compareAndSet(false, true)) {
             this.pulsarBroker = rocketBroker.getBrokerService();
+            this.createDelayedSubscription();
             this.deliverDelayedMessageManager = delayLevelTable.keySet().stream()
                     .collect(ArrayList::new, (arr, level) -> {
                         arr.add(new DeliverDelayedMessageTimerTask(level));
@@ -362,5 +367,16 @@ public class ScheduleMessageService {
             msgInner.setQueueId(queueId);
             return msgInner;
         }
+    }
+
+    private void createDelayedSubscription() throws PulsarServerException {
+        PulsarAdmin adminClient = rocketBroker.getBrokerService().pulsar().getAdminClient();
+        Preconditions.checkNotNull(adminClient, "pulsar admin client can't be null.");
+        IntStream.range(1, delayLevelArray.length + 1).forEach((delayedLevel) -> {
+            log.info("createDelayedSubscription for delayedLevel: {}. ", delayedLevel);
+            String consumerName = getDelayedTopicConsumerName(delayedLevel);
+            String topicName = getDelayedTopicName(delayedLevel);
+            PulsarUtil.createSubscriptionIfNotExist(adminClient, topicName, consumerName, MessageId.earliest);
+        });
     }
 }
