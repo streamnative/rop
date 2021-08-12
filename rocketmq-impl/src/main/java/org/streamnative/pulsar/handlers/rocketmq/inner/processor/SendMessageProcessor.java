@@ -49,6 +49,7 @@ import org.apache.rocketmq.store.MessageExtBrokerInner;
 import org.apache.rocketmq.store.PutMessageResult;
 import org.apache.rocketmq.store.PutMessageStatus;
 import org.apache.rocketmq.store.stats.BrokerStatsManager;
+import org.streamnative.pulsar.handlers.rocketmq.inner.PutMessageCallback;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 
@@ -87,7 +88,9 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
                     response = this.sendMessage(ctx, request, mqtraceContext, requestHeader);
                 }
 
-                this.executeSendMessageHookAfter(response, mqtraceContext);
+                if (response != null) {
+                    this.executeSendMessageHookAfter(response, mqtraceContext);
+                }
                 return response;
         }
     }
@@ -230,35 +233,17 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         String originMsgId = MessageAccessor.getOriginMessageId(msgExt);
         MessageAccessor.setOriginMessageId(msgInner, UtilAll.isBlank(originMsgId) ? msgExt.getMsgId() : originMsgId);
 
-        PutMessageResult putMessageResult = this.getServerCnxMsgStore(ctx, requestHeader.getGroup())
-                .putMessage(msgInner, requestHeader.getGroup());
-        if (putMessageResult != null) {
-            switch (putMessageResult.getPutMessageStatus()) {
-                case PUT_OK:
-                    String backTopic = msgExt.getTopic();
-                    String correctTopic = msgExt.getProperty(MessageConst.PROPERTY_RETRY_TOPIC);
-                    if (correctTopic != null) {
-                        backTopic = correctTopic;
-                    }
-
-                    this.brokerController.getBrokerStatsManager().incSendBackNums(requestHeader.getGroup(), backTopic);
-
-                    response.setCode(ResponseCode.SUCCESS);
-                    response.setRemark(null);
-
-                    return response;
-                default:
-                    break;
-            }
-
+        try {
+            this.getServerCnxMsgStore(ctx, requestHeader.getGroup())
+                    .putMessage(msgInner, requestHeader.getGroup(),
+                            new SendMessageBackCallback(response, request, ctx, requestHeader, msgExt));
+            return null;
+        } catch (Exception e) {
+            log.warn("[{}] consumerSendMsgBack failed", pulsarGroupName.getPulsarFullName(), e);
             response.setCode(ResponseCode.SYSTEM_ERROR);
-            response.setRemark(putMessageResult.getPutMessageStatus().name());
+            response.setRemark(e.getMessage());
             return response;
         }
-
-        response.setCode(ResponseCode.SYSTEM_ERROR);
-        response.setRemark("putMessageResult is null");
-        return response;
     }
 
     private boolean handleRetryAndDLQ(SendMessageRequestHeader requestHeader, RemotingCommand response,
@@ -359,29 +344,28 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
                 && !(msgInner.getReconsumeTimes() > 0
                 && msgInner.getDelayTimeLevel() > 0)) { //For client under version 4.6.1
             putMessageResult = new PutMessageResult(PutMessageStatus.MESSAGE_ILLEGAL, null);
-/* TODO:           if (this.brokerController.getServerConfig().isRejectTransactionMessage()) {
-                response.setCode(ResponseCode.NO_PERMISSION);
-                response.setRemark(
-                        "the broker[" + this.brokerController.getBrokerConfig().getBrokerIP1()
-                                + "] sending transaction message is forbidden");
+            return handlePutMessageResult(putMessageResult, response, request, msgInner, responseHeader,
+                    sendMessageContext, queueIdInt);
+        } else {
+            try {
+                this.getServerCnxMsgStore(ctx, requestHeader.getProducerGroup())
+                        .putMessage(msgInner, requestHeader.getProducerGroup(),
+                                new SendMessageCallback(response, request, msgInner, responseHeader,
+                                        sendMessageContext,
+                                        ctx, queueIdInt));
+                return null;
+            } catch (Exception e) {
+                log.warn("[{}] sendMessage failed", requestHeader.getTopic(), e);
+                response.setCode(ResponseCode.SYSTEM_ERROR);
+                response.setRemark(e.getMessage());
                 return response;
             }
-            putMessageResult = this.brokerController.getTransactionalMessageService().prepareMessage(msgInner);
- */
-        } else {
-            putMessageResult = this.getServerCnxMsgStore(ctx, requestHeader.getProducerGroup())
-                    .putMessage(msgInner, requestHeader.getProducerGroup());
         }
-
-        return handlePutMessageResult(putMessageResult, response, request, msgInner, responseHeader, sendMessageContext,
-                ctx, queueIdInt);
-
     }
 
     private RemotingCommand handlePutMessageResult(PutMessageResult putMessageResult, RemotingCommand response,
-            RemotingCommand request, MessageExt msg,
-            SendMessageResponseHeader responseHeader, SendMessageContext sendMessageContext, ChannelHandlerContext ctx,
-            int queueIdInt) {
+            RemotingCommand request, MessageExt msg, SendMessageResponseHeader responseHeader,
+            SendMessageContext sendMessageContext, int queueIdInt) {
         if (putMessageResult == null) {
             response.setCode(ResponseCode.SYSTEM_ERROR);
             response.setRemark("store putMessage return null");
@@ -454,8 +438,6 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             responseHeader.setMsgId(putMessageResult.getAppendMessageResult().getMsgId());
             responseHeader.setQueueId(queueIdInt);
             responseHeader.setQueueOffset(putMessageResult.getAppendMessageResult().getLogicsOffset());
-
-            doResponse(ctx, request, response);
 
             if (hasSendMessageHook()) {
                 sendMessageContext.setMsgId(responseHeader.getMsgId());
@@ -542,11 +524,19 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         String clusterName = this.brokerController.getServerConfig().getClusterName();
         MessageAccessor.putProperty(messageExtBatch, MessageConst.PROPERTY_CLUSTER, clusterName);
 
-        PutMessageResult putMessageResult = this.getServerCnxMsgStore(ctx, requestHeader.getProducerGroup())
-                .putMessages(messageExtBatch, requestHeader.getProducerGroup());
-
-        return handlePutMessageResult(putMessageResult, response, request, messageExtBatch, responseHeader,
-                sendMessageContext, ctx, queueIdInt);
+        try {
+            this.getServerCnxMsgStore(ctx, requestHeader.getProducerGroup())
+                    .putMessages(messageExtBatch, requestHeader.getProducerGroup(),
+                            new SendMessageCallback(response, request, messageExtBatch, responseHeader,
+                                    sendMessageContext,
+                                    ctx, queueIdInt));
+            return null;
+        } catch (Exception e) {
+            log.warn("[{}] sendBatchMessage failed", requestHeader.getTopic(), e);
+            response.setCode(ResponseCode.SYSTEM_ERROR);
+            response.setRemark(e.getMessage());
+            return response;
+        }
     }
 
     public boolean hasConsumeMessageHook() {
@@ -567,5 +557,98 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
 
     public void registerConsumeMessageHook(List<ConsumeMessageHook> consumeMessageHookList) {
         this.consumeMessageHookList = consumeMessageHookList;
+    }
+
+    /**
+     * Send message callback.
+     */
+    public class SendMessageCallback implements PutMessageCallback {
+
+        private final RemotingCommand response;
+        private final RemotingCommand request;
+        private final MessageExt msg;
+        private final SendMessageResponseHeader responseHeader;
+        private final SendMessageContext sendMessageContext;
+        private final ChannelHandlerContext ctx;
+        private final int queueIdInt;
+
+        public SendMessageCallback(RemotingCommand response, RemotingCommand request, MessageExt msg,
+                SendMessageResponseHeader responseHeader, SendMessageContext sendMessageContext,
+                ChannelHandlerContext ctx, int queueIdInt) {
+            this.response = response;
+            this.request = request;
+            this.msg = msg;
+            this.responseHeader = responseHeader;
+            this.sendMessageContext = sendMessageContext;
+            this.ctx = ctx;
+            this.queueIdInt = queueIdInt;
+        }
+
+        public void callback(PutMessageResult putMessageResult) {
+            try {
+                handlePutMessageResult(putMessageResult, response, request, msg, responseHeader, sendMessageContext,
+                        queueIdInt);
+            } catch (Exception e) {
+                log.error("SendMessageCallback callback failed.", e);
+                response.setCode(ResponseCode.SYSTEM_ERROR);
+                response.setRemark("execute callback failed");
+            }
+            doResponse(ctx, request, response);
+
+            // execute send message hook
+            executeSendMessageHookAfter(response, sendMessageContext);
+        }
+    }
+
+    /**
+     * Send message back callback.
+     */
+    public class SendMessageBackCallback implements PutMessageCallback {
+
+        private final RemotingCommand response;
+        private final RemotingCommand request;
+        private final ChannelHandlerContext ctx;
+        private final ConsumerSendMsgBackRequestHeader requestHeader;
+        private final MessageExt msgExt;
+
+        public SendMessageBackCallback(RemotingCommand response, RemotingCommand request,
+                ChannelHandlerContext ctx, ConsumerSendMsgBackRequestHeader requestHeader,
+                MessageExt msgExt) {
+            this.response = response;
+            this.request = request;
+            this.ctx = ctx;
+            this.requestHeader = requestHeader;
+            this.msgExt = msgExt;
+        }
+
+        public void callback(PutMessageResult putMessageResult) {
+            try {
+                if (putMessageResult != null) {
+                    if (putMessageResult.getPutMessageStatus() == PutMessageStatus.PUT_OK) {
+                        String backTopic = msgExt.getTopic();
+                        String correctTopic = msgExt.getProperty(MessageConst.PROPERTY_RETRY_TOPIC);
+                        if (correctTopic != null) {
+                            backTopic = correctTopic;
+                        }
+
+                        brokerController.getBrokerStatsManager().incSendBackNums(requestHeader.getGroup(), backTopic);
+
+                        response.setCode(ResponseCode.SUCCESS);
+                        response.setRemark(null);
+                    } else {
+                        response.setCode(ResponseCode.SYSTEM_ERROR);
+                        response.setRemark(putMessageResult.getPutMessageStatus().name());
+                    }
+                } else {
+                    response.setCode(ResponseCode.SYSTEM_ERROR);
+                    response.setRemark("putMessageResult is null");
+                }
+            } catch (Exception e) {
+                log.error("SendMessageBackCallback callback failed.", e);
+                response.setCode(ResponseCode.SYSTEM_ERROR);
+                response.setRemark("execute callback failed");
+            }
+            doResponse(ctx, request, response);
+        }
     }
 }

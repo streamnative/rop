@@ -19,7 +19,7 @@ import org.apache.rocketmq.common.message.MessageExtBatch;
 import org.apache.rocketmq.common.protocol.header.PullMessageRequestHeader;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.store.MessageExtBrokerInner;
-import org.apache.rocketmq.store.PutMessageResult;
+import org.streamnative.pulsar.handlers.rocketmq.inner.PutMessageCallback;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.RopGetMessageResult;
 import org.streamnative.pulsar.handlers.rocketmq.inner.format.RopMessageFilter;
 
@@ -28,12 +28,13 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.format.RopMessageFilter;
  */
 public interface PulsarMessageStore {
 
-    PutMessageResult putMessage(MessageExtBrokerInner messageExtBrokerInner, String producerGroup);
+    void putMessage(MessageExtBrokerInner messageExtBrokerInner, String producerGroup, PutMessageCallback callback)
+            throws Exception;
 
     RopGetMessageResult getMessage(RemotingCommand request, PullMessageRequestHeader requestHeader,
             RopMessageFilter messageFilter);
 
-    PutMessageResult putMessages(MessageExtBatch batchMessage, String producerGroup);
+    void putMessages(MessageExtBatch batchMessage, String producerGroup, PutMessageCallback callback) throws Exception;
 
     MessageExt lookMessageByMessageId(String topic, String msgId);
 
