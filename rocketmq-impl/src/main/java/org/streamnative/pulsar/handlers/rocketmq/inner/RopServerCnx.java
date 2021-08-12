@@ -346,7 +346,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                                     .batchingMaxPublishDelay(fetchTimeoutInMs, TimeUnit.MILLISECONDS)
                                     .sendTimeout(sendTimeoutInSec, TimeUnit.MILLISECONDS)
                                     .batchingMaxMessages(maxBatchMessageNum)
-                                    .enableBatching(true)
+                                    .enableBatching(false)
                                     .create();
                             Producer<byte[]> oldProducer = this.producers.put(producerId, putMsgProducer);
                             if (oldProducer != null) {
