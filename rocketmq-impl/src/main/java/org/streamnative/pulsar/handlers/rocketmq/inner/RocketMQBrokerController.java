@@ -94,6 +94,7 @@ public class RocketMQBrokerController {
                     "BrokerControllerScheduledThread"));
 
     private final BlockingQueue<Runnable> sendThreadPoolQueue;
+    private final BlockingQueue<Runnable> sendCallbackThreadPoolQueue;
     private final BlockingQueue<Runnable> pullThreadPoolQueue;
     private final BlockingQueue<Runnable> replyThreadPoolQueue;
     private final BlockingQueue<Runnable> queryThreadPoolQueue;
@@ -109,6 +110,7 @@ public class RocketMQBrokerController {
 
     private MQTopicManager topicConfigManager;
     private ExecutorService sendMessageExecutor;
+    private ExecutorService sendCallbackExecutor;
     private ExecutorService pullMessageExecutor;
     private ExecutorService replyMessageExecutor;
     private ExecutorService queryMessageExecutor;
@@ -124,6 +126,7 @@ public class RocketMQBrokerController {
     private AbstractTransactionalMessageCheckListener transactionalMessageCheckListener;
     private volatile BrokerService brokerService;
     private ScheduleMessageService delayedMessageService;
+
 
     public static String stringToken = Strings.EMPTY;
 
@@ -142,6 +145,7 @@ public class RocketMQBrokerController {
 
         this.sendThreadPoolQueue = new LinkedBlockingQueue<Runnable>(
                 this.serverConfig.getSendThreadPoolQueueCapacity());
+        this.sendCallbackThreadPoolQueue = new LinkedBlockingQueue<Runnable>();
         this.pullThreadPoolQueue = new LinkedBlockingQueue<Runnable>(
                 this.serverConfig.getPullThreadPoolQueueCapacity());
         this.replyThreadPoolQueue = new LinkedBlockingQueue<Runnable>(
@@ -163,6 +167,15 @@ public class RocketMQBrokerController {
     }
 
     public void initialize() throws Exception {
+
+        this.sendCallbackExecutor = new BrokerFixedThreadPoolExecutor(
+                this.serverConfig.getSendMessageThreadPoolNums(),
+                this.serverConfig.getSendMessageThreadPoolNums(),
+                1000 * 60,
+                TimeUnit.MILLISECONDS,
+                this.sendCallbackThreadPoolQueue,
+                new ThreadFactoryImpl("SendCallbackThread_"));
+
         this.sendMessageExecutor = new BrokerFixedThreadPoolExecutor(
                 this.serverConfig.getSendMessageThreadPoolNums(),
                 this.serverConfig.getSendMessageThreadPoolNums(),
