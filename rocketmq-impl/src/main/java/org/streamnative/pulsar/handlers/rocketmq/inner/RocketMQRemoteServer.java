@@ -211,7 +211,7 @@ public class RocketMQRemoteServer extends NettyRemotingAbstract implements Remot
     }
 
     @ChannelHandler.Sharable
-    class HandshakeHandler extends SimpleChannelInboundHandler<ByteBuf> {
+    static class HandshakeHandler extends SimpleChannelInboundHandler<ByteBuf> {
         HandshakeHandler() {}
 
         @Override
