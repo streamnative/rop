@@ -59,7 +59,6 @@ import org.streamnative.pulsar.handlers.rocketmq.RocketMQServiceConfiguration;
 public class RocketMQRemoteServer extends NettyRemotingAbstract implements RemotingServer {
 
     public static final String HANDSHAKE_HANDLER_NAME = "handshakeHandler";
-    public static final String FILE_REGION_ENCODER_NAME = "fileRegionEncoder";
     private final ExecutorService publicExecutor;
     private final ChannelEventListener channelEventListener;
     private final Timer timer = new Timer("ServerHouseKeepingService", true);
@@ -108,7 +107,7 @@ public class RocketMQRemoteServer extends NettyRemotingAbstract implements Remot
     }
 
     private void prepareSharableHandlers() {
-        handshakeHandler = new HandshakeHandler(TlsSystemConfig.tlsMode);
+        handshakeHandler = new HandshakeHandler();
         encoder = new NettyEncoder();
         connectionManageHandler = new NettyConnectManageHandler();
         serverHandler = new NettyServerHandler();
@@ -215,13 +214,7 @@ public class RocketMQRemoteServer extends NettyRemotingAbstract implements Remot
 
     @ChannelHandler.Sharable
     class HandshakeHandler extends SimpleChannelInboundHandler<ByteBuf> {
-
-        private static final byte HANDSHAKE_MAGIC_CODE = 0x16;
-        private final TlsMode tlsMode;
-
-        HandshakeHandler(TlsMode tlsMode) {
-            this.tlsMode = tlsMode;
-        }
+        HandshakeHandler() {}
 
         @Override
         protected void channelRead0(ChannelHandlerContext ctx, ByteBuf msg) throws Exception {
