@@ -94,9 +94,9 @@ import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 @Getter
 public class RopServerCnx extends ChannelInboundHandlerAdapter implements PulsarMessageStore {
 
-    private static final int sendTimeoutInSec = 500;
-    private static final int maxBatchMessageNum = 20;
-    private static final int fetchTimeoutInMs = 100;
+    private static final int sendTimeoutInSec = 30;
+    private static final int maxPendingMessages = 1000;
+    private static final int fetchTimeoutInMs = 3000; // 3 sec
     private static final String ropHandlerName = "RopServerCnxHandler";
     private final BrokerService service;
     private final ConcurrentLongHashMap<Producer<byte[]>> producers;
@@ -235,15 +235,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                         log.info("[{}] PutMessage creating producer[id={}] and channel=[{}].",
                                 rmqTopic.getPulsarFullName(), producerId, ctx.channel());
                         if (this.producers.get(producerId) == null) {
-                            producer = this.service.pulsar().getClient()
-                                    .newProducer()
-                                    .topic(pTopic)
-                                    .maxPendingMessages(500)
-                                    .producerName(producerGroup + CommonUtils.UNDERSCORE_CHAR + producerId)
-                                    .sendTimeout(sendTimeoutInSec, TimeUnit.MILLISECONDS)
-                                    .enableBatching(false)
-                                    .blockIfQueueFull(false)
-                                    .create();
+                            producer = createNewProducer(pTopic, producerGroup, producerId);
                             Producer<byte[]> oldProducer = this.producers.put(producerId, producer);
                             if (oldProducer != null) {
                                 oldProducer.closeAsync();
@@ -341,7 +333,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             }
 
             /*
-             * Use pulsar producer send batch message.
+             * Use pulsar producer send message.
+             * We uniformly use a single message to send messages, so as to avoid the problem of batch message parsing.
              */
             if (batchMessageFutures.isEmpty()) {
                 long producerId = buildPulsarProducerId(producerGroup, pTopic, this.remoteAddress.toString());
@@ -350,14 +343,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                     synchronized (this.producers) {
                         if (this.producers.get(producerId) == null) {
                             log.info("[{}] putMessages creating producer[id={}].", pTopic, producerId);
-                            putMsgProducer = this.service.pulsar().getClient().newProducer()
-                                    .topic(pTopic)
-                                    .producerName(producerGroup + producerId)
-                                    .batchingMaxPublishDelay(fetchTimeoutInMs, TimeUnit.MILLISECONDS)
-                                    .sendTimeout(sendTimeoutInSec, TimeUnit.MILLISECONDS)
-                                    .batchingMaxMessages(maxBatchMessageNum)
-                                    .enableBatching(false)
-                                    .create();
+                            putMsgProducer = createNewProducer(pTopic, producerGroup, producerId);
                             Producer<byte[]> oldProducer = this.producers.put(producerId, putMsgProducer);
                             if (oldProducer != null) {
                                 oldProducer.closeAsync();
@@ -423,6 +409,18 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             log.warn("putMessages batchMessage error.", e);
             throw e;
         }
+    }
+
+    private Producer<byte[]> createNewProducer(String pTopic, String producerGroup, long producerId)
+            throws PulsarServerException, PulsarClientException {
+        return this.service.pulsar().getClient().newProducer()
+                .topic(pTopic)
+                .maxPendingMessages(maxPendingMessages)
+                .producerName(producerGroup + CommonUtils.UNDERSCORE_CHAR + producerId)
+                .sendTimeout(sendTimeoutInSec, TimeUnit.MILLISECONDS)
+                .enableBatching(false)
+                .blockIfQueueFull(false)
+                .create();
     }
 
     private CompletableFuture<MessageId> publishMessage(byte[] body, PersistentTopic persistentTopic, String pTopic,
