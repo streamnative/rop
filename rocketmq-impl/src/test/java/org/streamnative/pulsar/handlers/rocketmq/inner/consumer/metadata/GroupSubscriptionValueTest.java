@@ -17,7 +17,6 @@ import static org.junit.Assert.assertEquals;
 
 import java.nio.ByteBuffer;
 import java.util.Date;
-import org.apache.rocketmq.common.subscription.SubscriptionGroupConfig;
 import org.junit.Before;
 import org.junit.Test;
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopDecodeException;
@@ -26,23 +25,30 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopEncodeExcept
 /**
  * Test GroupOffsetValueTest Class.
  */
-public class GroupOffsetKeyTest {
-    private GroupOffsetKey groupOffsetKey;
+public class GroupSubscriptionValueTest {
+    private GroupSubscriptionValue groupSubscriptionValue;
 
     @Before
     public void init() {
-        groupOffsetKey = new GroupOffsetKey();
-        groupOffsetKey.setVersion((short) 2);
-        groupOffsetKey.setGroupName("my_first_group");
-        groupOffsetKey.setSubTopic("my_first_topic");
-        groupOffsetKey.setPartition(10);
+        groupSubscriptionValue = new GroupSubscriptionValue();
+        groupSubscriptionValue.setVersion((short) 2);
+        groupSubscriptionValue.setBrokerId(2);
+        groupSubscriptionValue.setConsumeBroadcastEnable(true);
+        groupSubscriptionValue.setConsumeEnable(true);
+        groupSubscriptionValue.setConsumeFromMinEnable(true);
+        groupSubscriptionValue.setGroupName("abc");
+        groupSubscriptionValue.setNotifyConsumerIdsChangedEnable(true);
+        groupSubscriptionValue.setRetryMaxTimes(10);
+        groupSubscriptionValue.setRetryQueueNums(5);
+        groupSubscriptionValue.setWhichBrokerWhenConsumeSlowly(9);
     }
 
     @Test
     public void encodeDecodeTest() throws RopEncodeException, RopDecodeException {
-        ByteBuffer buffer = groupOffsetKey.encode();
+        ByteBuffer buffer = groupSubscriptionValue.encode();
         buffer.rewind();
-        GroupMetaKey metaKey = GroupMetaKey.decodeKey(buffer);
-        assertEquals(groupOffsetKey, metaKey);
+        GroupSubscriptionValue temp = new GroupSubscriptionValue();
+        temp.decode(buffer);
+        assertEquals(groupSubscriptionValue, temp);
     }
 }

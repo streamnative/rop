@@ -16,8 +16,6 @@ package org.streamnative.pulsar.handlers.rocketmq.inner.consumer.metadata;
 import static org.junit.Assert.assertEquals;
 
 import java.nio.ByteBuffer;
-import java.util.Date;
-import org.apache.rocketmq.common.subscription.SubscriptionGroupConfig;
 import org.junit.Before;
 import org.junit.Test;
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopDecodeException;
@@ -26,23 +24,21 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopEncodeExcept
 /**
  * Test GroupOffsetValueTest Class.
  */
-public class GroupOffsetKeyTest {
-    private GroupOffsetKey groupOffsetKey;
+public class GroupSubscriptionKeyTest {
+    private GroupSubscriptionKey groupSubscriptionKey;
 
     @Before
     public void init() {
-        groupOffsetKey = new GroupOffsetKey();
-        groupOffsetKey.setVersion((short) 2);
-        groupOffsetKey.setGroupName("my_first_group");
-        groupOffsetKey.setSubTopic("my_first_topic");
-        groupOffsetKey.setPartition(10);
+        groupSubscriptionKey = new GroupSubscriptionKey();
+        groupSubscriptionKey.setVersion((short) 2);
+        groupSubscriptionKey.setGroupName("my_first_group");
     }
 
     @Test
     public void encodeDecodeTest() throws RopEncodeException, RopDecodeException {
-        ByteBuffer buffer = groupOffsetKey.encode();
+        ByteBuffer buffer = groupSubscriptionKey.encode();
         buffer.rewind();
         GroupMetaKey metaKey = GroupMetaKey.decodeKey(buffer);
-        assertEquals(groupOffsetKey, metaKey);
+        assertEquals(groupSubscriptionKey, metaKey);
     }
 }

@@ -14,10 +14,11 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.consumer.metadata;
 
-import static org.streamnative.pulsar.handlers.rocketmq.inner.consumer.metadata.GroupOffsetConstant.GROUP_OFFSET_FORMAT_VERSION_POS;
 import static org.streamnative.pulsar.handlers.rocketmq.inner.consumer.metadata.GroupOffsetConstant.GROUP_OFFSET_VALUE_COMMIT_TIMESTAMP_POS;
 import static org.streamnative.pulsar.handlers.rocketmq.inner.consumer.metadata.GroupOffsetConstant.GROUP_OFFSET_VALUE_EXPIRE_TIMESTAMP_POS;
 import static org.streamnative.pulsar.handlers.rocketmq.inner.consumer.metadata.GroupOffsetConstant.GROUP_OFFSET_VALUE_OFFSET_POS;
+import static org.streamnative.pulsar.handlers.rocketmq.inner.consumer.metadata.GroupOffsetConstant.GROUP_OFFSET_VALUE_TOTAL_LEN;
+import static org.streamnative.pulsar.handlers.rocketmq.inner.consumer.metadata.GroupOffsetConstant.GROUP_OFFSET_VALUE_VERSION_POS;
 
 import java.nio.ByteBuffer;
 import lombok.Data;
@@ -27,7 +28,8 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopEncodeExcept
 
 @Data
 @EqualsAndHashCode
-public class GroupOffsetValue implements Deserializer<GroupOffsetValue>{
+public class GroupOffsetValue implements Deserializer<GroupOffsetValue> {
+
     private short version = 1;
     private long offset;
     private long commitTimestamp;
@@ -50,7 +52,7 @@ public class GroupOffsetValue implements Deserializer<GroupOffsetValue>{
     @Override
     public GroupOffsetValue decode(ByteBuffer buffer) throws RopDecodeException {
         try {
-            this.version = buffer.getShort(GROUP_OFFSET_FORMAT_VERSION_POS);
+            this.version = buffer.getShort(GROUP_OFFSET_VALUE_VERSION_POS);
             this.offset = buffer.getLong(GROUP_OFFSET_VALUE_OFFSET_POS);
             this.commitTimestamp = buffer.getLong(GROUP_OFFSET_VALUE_COMMIT_TIMESTAMP_POS);
             this.expireTimestamp = buffer.getLong(GROUP_OFFSET_VALUE_EXPIRE_TIMESTAMP_POS);
@@ -62,6 +64,6 @@ public class GroupOffsetValue implements Deserializer<GroupOffsetValue>{
 
     @Override
     public int estimateSize() {
-        return Short.BYTES + 3 * Long.BYTES;
+        return GROUP_OFFSET_VALUE_TOTAL_LEN;
     }
 }
