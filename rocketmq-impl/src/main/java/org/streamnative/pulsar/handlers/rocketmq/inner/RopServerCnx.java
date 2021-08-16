@@ -45,6 +45,7 @@ import org.apache.bookkeeper.mledger.impl.PositionImpl;
 import org.apache.bookkeeper.mledger.util.Futures;
 import org.apache.commons.compress.utils.Lists;
 import org.apache.commons.lang.exception.ExceptionUtils;
+import org.apache.commons.lang3.math.NumberUtils;
 import org.apache.pulsar.broker.PulsarServerException;
 import org.apache.pulsar.broker.service.BrokerService;
 import org.apache.pulsar.broker.service.persistent.PersistentTopic;
@@ -178,11 +179,12 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         RocketMQTopic rmqTopic = new RocketMQTopic(messageInner.getTopic());
         int partitionId = messageInner.getQueueId();
         String pTopic = rmqTopic.getPartitionName(partitionId);
+        long deliverAtTime = getDeliverAtTime(messageInner);
 
         final int tranType = MessageSysFlag.getTransactionValue(messageInner.getSysFlag());
         if (tranType == MessageSysFlag.TRANSACTION_NOT_TYPE || tranType == MessageSysFlag.TRANSACTION_COMMIT_TYPE) {
             // Delay Delivery
-            if (messageInner.getDelayTimeLevel() > 0 && !rmqTopic.isDLQTopic()) {
+            if (isNotDelayMessage(deliverAtTime) && messageInner.getDelayTimeLevel() > 0 && !rmqTopic.isDLQTopic()) {
                 if (messageInner.getDelayTimeLevel() > this.brokerController.getServerConfig().getMaxDelayLevelNum()) {
                     messageInner.setDelayTimeLevel(this.brokerController.getServerConfig().getMaxDelayLevelNum());
                 }
@@ -211,7 +213,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
              * If the broker is the owner of the current partitioned topic, directly use the PersistentTopic interface
              * for publish message.
              */
-            if (this.brokerController.getTopicConfigManager()
+            if (isNotDelayMessage(deliverAtTime) && this.brokerController.getTopicConfigManager()
                     .isPartitionTopicOwner(rmqTopic.getPulsarTopicName(), partitionId)) {
                 PersistentTopic persistentTopic = this.brokerController.getTopicConfigManager()
                         .getPulsarPersistentTopic(pTopic);
@@ -249,7 +251,15 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                         }
                     }
                 }
-                messageIdFuture = this.producers.get(producerId).sendAsync(body.get(0));
+
+                if (isNotDelayMessage(deliverAtTime)) {
+                    messageIdFuture = this.producers.get(producerId).sendAsync(body.get(0));
+                } else {
+                    messageIdFuture = this.producers.get(producerId).newMessage()
+                            .value((body.get(0)))
+                            .deliverAfter(deliverAtTime, TimeUnit.MILLISECONDS)
+                            .sendAsync();
+                }
             }
 
             /*
@@ -646,5 +656,19 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         Connected,
         Failed,
         Connecting
+    }
+
+    /**
+     * Get deliver at time from message properties.
+     *
+     * @param messageInner messageExtBrokerInner
+     * @return deliver at time
+     */
+    private long getDeliverAtTime(MessageExtBrokerInner messageInner) {
+        return NumberUtils.toLong(messageInner.getProperties().getOrDefault("__STARTDELIVERTIME", "0"));
+    }
+
+    private boolean isNotDelayMessage(long deliverAtTime) {
+        return deliverAtTime <= 0;
     }
 }

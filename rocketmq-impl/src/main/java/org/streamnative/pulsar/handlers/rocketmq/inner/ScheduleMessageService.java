@@ -261,7 +261,7 @@ public class ScheduleMessageService {
                                                     .topic(pTopic)
                                                     .producerName(pTopic + "_delayedMessageSender_"
                                                             + System.currentTimeMillis())
-                                                    .enableBatching(true)
+                                                    .enableBatching(false)
                                                     .sendTimeout(SEND_MESSAGE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
                                                     .create();
                                             Producer<byte[]> oldProducer = sendBackProducers.put(pTopic, producer);
