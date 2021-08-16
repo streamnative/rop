@@ -40,10 +40,9 @@ import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 public class RocketMQProtocolHandler implements ProtocolHandler {
 
     public static final String PROTOCOL_NAME = "rocketmq";
-    public static final String SSL_PREFIX = "SSL://";
     public static final String PLAINTEXT_PREFIX = "rocketmq://";
     public static final String LISTENER_DEL = ",";
-    public static final String LISTENER_PATTEN = "^(rocketmq?|SSL)://[-a-zA-Z0-9+&@#/%?=~_|!:,.;]*:([0-9]+)";
+    public static final String LISTENER_PATTEN = "^(rocketmq)://[-a-zA-Z0-9+&@#/%?=~_|!:,.;]*:([0-9]+)";
 
     private RocketMQServiceConfiguration rocketmqConfig;
     private BrokerService brokerService;
@@ -134,8 +133,8 @@ public class RocketMQProtocolHandler implements ProtocolHandler {
                             new RocketMQChannelInitializer(rocketmqConfig, rocketMQBroker,
                                     brokerService, false));
                 } else {
-                    log.error("Rocketmq listener {} not supported. supports {} and {}",
-                            listener, PLAINTEXT_PREFIX, SSL_PREFIX);
+                    log.error("Rocketmq listener {} not supported. supports {}",
+                            listener, PLAINTEXT_PREFIX);
                 }
             }
 

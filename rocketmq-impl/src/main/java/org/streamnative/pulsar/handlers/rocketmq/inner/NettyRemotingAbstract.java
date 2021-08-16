@@ -18,8 +18,6 @@ import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
-import io.netty.handler.ssl.SslContext;
-import io.netty.handler.ssl.SslHandler;
 import java.net.SocketAddress;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -90,10 +88,6 @@ public abstract class NettyRemotingAbstract {
      * The default request processor to use in case there is no exact match in {@link #processorTable} per request code.
      */
     protected Pair<NettyRequestProcessor, ExecutorService> defaultRequestProcessor;
-    /**
-     * SSL context via which to create {@link SslHandler}.
-     */
-    protected volatile SslContext sslContext;
     /**
      * custom rpc hooks.
      */
