@@ -31,6 +31,7 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
     private static final int OffsetsRetentionMinutes = 3 * 24 * 60;
     public static final int DefaultOffsetsTopicNumPartitions = 50;
     private static final int OffsetsMessageTTL = 3 * 24 * 3600;
+    public static final long DefaultOffsetsRetentionCheckIntervalMs = 600000L;
 
     @Category
     private static final String CATEGORY_ROCKETMQ = "RocketMQ on Pulsar";
@@ -411,4 +412,10 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
             doc = "Offsets message ttl in seconds. default is 259200.\n"
     )
     private int offsetsMessageTTL = OffsetsMessageTTL;
+
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
+            doc = "Offsets retention check interval in millicseconds. default is 600000 ms.\n"
+    )
+    private long offsetsRetentionCheckIntervalMs = DefaultOffsetsRetentionCheckIntervalMs;
 }

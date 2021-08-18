@@ -14,7 +14,6 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.consumer.metadata;
 
-import static org.streamnative.pulsar.handlers.rocketmq.inner.consumer.metadata.GroupOffsetConstant.GROUP_OFFSET_KEY_TOTAL_HEAD_LEN;
 import static org.streamnative.pulsar.handlers.rocketmq.inner.consumer.metadata.GroupOffsetConstant.GROUP_SUBSCRIPTION_FORMAT_VERSION_POS;
 import static org.streamnative.pulsar.handlers.rocketmq.inner.consumer.metadata.GroupOffsetConstant.GROUP_SUBSCRIPTION_KEY_BROKER_ID_POS;
 import static org.streamnative.pulsar.handlers.rocketmq.inner.consumer.metadata.GroupOffsetConstant.GROUP_SUBSCRIPTION_KEY_BROKER_SELECTED_POS;
@@ -34,7 +33,8 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopEncodeExcept
 
 @Data
 @EqualsAndHashCode(callSuper = true)
-public class GroupSubscriptionValue extends SubscriptionGroupConfig implements Deserializer<GroupSubscriptionValue>{
+public class GroupSubscriptionValue extends SubscriptionGroupConfig implements Deserializer<GroupSubscriptionValue> {
+
     private short version = 1;
 
     @Override
