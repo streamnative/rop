@@ -181,6 +181,10 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         String pTopic = rmqTopic.getPartitionName(partitionId);
         long deliverAtTime = getDeliverAtTime(messageInner);
 
+        if (deliverAtTime - System.currentTimeMillis() > brokerController.getServerConfig().getRopMaxDelayTime()) {
+            throw new RuntimeException("DELAY TIME IS TOO LONG");
+        }
+
         final int tranType = MessageSysFlag.getTransactionValue(messageInner.getSysFlag());
         if (tranType == MessageSysFlag.TRANSACTION_NOT_TYPE || tranType == MessageSysFlag.TRANSACTION_COMMIT_TYPE) {
             // Delay Delivery
@@ -249,7 +253,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 } else {
                     messageIdFuture = this.producers.get(producerId).newMessage()
                             .value((body.get(0)))
-                            .deliverAfter(deliverAtTime, TimeUnit.MILLISECONDS)
+                            .deliverAt(deliverAtTime)
                             .sendAsync();
                 }
             }
@@ -667,6 +671,6 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
     }
 
     private boolean isNotDelayMessage(long deliverAtTime) {
-        return deliverAtTime <= 0;
+        return deliverAtTime <= System.currentTimeMillis();
     }
 }

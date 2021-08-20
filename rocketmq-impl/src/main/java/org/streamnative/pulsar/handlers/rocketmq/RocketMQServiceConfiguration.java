@@ -388,4 +388,11 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
             doc = "rocketmq Transaction feature switch.\n"
     )
     private boolean ropTransactionEnable = false;
+
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
+            required = true,
+            doc = "Rop delay message max delay time."
+    )
+    private long ropMaxDelayTime = 1000 * 60 * 60 * 24 * 40L;
 }
