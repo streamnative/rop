@@ -104,8 +104,10 @@ public class PulsarUtil {
             ClusterData clusterData,
             RocketMQServiceConfiguration conf)
             throws PulsarAdminException {
-        createRopMetadataIfMissing(pulsarAdmin, clusterData, RocketMQTopic.getGroupMetaTopic(), conf,
+        createRopMetadataIfMissing(pulsarAdmin, clusterData, RocketMQTopic.getGroupMetaOffsetTopic(), conf,
                 conf.getOffsetsTopicNumPartitions());
+        createRopMetadataIfMissing(pulsarAdmin, clusterData, RocketMQTopic.getGroupMetaSubscriptionTopic(), conf,
+                1);
     }
 
     /**
@@ -253,7 +255,7 @@ public class PulsarUtil {
             final String subscriptionName,
             final MessageId messageId) {
         try {
-            if(!admin.topics().getSubscriptions(topic).contains(subscriptionName)) {
+            if (!admin.topics().getSubscriptions(topic).contains(subscriptionName)) {
                 MessageId startPos = messageId == null ? MessageId.earliest : messageId;
                 admin.topics().createSubscription(topic, subscriptionName, startPos);
             }

@@ -26,7 +26,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
@@ -162,11 +161,11 @@ public class GroupMetaManager {
                 partitionId -> {
                     if (log.isDebugEnabled()) {
                         log.debug("Created Partitioned producer: {} for consumer group: {}",
-                                RocketMQTopic.getGroupMetaTopic().getPartitionName(partitionId),
+                                RocketMQTopic.getGroupMetaOffsetTopic().getPartitionName(partitionId),
                                 groupId);
                     }
                     return metadataTopicProducerBuilder.clone()
-                            .topic(RocketMQTopic.getGroupMetaTopic().getPartitionName(partitionId))
+                            .topic(RocketMQTopic.getGroupMetaOffsetTopic().getPartitionName(partitionId))
                             .createAsync();
                 });
     }
@@ -176,10 +175,10 @@ public class GroupMetaManager {
                 id -> {
                     if (log.isDebugEnabled()) {
                         log.debug("Will create Partitioned producer: {}",
-                                RocketMQTopic.getGroupMetaTopic().getPartitionName(id));
+                                RocketMQTopic.getGroupMetaOffsetTopic().getPartitionName(id));
                     }
                     return metadataTopicProducerBuilder.clone()
-                            .topic(RocketMQTopic.getGroupMetaTopic().getPartitionName(id))
+                            .topic(RocketMQTopic.getGroupMetaOffsetTopic().getPartitionName(id))
                             .createAsync();
                 });
     }
@@ -189,10 +188,10 @@ public class GroupMetaManager {
                 id -> {
                     if (log.isDebugEnabled()) {
                         log.debug("Will create Partitioned reader: {}",
-                                RocketMQTopic.getGroupMetaTopic().getPartitionName(id));
+                                RocketMQTopic.getGroupMetaOffsetTopic().getPartitionName(id));
                     }
                     return metadataTopicReaderBuilder.clone()
-                            .topic(RocketMQTopic.getGroupMetaTopic().getPartitionName(id))
+                            .topic(RocketMQTopic.getGroupMetaOffsetTopic().getPartitionName(id))
                             .readCompacted(true)
                             .createAsync();
                 });
