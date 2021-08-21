@@ -106,7 +106,7 @@ public class RocketMQTopic {
     }
 
     public static RocketMQTopic getRocketMQDefaultTopic(String rmqTopic) {
-        return new RocketMQTopic(RocketMQTopic.metaTenant, RocketMQTopic.metaNamespace, rmqTopic);
+        return new RocketMQTopic(RocketMQTopic.defaultTenant, RocketMQTopic.defaultNamespace, rmqTopic);
     }
 
     public String getRocketDLQTopic() {

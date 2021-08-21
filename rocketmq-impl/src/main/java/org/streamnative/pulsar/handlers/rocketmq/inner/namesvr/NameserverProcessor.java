@@ -46,7 +46,6 @@ import org.apache.rocketmq.common.protocol.body.ClusterInfo;
 import org.apache.rocketmq.common.protocol.header.namesrv.GetRouteInfoRequestHeader;
 import org.apache.rocketmq.common.protocol.route.BrokerData;
 import org.apache.rocketmq.common.protocol.route.QueueData;
-import org.apache.rocketmq.common.protocol.route.TopicRouteData;
 import org.apache.rocketmq.remoting.common.RemotingHelper;
 import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
@@ -145,9 +144,10 @@ public class NameserverProcessor implements NettyRequestProcessor {
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
         final GetRouteInfoRequestHeader requestHeader =
                 (GetRouteInfoRequestHeader) request.decodeCommandCustomHeader(GetRouteInfoRequestHeader.class);
-        TopicRouteData topicRouteData = new TopicRouteData();
+        RopTopicRouteData topicRouteData = new RopTopicRouteData();
         List<BrokerData> brokerDatas = new ArrayList<>();
         List<QueueData> queueDatas = new ArrayList<>();
+        Map<Integer, String> partitionRouteInfos;
         topicRouteData.setBrokerDatas(brokerDatas);
         topicRouteData.setQueueDatas(queueDatas);
 
@@ -184,31 +184,32 @@ public class NameserverProcessor implements NettyRequestProcessor {
         // Obtain the specified topic according to the incoming request.
         String requestTopic = requestHeader.getTopic();
         if (Strings.isNotBlank(requestTopic)) {
-            RocketMQTopic mqTopic = new RocketMQTopic(requestTopic);
+            RocketMQTopic mqTopic = RocketMQTopic.getRocketMQDefaultTopic(requestTopic);
             Map<Integer, InetSocketAddress> topicBrokerAddr =
                     mqTopicManager.getTopicBrokerAddr(mqTopic.getPulsarTopicName(), Strings.EMPTY);
+            partitionRouteInfos = Maps.newHashMapWithExpectedSize(topicBrokerAddr.size());
+            topicRouteData.setPartitionRouteInfos(partitionRouteInfos);
             try {
-                if (topicBrokerAddr != null && topicBrokerAddr.size() > 0) {
-                    Set<String> brokerNames = Sets.newHashSet();
-                    topicBrokerAddr.forEach((i, addr) -> brokerNames.add(addr.getHostName()));
+                if (topicBrokerAddr != null && !topicBrokerAddr.isEmpty()) {
+                    Map<String, String> brokerNames = Maps.newHashMap();
+                    topicBrokerAddr.forEach((partition, addr) -> {
+                        String brokerName = addr.getHostName();
+                        if (!brokerNames.containsKey(brokerName)) {
+                            String advertisAddress = getBrokerAddressByListenerName(brokerName, listenerName);
+                            HashMap<Long, String> brokerAddrs = new HashMap<>(1);
+                            brokerAddrs.put(0L, advertisAddress);
+                            brokerDatas.add(new BrokerData(clusterName, brokerName, brokerAddrs));
 
-                    for (String brokerName : brokerNames) {
-                        String ropBrokerAddress = getBrokerAddressByListenerName(brokerName, listenerName);
-
-                        HashMap<Long, String> brokerAddrs = new HashMap<>();
-                        brokerAddrs.put(0L, ropBrokerAddress);
-                        BrokerData brokerData = new BrokerData(clusterName, brokerName, brokerAddrs);
-                        brokerDatas.add(brokerData);
-                        topicRouteData.setBrokerDatas(brokerDatas);
-
-                        QueueData queueData = new QueueData();
-                        queueData.setBrokerName(brokerName);
-                        queueData.setReadQueueNums(topicBrokerAddr.size());
-                        queueData.setWriteQueueNums(topicBrokerAddr.size());
-                        queueData.setPerm(PERM_WRITE | PERM_READ);
-                        queueDatas.add(queueData);
-                        topicRouteData.setQueueDatas(queueDatas);
-                    }
+                            QueueData queueData = new QueueData();
+                            queueData.setBrokerName(brokerName);
+                            queueData.setReadQueueNums(topicBrokerAddr.size());
+                            queueData.setWriteQueueNums(topicBrokerAddr.size());
+                            queueData.setPerm(PERM_WRITE | PERM_READ);
+                            queueDatas.add(queueData);
+                            brokerNames.put(addr.getHostName(), advertisAddress);
+                        }
+                        partitionRouteInfos.put(partition, brokerNames.get(brokerName));
+                    });
 
                     byte[] content = topicRouteData.encode();
                     response.setBody(content);
