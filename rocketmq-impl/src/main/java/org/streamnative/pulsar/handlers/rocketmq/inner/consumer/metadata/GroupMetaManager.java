@@ -196,4 +196,47 @@ public class GroupMetaManager {
                             .createAsync();
                 });
     }
+
+    /**
+     * queryOffset
+     */
+    public long queryOffset(final String group, final String topic, final int queueId) {
+        // TODO: hanmz 2021/8/21
+        return 0L;
+    }
+
+    /**
+     * storeOffset
+     */
+    public void storeOffset(final String group, final String topic, final int queueId, long offset) {
+        // TODO: hanmz 2021/8/21
+        try {
+            GroupOffsetKey groupOffsetKey = new GroupOffsetKey();
+            groupOffsetKey.setGroupName(group);
+            groupOffsetKey.setSubTopic(topic);
+            groupOffsetKey.setPartition(queueId);
+
+            GroupOffsetValue groupOffsetValue = new GroupOffsetValue();
+            groupOffsetValue.setOffset(offset);
+            groupOffsetValue.setCommitTimestamp(System.currentTimeMillis());
+            groupOffsetValue.setExpireTimestamp(System.currentTimeMillis());
+
+            storeOffsetMessage(group, groupOffsetKey.encode().array(), groupOffsetValue.encode(),
+                    System.currentTimeMillis());
+        } catch (Exception e) {
+            log.warn("[{}] [{}] StoreOffsetMessage failed.", group, topic, e);
+        }
+    }
+
+    void storeOffsetMessage(String groupId, byte[] key, ByteBuffer buffer, long timestamp) {
+        try {
+            Producer<ByteBuffer> producer = getOffsetsTopicProducer(groupId).get();
+            producer.newMessage().keyBytes(key).value(buffer).eventTime(timestamp).sendAsync()
+                    .whenCompleteAsync((msgId, e) -> {
+                        // TODO: hanmz 2021/8/21
+                    });
+        } catch (Exception e) {
+            log.warn("Store offset message failed.", e);
+        }
+    }
 }
