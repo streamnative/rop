@@ -14,202 +14,166 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.consumer.metadata;
 
-import static org.streamnative.pulsar.handlers.rocketmq.utils.CoreUtils.inLock;
-
 import java.nio.ByteBuffer;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.locks.ReentrantLock;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.bookkeeper.common.util.MathUtils;
+import org.apache.pulsar.client.api.Message;
+import org.apache.pulsar.client.api.MessageId;
 import org.apache.pulsar.client.api.Producer;
-import org.apache.pulsar.client.api.ProducerBuilder;
+import org.apache.pulsar.client.api.PulsarClient;
 import org.apache.pulsar.client.api.Reader;
-import org.apache.pulsar.client.api.ReaderBuilder;
-import org.apache.pulsar.common.util.FutureUtil;
-import org.apache.rocketmq.common.subscription.SubscriptionGroupConfig;
-import org.streamnative.pulsar.handlers.rocketmq.RocketMQServiceConfiguration;
-import org.streamnative.pulsar.handlers.rocketmq.inner.timer.Time;
+import org.apache.pulsar.client.api.Schema;
+import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
+import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupAndTopicName;
 import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 
+/**
+ * Group meta manager.
+ */
 @Slf4j
 public class GroupMetaManager {
 
-    private final RocketMQServiceConfiguration rocketmqConfig;
-    private final ReentrantLock partitionLock = new ReentrantLock();
-    private final Set<Integer> loadingPartitions = new HashSet<>();
-    private final Set<Integer> ownedPartitions = new HashSet<>();
+    private final RocketMQBrokerController brokerController;
+
     private final AtomicBoolean shuttingDown = new AtomicBoolean(false);
-    private final int groupMetadataTopicPartitionCount;
-    private final ConcurrentMap<String, SubscriptionGroupConfig> subscriptionGroupCache;
 
-    private final ConcurrentMap<Integer, CompletableFuture<Producer<ByteBuffer>>> offsetsProducers =
-            new ConcurrentHashMap<>();
-    private final ConcurrentMap<Integer, CompletableFuture<Reader<ByteBuffer>>> offsetsReaders =
-            new ConcurrentHashMap<>();
+    /**
+     * group offset producer\reader.
+     */
+    private final Producer<ByteBuffer> groupOffsetProducer;
+    private final Reader<ByteBuffer> groupOffsetReader;
 
-    private final ScheduledExecutorService scheduler;
-    private final Map<Long, Set<String>> openGroupsForProducer = new HashMap<>();
+    /**
+     * group meta producer\reader.
+     */
+    private final Producer<ByteBuffer> groupMetaProducer;
+    private final Reader<ByteBuffer> groupMeatReader;
 
-    private final ProducerBuilder<ByteBuffer> metadataTopicProducerBuilder;
-    private final ReaderBuilder<ByteBuffer> metadataTopicReaderBuilder;
-    private final Time time;
-    private final Function<String, Integer> partitioner;
+    /**
+     * group offset reader executor.
+     */
+    private final ExecutorService offsetReaderExecutor = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r);
+        t.setName("Rop-group-offset-reader");
+        t.setDaemon(true);
+        return t;
+    });
 
-    public GroupMetaManager(RocketMQServiceConfiguration rocketmqConfig,
-            ProducerBuilder<ByteBuffer> metadataTopicProducerBuilder,
-            ReaderBuilder<ByteBuffer> metadataTopicReaderBuilder,
-            ScheduledExecutorService scheduler,
-            Time time) {
-        this(
-                rocketmqConfig,
-                metadataTopicProducerBuilder,
-                metadataTopicReaderBuilder,
-                scheduler,
-                time,
-                groupId -> MathUtils.signSafeMod(
-                        groupId.hashCode(),
-                        rocketmqConfig.getOffsetsTopicNumPartitions()
-                )
-        );
-    }
+    /**
+     * group meta executor.
+     */
+    private final ExecutorService metaReaderExecutor = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r);
+        t.setName("Rop-group-meta-reader");
+        t.setDaemon(true);
+        return t;
+    });
 
-    GroupMetaManager(RocketMQServiceConfiguration rocketmqConfig,
-            ProducerBuilder<ByteBuffer> metadataTopicProducerBuilder,
-            ReaderBuilder<ByteBuffer> metadataTopicConsumerBuilder,
-            ScheduledExecutorService scheduler,
-            Time time,
-            Function<String, Integer> partitioner) {
-        this.rocketmqConfig = rocketmqConfig;
-        this.subscriptionGroupCache = new ConcurrentHashMap<>();
-        this.groupMetadataTopicPartitionCount = rocketmqConfig.getOffsetsTopicNumPartitions();
-        this.metadataTopicProducerBuilder = metadataTopicProducerBuilder;
-        this.metadataTopicReaderBuilder = metadataTopicConsumerBuilder;
-        this.scheduler = scheduler;
-        this.time = time;
-        this.partitioner = partitioner;
-    }
+    /**
+     * group offset\meta callback executor.
+     */
+    private final ExecutorService groupMetaCallbackExecutor = Executors.newFixedThreadPool(10, r -> {
+        Thread t = new Thread(r);
+        t.setName("Rop-group-meta-callback");
+        t.setDaemon(true);
+        return t;
+    });
 
-    public void startup(boolean enableMetadataExpiration) {
+    /**
+     * group offset table
+     * key   => topic@group.
+     * topic => tenant/namespace/topicName.
+     * group => tenant/namespace/groupName.
+     * map   => [key => queueId] & [value => offset].
+     **/
+    private final ConcurrentHashMap<ClientGroupAndTopicName, ConcurrentMap<Integer, Long>> offsetTable =
+            new ConcurrentHashMap<>(512);
 
-    }
+    public GroupMetaManager(RocketMQBrokerController brokerController) throws Exception {
+        this.brokerController = brokerController;
+        PulsarClient pulsarClient = brokerController.getBrokerService().getPulsar().getClient();
 
-    public void shutdown() {
-        shuttingDown.set(true);
-        scheduler.shutdown();
-        List<CompletableFuture<Void>> producerCloses = offsetsProducers.entrySet().stream()
-                .map(v -> v.getValue()
-                        .thenComposeAsync(producer -> producer.closeAsync(), scheduler))
-                .collect(Collectors.toList());
-        offsetsProducers.clear();
-        List<CompletableFuture<Void>> readerCloses = offsetsReaders.entrySet().stream()
-                .map(v -> v.getValue()
-                        .thenComposeAsync(reader -> reader.closeAsync(), scheduler))
-                .collect(Collectors.toList());
-        offsetsReaders.clear();
+        this.groupOffsetProducer = pulsarClient.newProducer(Schema.BYTEBUFFER)
+                .maxPendingMessages(1000)
+                .sendTimeout(5, TimeUnit.SECONDS)
+                .enableBatching(true)
+                .blockIfQueueFull(false)
+                .topic(RocketMQTopic.getGroupMetaOffsetTopic().getPulsarFullName())
+                .create();
 
-        FutureUtil.waitForAll(producerCloses).whenCompleteAsync((ignore, t) -> {
-            if (t != null) {
-                log.error("Error when close all the {} offsetsProducers in GroupMetadataManager",
-                        producerCloses.size(), t);
-            }
-            if (log.isDebugEnabled()) {
-                log.debug("Closed all the {} offsetsProducers in GroupMetadataManager", producerCloses.size());
-            }
-        }, scheduler);
+        this.groupOffsetReader = pulsarClient.newReader(Schema.BYTEBUFFER)
+                .topic(RocketMQTopic.getGroupMetaOffsetTopic().getPulsarFullName())
+                .startMessageId(MessageId.earliest)
+                .readCompacted(true)
+                .create();
 
-        FutureUtil.waitForAll(readerCloses).whenCompleteAsync((ignore, t) -> {
-            if (t != null) {
-                log.error("Error when close all the {} offsetsReaders in GroupMetadataManager",
-                        readerCloses.size(), t);
-            }
-            if (log.isDebugEnabled()) {
-                log.debug("Closed all the {} offsetsReaders in GroupMetadataManager.", readerCloses.size());
-            }
-        }, scheduler);
-    }
+        this.groupMetaProducer = pulsarClient.newProducer(Schema.BYTEBUFFER)
+                .maxPendingMessages(1000)
+                .sendTimeout(5, TimeUnit.SECONDS)
+                .enableBatching(true)
+                .blockIfQueueFull(false)
+                .topic(RocketMQTopic.getGroupMetaSubscriptionTopic().getPulsarFullName())
+                .create();
 
-    public boolean isPartitionOwned(int partition) {
-        return inLock(
-                partitionLock,
-                () -> ownedPartitions.contains(partition));
-    }
+        this.groupMeatReader = pulsarClient.newReader(Schema.BYTEBUFFER)
+                .topic(RocketMQTopic.getGroupMetaSubscriptionTopic().getPulsarFullName())
+                .startMessageId(MessageId.earliest)
+                .readCompacted(true)
+                .create();
 
-    public boolean isPartitionLoading(int partition) {
-        return inLock(
-                partitionLock,
-                () -> loadingPartitions.contains(partition)
-        );
-    }
-
-    public int partitionFor(String groupId) {
-        return partitioner.apply(groupId);
-    }
-
-    CompletableFuture<Producer<ByteBuffer>> getOffsetsTopicProducer(String groupId) {
-        return offsetsProducers.computeIfAbsent(partitionFor(groupId),
-                partitionId -> {
-                    if (log.isDebugEnabled()) {
-                        log.debug("Created Partitioned producer: {} for consumer group: {}",
-                                RocketMQTopic.getGroupMetaOffsetTopic().getPartitionName(partitionId),
-                                groupId);
-                    }
-                    return metadataTopicProducerBuilder.clone()
-                            .topic(RocketMQTopic.getGroupMetaOffsetTopic().getPartitionName(partitionId))
-                            .createAsync();
-                });
-    }
-
-    CompletableFuture<Producer<ByteBuffer>> getOffsetsTopicProducer(int partitionId) {
-        return offsetsProducers.computeIfAbsent(partitionId,
-                id -> {
-                    if (log.isDebugEnabled()) {
-                        log.debug("Will create Partitioned producer: {}",
-                                RocketMQTopic.getGroupMetaOffsetTopic().getPartitionName(id));
-                    }
-                    return metadataTopicProducerBuilder.clone()
-                            .topic(RocketMQTopic.getGroupMetaOffsetTopic().getPartitionName(id))
-                            .createAsync();
-                });
-    }
-
-    CompletableFuture<Reader<ByteBuffer>> getOffsetsTopicReader(int partitionId) {
-        return offsetsReaders.computeIfAbsent(partitionId,
-                id -> {
-                    if (log.isDebugEnabled()) {
-                        log.debug("Will create Partitioned reader: {}",
-                                RocketMQTopic.getGroupMetaOffsetTopic().getPartitionName(id));
-                    }
-                    return metadataTopicReaderBuilder.clone()
-                            .topic(RocketMQTopic.getGroupMetaOffsetTopic().getPartitionName(id))
-                            .readCompacted(true)
-                            .createAsync();
-                });
+        offsetReaderExecutor.execute(this::loadOffsets);
     }
 
     /**
-     * queryOffset
+     * load offset.
+     */
+    private void loadOffsets() {
+        while (shuttingDown.get()) {
+            try {
+                Message<ByteBuffer> message = groupOffsetReader.readNext(1, TimeUnit.SECONDS);
+
+                GroupOffsetKey groupOffsetKey = new GroupOffsetKey();
+                groupOffsetKey.decode(ByteBuffer.wrap(message.getKeyBytes()));
+
+                GroupOffsetValue groupOffsetValue = new GroupOffsetValue();
+                groupOffsetValue.decode(message.getValue());
+
+                String group = groupOffsetKey.groupName;
+                String topic = groupOffsetKey.getSubTopic();
+                int queueId = groupOffsetKey.getPartition();
+                long offset = groupOffsetValue.getOffset();
+
+                ClientGroupAndTopicName clientGroupAndTopicName = new ClientGroupAndTopicName(group, topic);
+                offsetTable.putIfAbsent(clientGroupAndTopicName, new ConcurrentHashMap<>());
+                ConcurrentMap<Integer, Long> partitionOffsets = offsetTable.get(clientGroupAndTopicName);
+                partitionOffsets.put(queueId, offset);
+            } catch (Exception e) {
+                log.warn("Rop load offset failed.", e);
+            }
+        }
+    }
+
+    /**
+     * query offset.
      */
     public long queryOffset(final String group, final String topic, final int queueId) {
-        // TODO: hanmz 2021/8/21
-        return 0L;
+        ClientGroupAndTopicName clientGroupAndTopicName = new ClientGroupAndTopicName(group, topic);
+        ConcurrentMap<Integer, Long> partitionOffsets = offsetTable.get(clientGroupAndTopicName);
+        if (partitionOffsets == null) {
+            return -1;
+        }
+        return partitionOffsets.getOrDefault(queueId, -1L);
     }
 
     /**
-     * storeOffset
+     * store offset.
      */
     public void storeOffset(final String group, final String topic, final int queueId, long offset) {
-        // TODO: hanmz 2021/8/21
         try {
             GroupOffsetKey groupOffsetKey = new GroupOffsetKey();
             groupOffsetKey.setGroupName(group);
@@ -221,22 +185,32 @@ public class GroupMetaManager {
             groupOffsetValue.setCommitTimestamp(System.currentTimeMillis());
             groupOffsetValue.setExpireTimestamp(System.currentTimeMillis());
 
-            storeOffsetMessage(group, groupOffsetKey.encode().array(), groupOffsetValue.encode(),
-                    System.currentTimeMillis());
+            groupOffsetProducer.newMessage()
+                    .keyBytes(groupOffsetKey.encode().array())
+                    .value(groupOffsetValue.encode())
+                    .eventTime(System.currentTimeMillis()).sendAsync()
+                    .whenCompleteAsync((msgId, e) -> {
+                        if (e != null) {
+                            log.warn("[{}] [{}] StoreOffsetMessage failed.", group, topic, e);
+                            return;
+                        }
+                        ClientGroupAndTopicName clientGroupAndTopicName = new ClientGroupAndTopicName(group, topic);
+                        offsetTable.putIfAbsent(clientGroupAndTopicName, new ConcurrentHashMap<>());
+                        ConcurrentMap<Integer, Long> partitionOffsets = offsetTable
+                                .get(clientGroupAndTopicName);
+                        partitionOffsets.put(queueId, offset);
+                    }, groupMetaCallbackExecutor);
         } catch (Exception e) {
             log.warn("[{}] [{}] StoreOffsetMessage failed.", group, topic, e);
         }
     }
 
-    void storeOffsetMessage(String groupId, byte[] key, ByteBuffer buffer, long timestamp) {
-        try {
-            Producer<ByteBuffer> producer = getOffsetsTopicProducer(groupId).get();
-            producer.newMessage().keyBytes(key).value(buffer).eventTime(timestamp).sendAsync()
-                    .whenCompleteAsync((msgId, e) -> {
-                        // TODO: hanmz 2021/8/21
-                    });
-        } catch (Exception e) {
-            log.warn("Store offset message failed.", e);
-        }
+    public void shutdown() {
+        shuttingDown.set(true);
+        offsetReaderExecutor.shutdown();
+        groupMetaCallbackExecutor.shutdown();
+
+        groupOffsetProducer.closeAsync();
+        groupOffsetReader.closeAsync();
     }
 }
