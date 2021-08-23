@@ -14,6 +14,8 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.namesvr;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Map;
 import org.apache.rocketmq.common.protocol.route.TopicRouteData;
 
@@ -26,6 +28,28 @@ public class RopTopicRouteData extends TopicRouteData {
 
     public void setPartitionRouteInfos(Map<Integer, String> partitionRouteInfos) {
         this.partitionRouteInfos = partitionRouteInfos;
+    }
+
+    @Override
+    public TopicRouteData cloneTopicRouteData() {
+        RopTopicRouteData topicRouteData = new RopTopicRouteData();
+        topicRouteData.setQueueDatas(new ArrayList());
+        topicRouteData.setBrokerDatas(new ArrayList());
+        topicRouteData.setFilterServerTable(new HashMap());
+        topicRouteData.setOrderTopicConf(this.getOrderTopicConf());
+        if (this.getQueueDatas() != null) {
+            topicRouteData.getQueueDatas().addAll(this.getQueueDatas());
+        }
+        if (this.getBrokerDatas() != null) {
+            topicRouteData.getBrokerDatas().addAll(this.getBrokerDatas());
+        }
+        if (this.getFilterServerTable() != null) {
+            topicRouteData.getFilterServerTable().putAll(this.getFilterServerTable());
+        }
+        if (this.getPartitionRouteInfos() != null) {
+            topicRouteData.getPartitionRouteInfos().putAll(this.getPartitionRouteInfos());
+        }
+        return topicRouteData;
     }
 
     @Override
