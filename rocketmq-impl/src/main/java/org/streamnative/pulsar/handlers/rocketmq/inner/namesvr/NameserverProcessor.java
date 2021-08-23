@@ -208,7 +208,7 @@ public class NameserverProcessor implements NettyRequestProcessor {
                             queueDatas.add(queueData);
                             brokerNames.put(addr.getHostName(), advertisAddress);
                         }
-                        partitionRouteInfos.put(partition, brokerNames.get(brokerName));
+                        partitionRouteInfos.put(partition, brokerName);
                     });
 
                     byte[] content = topicRouteData.encode();
