@@ -63,7 +63,7 @@ public class GroupOffsetKey extends GroupMetaKey<GroupOffsetKey> {
             this.subTopic = new String(topicNameBytes, StandardCharsets.UTF_8);
             return this;
         } catch (Exception e) {
-            throw new RopDecodeException("GroupOffsetKey decode error: " + e.getMessage());
+            throw new RopDecodeException("GroupOffsetKey decode error", e);
         }
     }
 

@@ -249,16 +249,16 @@ public class RocketMQBrokerController {
             }
         }, initialDelay, period, TimeUnit.MILLISECONDS);
 
-        this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    RocketMQBrokerController.this.consumerOffsetManager.persist();
-                } catch (Throwable e) {
-                    log.error("schedule persist consumerOffset error.", e);
-                }
-            }
-        }, 1000 * 10, this.serverConfig.getFlushConsumerOffsetInterval(), TimeUnit.MILLISECONDS);
+//        this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
+//            @Override
+//            public void run() {
+//                try {
+//                    RocketMQBrokerController.this.consumerOffsetManager.persist();
+//                } catch (Throwable e) {
+//                    log.error("schedule persist consumerOffset error.", e);
+//                }
+//            }
+//        }, 1000 * 10, this.serverConfig.getFlushConsumerOffsetInterval(), TimeUnit.MILLISECONDS);
 
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
             @Override
@@ -570,6 +570,10 @@ public class RocketMQBrokerController {
     }
 
     public void shutdown() {
+        if (this.consumerOffsetManager != null) {
+            this.consumerOffsetManager.shutdown();
+        }
+
         if (this.brokerStatsManager != null) {
             this.brokerStatsManager.shutdown();
         }
@@ -636,6 +640,10 @@ public class RocketMQBrokerController {
     }
 
     public void start() throws Exception {
+
+        if (this.consumerOffsetManager != null) {
+            this.consumerOffsetManager.start();
+        }
 
         if (this.remotingServer != null) {
             this.remotingServer.start();
