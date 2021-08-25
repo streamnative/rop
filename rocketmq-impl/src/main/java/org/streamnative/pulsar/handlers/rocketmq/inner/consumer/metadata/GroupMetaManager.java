@@ -158,6 +158,7 @@ public class GroupMetaManager {
                 .create();
 
         offsetReaderExecutor.execute(this::loadOffsets);
+        metaReaderExecutor.execute(this::loadGroup);
 
         persistOffsetExecutor.scheduleAtFixedRate(() -> {
             try {
@@ -382,7 +383,11 @@ public class GroupMetaManager {
      * query group info.
      */
     private SubscriptionGroupConfig queryGroup(final ClientGroupName rmqGroupName) {
-         return groupTable.get(rmqGroupName);
+        if (null != rmqGroupName) {
+            return groupTable.get(rmqGroupName);
+        }
+
+        return null;
     }
 
     /**
@@ -421,7 +426,9 @@ public class GroupMetaManager {
                             log.warn("[{}] StoreSubscriptionMessage failed.", subGroupConfig.getGroupName(), e);
                         }
 
-
+                        // If sending fails, set the value in the map to null
+                        ClientGroupName clientGroupName = new ClientGroupName(subGroupConfig.getGroupName());
+                        groupTable.putIfAbsent(clientGroupName, null);
                     }, groupMetaCallbackExecutor);
         } catch (Exception e) {
             log.warn("[{}] StoreSubscriptionMessage failed.", subGroupConfig.getGroupName(), e);
@@ -432,9 +439,28 @@ public class GroupMetaManager {
      * load group info.
      */
     private void loadGroup() {
+        while (!shuttingDown.get()) {
+            try {
+                Message<ByteBuffer> message = groupMeatReader.readNext(1, TimeUnit.SECONDS);
+                if (message == null) {
+                    continue;
+                }
 
+                GroupSubscriptionKey subscriptionKey = (GroupSubscriptionKey) GroupMetaKey
+                        .decodeKey(ByteBuffer.wrap(message.getKeyBytes()));
+
+                GroupSubscriptionValue subscriptionValue = new GroupSubscriptionValue();
+                subscriptionValue.decode(message.getValue());
+
+                String group = subscriptionValue.getGroupName();
+
+                ClientGroupName groupName = new ClientGroupName(group);
+                groupTable.putIfAbsent(groupName, subscriptionValue);
+            } catch (Exception e) {
+                log.warn("Rop load group info failed.", e);
+            }
+        }
     }
-
 
     public void shutdown() {
         shuttingDown.set(true);
