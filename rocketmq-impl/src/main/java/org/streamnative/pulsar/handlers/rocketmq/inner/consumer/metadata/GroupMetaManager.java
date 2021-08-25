@@ -38,10 +38,12 @@ import org.apache.pulsar.client.api.Schema;
 import org.apache.pulsar.client.impl.MessageIdImpl;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandSubscribe.InitialPosition;
 import org.apache.pulsar.common.naming.TopicName;
+import org.apache.rocketmq.common.subscription.SubscriptionGroupConfig;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.ConsumerOffsetManager;
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopPersistentTopicException;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupAndTopicName;
+import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupName;
 import org.streamnative.pulsar.handlers.rocketmq.utils.MessageIdUtils;
 import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 
@@ -114,6 +116,9 @@ public class GroupMetaManager {
      **/
     @Getter
     private final ConcurrentHashMap<ClientGroupAndTopicName, ConcurrentMap<Integer, Long>> offsetTable =
+            new ConcurrentHashMap<>(512);
+
+    private final ConcurrentHashMap<ClientGroupName, SubscriptionGroupConfig> groupTable =
             new ConcurrentHashMap<>(512);
 
     public GroupMetaManager(RocketMQBrokerController brokerController, ConsumerOffsetManager consumerOffsetManager) {
@@ -372,6 +377,64 @@ public class GroupMetaManager {
             log.warn("[{}] [{}] StoreOffsetMessage failed.", rmqGroupName, rmqTopicName, e);
         }
     }
+
+    /**
+     * query group info.
+     */
+    private SubscriptionGroupConfig queryGroup(final ClientGroupName rmqGroupName) {
+         return groupTable.get(rmqGroupName);
+    }
+
+    /**
+     * query group info.
+     */
+    private ConcurrentHashMap<ClientGroupName, SubscriptionGroupConfig> queryAllGroup() {
+        return groupTable;
+    }
+
+    /**
+     * store group info.
+     */
+    private void storeGroup(final SubscriptionGroupConfig subGroupConfig) {
+        try {
+            GroupSubscriptionKey subscriptionKey = new GroupSubscriptionKey();
+            subscriptionKey.setGroupName(subGroupConfig.getGroupName());
+
+            GroupSubscriptionValue subscriptionValue = new GroupSubscriptionValue();
+            subscriptionValue.setGroupName(subGroupConfig.getGroupName());
+            subscriptionValue.setBrokerId(subGroupConfig.getBrokerId());
+            subscriptionValue.setConsumeBroadcastEnable(subGroupConfig.isConsumeBroadcastEnable());
+            subscriptionValue.setConsumeEnable(subGroupConfig.isConsumeEnable());
+            subscriptionValue.setRetryMaxTimes(subGroupConfig.getRetryMaxTimes());
+            subscriptionValue.setRetryQueueNums(subGroupConfig.getRetryQueueNums());
+            subscriptionValue.setConsumeFromMinEnable(subGroupConfig.isConsumeFromMinEnable());
+
+            log.info("[{}] Store subscription group config [{}] successfully.",
+                    subGroupConfig.getGroupName(), subGroupConfig);
+
+            groupMetaProducer.newMessage()
+                    .keyBytes(subscriptionKey.encode().array())
+                    .value(subscriptionValue.encode())
+                    .eventTime(System.currentTimeMillis()).sendAsync()
+                    .whenCompleteAsync((msgId, e) -> {
+                        if (e != null) {
+                            log.warn("[{}] StoreSubscriptionMessage failed.", subGroupConfig.getGroupName(), e);
+                        }
+
+
+                    }, groupMetaCallbackExecutor);
+        } catch (Exception e) {
+            log.warn("[{}] StoreSubscriptionMessage failed.", subGroupConfig.getGroupName(), e);
+        }
+    }
+
+    /**
+     * load group info.
+     */
+    private void loadGroup() {
+
+    }
+
 
     public void shutdown() {
         shuttingDown.set(true);
