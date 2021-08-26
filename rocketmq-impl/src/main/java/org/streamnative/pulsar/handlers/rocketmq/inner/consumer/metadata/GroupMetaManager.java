@@ -424,11 +424,12 @@ public class GroupMetaManager {
                     .whenCompleteAsync((msgId, e) -> {
                         if (e != null) {
                             log.warn("[{}] StoreSubscriptionMessage failed.", subGroupConfig.getGroupName(), e);
+                            return;
                         }
 
                         // If sending fails, set the value in the map to null
                         ClientGroupName clientGroupName = new ClientGroupName(subGroupConfig.getGroupName());
-                        groupTable.putIfAbsent(clientGroupName, null);
+                        groupTable.putIfAbsent(clientGroupName, subscriptionValue);
                     }, groupMetaCallbackExecutor);
         } catch (Exception e) {
             log.warn("[{}] StoreSubscriptionMessage failed.", subGroupConfig.getGroupName(), e);
