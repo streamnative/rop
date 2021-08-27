@@ -16,8 +16,6 @@ package org.streamnative.pulsar.handlers.rocketmq.inner.consumer.metadata;
 import static org.junit.Assert.assertEquals;
 
 import java.nio.ByteBuffer;
-import java.util.Date;
-import org.apache.rocketmq.common.subscription.SubscriptionGroupConfig;
 import org.junit.Before;
 import org.junit.Test;
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopDecodeException;
@@ -34,7 +32,7 @@ public class GroupOffsetKeyTest {
         groupOffsetKey = new GroupOffsetKey();
         groupOffsetKey.setVersion((short) 2);
         groupOffsetKey.setGroupName("my_first_group");
-        groupOffsetKey.setSubTopic("my_first_topic");
+        groupOffsetKey.setTopicName("my_first_topic");
         groupOffsetKey.setPartition(10);
     }
 
