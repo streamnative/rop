@@ -28,7 +28,7 @@ import org.apache.rocketmq.common.constant.PermName;
 public class RocketMQServiceConfiguration extends ServiceConfiguration {
 
     // offset configuration
-    private static final int OffsetsRetentionMinutes = 3 * 24 * 60;
+    private static final int OffsetsRetentionMinutes = 15 * 24 * 60;
     public static final int DefaultOffsetsTopicNumPartitions = 10;
     private static final int OffsetsMessageTTL = 3 * 24 * 3600;
     public static final long DefaultOffsetsRetentionCheckIntervalMs = 600000L;

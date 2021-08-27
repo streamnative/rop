@@ -14,8 +14,10 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.consumer.metadata;
 
+import com.google.common.collect.Sets;
 import java.nio.ByteBuffer;
 import java.util.Map.Entry;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutorService;
@@ -44,6 +46,7 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.ConsumerOffsetMa
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopPersistentTopicException;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupAndTopicName;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupName;
+import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientTopicName;
 import org.streamnative.pulsar.handlers.rocketmq.utils.MessageIdUtils;
 import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 
@@ -107,6 +110,13 @@ public class GroupMetaManager {
         return t;
     });
 
+    private final ScheduledExecutorService clearOffsetExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread t = new Thread(r);
+        t.setName("Rop-clear-offset");
+        t.setDaemon(true);
+        return t;
+    });
+
     /**
      * group offset table
      * key   => topic@group.
@@ -116,6 +126,11 @@ public class GroupMetaManager {
      **/
     @Getter
     private final ConcurrentHashMap<ClientGroupAndTopicName, ConcurrentMap<Integer, Long>> offsetTable =
+            new ConcurrentHashMap<>(512);
+
+    private long offsetsRetentionMs;
+
+    private final ConcurrentHashMap<GroupOffsetKey, Long> expireTimeTable =
             new ConcurrentHashMap<>(512);
 
     private final ConcurrentHashMap<ClientGroupName, SubscriptionGroupConfig> groupTable =
@@ -128,11 +143,12 @@ public class GroupMetaManager {
 
     public void start() throws Exception {
         PulsarClient pulsarClient = brokerController.getBrokerService().getPulsar().getClient();
+        this.offsetsRetentionMs = brokerController.getServerConfig().getOffsetsRetentionMinutes() * 60 * 1000;
 
         this.groupOffsetProducer = pulsarClient.newProducer(Schema.BYTEBUFFER)
                 .maxPendingMessages(1000)
                 .sendTimeout(5, TimeUnit.SECONDS)
-                .enableBatching(true)
+                .enableBatching(false)
                 .blockIfQueueFull(false)
                 .topic(RocketMQTopic.getGroupMetaOffsetTopic().getPulsarFullName())
                 .create();
@@ -146,7 +162,7 @@ public class GroupMetaManager {
         this.groupMetaProducer = pulsarClient.newProducer(Schema.BYTEBUFFER)
                 .maxPendingMessages(1000)
                 .sendTimeout(5, TimeUnit.SECONDS)
-                .enableBatching(true)
+                .enableBatching(false)
                 .blockIfQueueFull(false)
                 .topic(RocketMQTopic.getGroupMetaSubscriptionTopic().getPulsarFullName())
                 .create();
@@ -158,21 +174,31 @@ public class GroupMetaManager {
                 .create();
 
         offsetReaderExecutor.execute(this::loadOffsets);
-        metaReaderExecutor.execute(this::loadGroup);
+//        metaReaderExecutor.execute(this::loadGroup);
+        Thread.sleep(10 * 1000);
 
         persistOffsetExecutor.scheduleAtFixedRate(() -> {
             try {
-                persist();
+                persistOffset();
             } catch (Throwable e) {
                 log.error("Persist consumerOffset error.", e);
             }
         }, 1000 * 10, brokerController.getServerConfig().getFlushConsumerOffsetInterval(), TimeUnit.MILLISECONDS);
+
+        clearOffsetExecutor.scheduleAtFixedRate(() -> {
+            try {
+                clearOffset();
+            } catch (Throwable e) {
+                log.error("Clear consumerOffset error.", e);
+            }
+        }, 1000 * 60, brokerController.getServerConfig().getOffsetsRetentionCheckIntervalMs(), TimeUnit.MILLISECONDS);
     }
 
     /**
      * load offset.
      */
     private void loadOffsets() {
+        log.info("Start load group offset.");
         while (!shuttingDown.get()) {
             try {
                 Message<ByteBuffer> message = groupOffsetReader.readNext(1, TimeUnit.SECONDS);
@@ -183,18 +209,32 @@ public class GroupMetaManager {
                 GroupOffsetKey groupOffsetKey = (GroupOffsetKey) GroupMetaKey
                         .decodeKey(ByteBuffer.wrap(message.getKeyBytes()));
 
+                String rmqGroupName = groupOffsetKey.getGroupName();
+                String rmqTopicName = groupOffsetKey.getTopicName();
+                int queueId = groupOffsetKey.getPartition();
+                ClientGroupAndTopicName clientGroupAndTopicName = new ClientGroupAndTopicName(rmqGroupName,
+                        rmqTopicName);
+
+                // clear expire group offset cache
+                if (message.getValue() == null) {
+                    offsetTable.remove(clientGroupAndTopicName);
+                    expireTimeTable.remove(groupOffsetKey);
+                    continue;
+                }
+
+                long expireTime = message.getEventTime() + offsetsRetentionMs;
+                if (expireTime < System.currentTimeMillis()) {
+                    continue;
+                }
+
+                expireTimeTable.put(groupOffsetKey, expireTime);
+
+                offsetTable.putIfAbsent(clientGroupAndTopicName, new ConcurrentHashMap<>());
+
                 GroupOffsetValue groupOffsetValue = new GroupOffsetValue();
                 groupOffsetValue.decode(message.getValue());
-
-                String group = groupOffsetKey.getGroupName();
-                String topic = groupOffsetKey.getSubTopic();
-                int queueId = groupOffsetKey.getPartition();
                 long offset = groupOffsetValue.getOffset();
-
-                ClientGroupAndTopicName clientGroupAndTopicName = new ClientGroupAndTopicName(group, topic);
-                offsetTable.putIfAbsent(clientGroupAndTopicName, new ConcurrentHashMap<>());
-                ConcurrentMap<Integer, Long> partitionOffsets = offsetTable.get(clientGroupAndTopicName);
-                partitionOffsets.put(queueId, offset);
+                offsetTable.get(clientGroupAndTopicName).put(queueId, offset);
             } catch (Exception e) {
                 log.warn("Rop load offset failed.", e);
             }
@@ -251,8 +291,7 @@ public class GroupMetaManager {
         this.commitOffset(new ClientGroupAndTopicName(group, topic), queueId, offset);
     }
 
-    private void commitOffset(final ClientGroupAndTopicName clientGroupAndTopicName, final int queueId,
-            final long offset) {
+    private void commitOffset(ClientGroupAndTopicName clientGroupAndTopicName, int queueId, long offset) {
         ConcurrentMap<Integer, Long> map = this.offsetTable.get(clientGroupAndTopicName);
         if (null == map) {
             map = new ConcurrentHashMap<>(32);
@@ -267,7 +306,7 @@ public class GroupMetaManager {
         }
     }
 
-    public synchronized void persist() {
+    public void persistOffset() {
         for (Entry<ClientGroupAndTopicName, ConcurrentMap<Integer, Long>> entry : offsetTable.entrySet()) {
             ClientGroupAndTopicName groupAndTopic = entry.getKey();
             ConcurrentMap<Integer, Long> offsetMap = entry.getValue();
@@ -280,38 +319,32 @@ public class GroupMetaManager {
                     long offset = entry1.getValue();
                     try {
                         if (!this.brokerController.getTopicConfigManager().isPartitionTopicOwner(
-                                TopicName.get(groupAndTopic.getClientTopicName().getPulsarTopicName()),
-                                partitionId)) {
+                                TopicName.get(groupAndTopic.getClientTopicName().getPulsarTopicName()), partitionId)) {
                             continue;
                         }
 
                         PersistentTopic persistentTopic = consumerOffsetManager.getPulsarPersistentTopic(
-                                groupAndTopic.getClientTopicName(),
-                                partitionId);
+                                groupAndTopic.getClientTopicName(), partitionId);
                         if (persistentTopic != null) {
                             PersistentSubscription subscription = persistentTopic.getSubscription(pulsarGroup);
                             if (subscription == null) {
                                 subscription = (PersistentSubscription) persistentTopic
-                                        .createSubscription(pulsarGroup,
-                                                InitialPosition.Earliest,
-                                                false)
-                                        .get();
+                                        .createSubscription(pulsarGroup, InitialPosition.Earliest, false).get();
                             }
                             ManagedCursor cursor = subscription.getCursor();
                             PositionImpl markDeletedPosition = (PositionImpl) cursor.getMarkDeletedPosition();
                             PositionImpl commitPosition = MessageIdUtils.getPosition(offset);
                             PositionImpl lastPosition = (PositionImpl) persistentTopic.getLastPosition();
 
-                            /*
-                             * If the consumer has submitted the offset to the last position,
-                             * when the broker restarts, the last message will be consumed repeatedly.
-                             */
+                            if (commitPosition.getEntryId() > 0) {
+                                commitPosition = MessageIdUtils.getPosition(offset - 1);
+                            }
+
                             if (commitPosition.compareTo(lastPosition) > 0) {
                                 commitPosition = lastPosition;
-                                offset = MessageIdUtils.getOffset(
-                                        new MessageIdImpl(commitPosition.getLedgerId(),
-                                                commitPosition.getEntryId() + 1,
-                                                partitionId));
+                                offset = MessageIdUtils.getOffset(new MessageIdImpl(lastPosition.getLedgerId(),
+                                        lastPosition.getEntryId() + 1,
+                                        partitionId));
                             }
 
                             String rmqGroupName = groupAndTopic.getClientGroupName().getRmqGroupName();
@@ -321,20 +354,20 @@ public class GroupMetaManager {
                             if (commitPosition.compareTo(markDeletedPosition) > 0) {
                                 try {
                                     cursor.markDelete(commitPosition);
-                                    log.debug("[{}] [{}] mark delete [position = {}] successfully.",
+                                    log.debug("[{}] [{}] Mark delete [position = {}] successfully.",
                                             rmqGroupName, rmqTopicName, commitPosition);
                                 } catch (Exception e) {
-                                    log.info("[{}] [{}] mark delete [position = {}] and deletedPosition[{}] error.",
+                                    log.info("[{}] [{}] Mark delete [position = {}] and deletedPosition[{}] error.",
                                             rmqGroupName, rmqTopicName, commitPosition, markDeletedPosition, e);
                                 }
                             } else {
                                 log.debug(
-                                        "[{}] [{}] skip mark delete for [position = {}] less than [oldPosition = {}].",
+                                        "[{}] [{}] Skip mark delete for [position = {}] less than [oldPosition = {}].",
                                         rmqGroupName, rmqTopicName, commitPosition, markDeletedPosition);
                             }
                         }
                     } catch (Exception e) {
-                        log.warn("persist topic[{}] offset[{}] error. Exception: ", groupAndTopic, offset, e);
+                        log.warn("[{}] Persist offset [{}] error.", groupAndTopic, offset, e);
                     }
                 }
             }
@@ -342,37 +375,73 @@ public class GroupMetaManager {
     }
 
     /**
+     * Clear expire offset.
+     */
+    private void clearOffset() {
+        Set<GroupOffsetKey> clearOffsets = Sets.newHashSet();
+        for (Entry<GroupOffsetKey, Long> entry : expireTimeTable.entrySet()) {
+            long expireTime = entry.getValue();
+            if (System.currentTimeMillis() < expireTime) {
+                continue;
+            }
+
+            GroupOffsetKey groupOffsetKey = entry.getKey();
+            ClientTopicName clientTopicName = new ClientTopicName(groupOffsetKey.getTopicName());
+            if (!this.brokerController.getTopicConfigManager().isPartitionTopicOwner(
+                    TopicName.get(clientTopicName.getPulsarTopicName()), groupOffsetKey.getPartition())) {
+                continue;
+            }
+
+            clearOffsets.add(entry.getKey());
+        }
+
+        for (GroupOffsetKey clearOffset : clearOffsets) {
+            String rmqGroupName = clearOffset.getGroupName();
+            String rmqTopicName = clearOffset.getTopicName();
+            int queueId = clearOffset.getPartition();
+            log.info("[{}] [{}] Clear offset.", rmqGroupName, rmqTopicName);
+            storeOffset(rmqGroupName, rmqTopicName, queueId, -1L);
+        }
+    }
+
+    /**
      * store offset.
      */
-    private void storeOffset(final String rmqGroupName, final String rmqTopicName, final int queueId, long offset) {
+    private void storeOffset(final String rmqGroupName, final String rmqTopicName, final int queueId, Long offset) {
         try {
             GroupOffsetKey groupOffsetKey = new GroupOffsetKey();
             groupOffsetKey.setGroupName(rmqGroupName);
-            groupOffsetKey.setSubTopic(rmqTopicName);
+            groupOffsetKey.setTopicName(rmqTopicName);
             groupOffsetKey.setPartition(queueId);
 
-            GroupOffsetValue groupOffsetValue = new GroupOffsetValue();
-            groupOffsetValue.setOffset(offset);
-            groupOffsetValue.setCommitTimestamp(System.currentTimeMillis());
-            groupOffsetValue.setExpireTimestamp(System.currentTimeMillis());
+            GroupOffsetValue groupOffsetValue = null;
+            if (offset > -1) {
+                groupOffsetValue = new GroupOffsetValue();
+                groupOffsetValue.setOffset(offset);
+                groupOffsetValue.setCommitTimestamp(System.currentTimeMillis());
+                groupOffsetValue.setExpireTimestamp(System.currentTimeMillis());
+            }
 
-            log.info("[{}] [{}] Store offset [{}] [{}] successfully.",
-                    rmqGroupName, rmqTopicName, MessageIdUtils.getMessageId(offset), offset);
             groupOffsetProducer.newMessage()
                     .keyBytes(groupOffsetKey.encode().array())
-                    .value(groupOffsetValue.encode())
+                    .value(groupOffsetValue == null ? null : groupOffsetValue.encode())
                     .eventTime(System.currentTimeMillis()).sendAsync()
                     .whenCompleteAsync((msgId, e) -> {
                         if (e != null) {
                             log.warn("[{}] [{}] StoreOffsetMessage failed.", rmqGroupName, rmqTopicName, e);
                             return;
                         }
+                        if (offset <= -1) {
+                            log.info("[{}] [{}] Clear offset successfully.", rmqGroupName, rmqTopicName);
+                            return;
+                        }
+
+                        log.info("[{}] [{}] Store offset [{}] [{}] successfully.",
+                                rmqGroupName, rmqTopicName, MessageIdUtils.getMessageId(offset), offset);
                         ClientGroupAndTopicName clientGroupAndTopicName = new ClientGroupAndTopicName(rmqGroupName,
                                 rmqTopicName);
                         offsetTable.putIfAbsent(clientGroupAndTopicName, new ConcurrentHashMap<>());
-                        ConcurrentMap<Integer, Long> partitionOffsets = offsetTable
-                                .get(clientGroupAndTopicName);
-                        partitionOffsets.put(queueId, offset);
+                        offsetTable.get(clientGroupAndTopicName).put(queueId, offset);
                     }, groupMetaCallbackExecutor);
         } catch (Exception e) {
             log.warn("[{}] [{}] StoreOffsetMessage failed.", rmqGroupName, rmqTopicName, e);

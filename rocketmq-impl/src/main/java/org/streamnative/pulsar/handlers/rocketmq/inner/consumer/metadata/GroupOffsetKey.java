@@ -28,7 +28,7 @@ import org.testng.util.Strings;
 public class GroupOffsetKey extends GroupMetaKey<GroupOffsetKey> {
 
     private int partition;
-    private String subTopic;
+    private String topicName;
 
     public GroupOffsetKey() {
         this.type = GroupKeyType.GROUP_OFFSET;
@@ -36,12 +36,12 @@ public class GroupOffsetKey extends GroupMetaKey<GroupOffsetKey> {
 
     @Override
     public ByteBuffer encode() throws RopEncodeException {
-        if (Strings.isNullOrEmpty(subTopic)) {
+        if (Strings.isNullOrEmpty(topicName)) {
             throw new RopEncodeException("GroupOffsetKey subTopic can't be null or empty");
         }
 
         try {
-            byte[] topicBytes = subTopic.getBytes(StandardCharsets.UTF_8);
+            byte[] topicBytes = topicName.getBytes(StandardCharsets.UTF_8);
             ByteBuffer byteBuffer = ByteBuffer.allocate(estimateSize());
             super.encode(byteBuffer);
             byteBuffer.putInt(partition);
@@ -60,7 +60,7 @@ public class GroupOffsetKey extends GroupMetaKey<GroupOffsetKey> {
             int topicNameLen = buffer.getInt();
             byte[] topicNameBytes = new byte[topicNameLen];
             buffer.get(topicNameBytes);
-            this.subTopic = new String(topicNameBytes, StandardCharsets.UTF_8);
+            this.topicName = new String(topicNameBytes, StandardCharsets.UTF_8);
             return this;
         } catch (Exception e) {
             throw new RopDecodeException("GroupOffsetKey decode error", e);
@@ -69,7 +69,7 @@ public class GroupOffsetKey extends GroupMetaKey<GroupOffsetKey> {
 
     @Override
     public int estimateSize() {
-        return super.estimateSize() + GROUP_OFFSET_KEY_TOTAL_HEAD_LEN + subTopic
+        return super.estimateSize() + GROUP_OFFSET_KEY_TOTAL_HEAD_LEN + topicName
                 .getBytes(StandardCharsets.UTF_8).length;
     }
 }

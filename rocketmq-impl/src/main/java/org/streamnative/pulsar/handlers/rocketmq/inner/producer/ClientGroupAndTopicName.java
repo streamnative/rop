@@ -30,8 +30,7 @@ public class ClientGroupAndTopicName implements Serializable {
     private final ClientGroupName clientGroupName;
     private final ClientTopicName clientTopicName;
 
-    public ClientGroupAndTopicName(String rmqGroupName,
-            String rmqTopicName) {
+    public ClientGroupAndTopicName(String rmqGroupName, String rmqTopicName) {
         this.clientGroupName = new ClientGroupName(rmqGroupName);
         this.clientTopicName = new ClientTopicName(rmqTopicName);
     }
