@@ -476,13 +476,20 @@ public class GroupMetaManager {
 
                 GroupSubscriptionKey subscriptionKey = (GroupSubscriptionKey) GroupMetaKey
                         .decodeKey(ByteBuffer.wrap(message.getKeyBytes()));
+                String rmqGroupName = subscriptionKey.getGroupName();
+                ClientGroupName clientGroupName = new ClientGroupName(rmqGroupName);
+
+                // remove deleted group from subscriptionGroupTable
+                if (message.getValue() == null) {
+                    subscriptionGroupTable.remove(clientGroupName);
+                    return;
+                }
 
                 GroupSubscriptionValue subscriptionValue = new GroupSubscriptionValue();
                 subscriptionValue.decode(message.getValue());
 
-                String rmqGroupName = subscriptionKey.getGroupName();
-                ClientGroupName clientGroupName = new ClientGroupName(rmqGroupName);
-                subscriptionGroupTable.putIfAbsent(clientGroupName, subscriptionValue);
+                log.info("Load group config: [{}]", subscriptionValue);
+                subscriptionGroupTable.put(clientGroupName, subscriptionValue);
             } catch (Exception e) {
                 log.warn("Rop load group info failed.", e);
             }
@@ -520,43 +527,59 @@ public class GroupMetaManager {
             log.info("Create new subscription group [{}]", config);
         }
         this.dataVersion.nextVersion();
-        storeGroup(config);
+        storeGroup(config.getGroupName(), config);
+    }
+
+    /**
+     * delete group.
+     */
+    public void deleteGroup(String groupName) {
+        ClientGroupName clientGroupName = new ClientGroupName(groupName);
+        subscriptionGroupTable.remove(clientGroupName);
+        storeGroup(groupName, null);
     }
 
     /**
      * store group config.
      */
-    private void storeGroup(SubscriptionGroupConfig config) {
+    private void storeGroup(String groupName, SubscriptionGroupConfig config) {
         try {
             GroupSubscriptionKey subscriptionKey = new GroupSubscriptionKey();
-            subscriptionKey.setGroupName(config.getGroupName());
+            subscriptionKey.setGroupName(groupName);
 
-            GroupSubscriptionValue subscriptionValue = new GroupSubscriptionValue();
-            subscriptionValue.setGroupName(config.getGroupName());
-            subscriptionValue.setBrokerId(config.getBrokerId());
-            subscriptionValue.setConsumeBroadcastEnable(config.isConsumeBroadcastEnable());
-            subscriptionValue.setConsumeEnable(config.isConsumeEnable());
-            subscriptionValue.setRetryMaxTimes(config.getRetryMaxTimes());
-            subscriptionValue.setRetryQueueNums(config.getRetryQueueNums());
-            subscriptionValue.setConsumeFromMinEnable(config.isConsumeFromMinEnable());
+            GroupSubscriptionValue subscriptionValue = null;
+            if (config != null) {
+                subscriptionValue = new GroupSubscriptionValue();
+                subscriptionValue.setGroupName(config.getGroupName());
+                subscriptionValue.setBrokerId(config.getBrokerId());
+                subscriptionValue.setConsumeBroadcastEnable(config.isConsumeBroadcastEnable());
+                subscriptionValue.setConsumeEnable(config.isConsumeEnable());
+                subscriptionValue.setRetryMaxTimes(config.getRetryMaxTimes());
+                subscriptionValue.setRetryQueueNums(config.getRetryQueueNums());
+                subscriptionValue.setConsumeFromMinEnable(config.isConsumeFromMinEnable());
+            }
 
             groupMetaProducer.newMessage()
                     .keyBytes(subscriptionKey.encode().array())
-                    .value(subscriptionValue.encode())
+                    .value(subscriptionValue == null ? null : subscriptionValue.encode())
                     .eventTime(System.currentTimeMillis()).sendAsync()
                     .whenCompleteAsync((msgId, e) -> {
                         if (e != null) {
-                            log.info("[{}] Store group config failed.", config.getGroupName(), e);
+                            log.info("[{}] Store group config failed.", groupName, e);
+                            return;
+                        }
+                        if (config == null) {
+                            log.info("[{}] Delete group config successfully.", groupName);
                             return;
                         }
 
-                        log.info("[{}] Store group config [{}] successfully.", config.getGroupName(), config);
+                        log.info("[{}] Store group config [{}] successfully.", groupName, config);
 
-                        ClientGroupName clientGroupName = new ClientGroupName(config.getGroupName());
-                        subscriptionGroupTable.put(clientGroupName, subscriptionValue);
+                        ClientGroupName clientGroupName = new ClientGroupName(groupName);
+                        subscriptionGroupTable.put(clientGroupName, config);
                     }, groupMetaCallbackExecutor);
         } catch (Exception e) {
-            log.info("[{}] Store group config error.", config.getGroupName(), e);
+            log.info("[{}] Store group config error.", groupName, e);
         }
     }
 
