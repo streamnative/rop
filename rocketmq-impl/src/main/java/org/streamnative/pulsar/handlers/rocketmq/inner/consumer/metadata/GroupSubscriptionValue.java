@@ -104,4 +104,8 @@ public class GroupSubscriptionValue extends SubscriptionGroupConfig implements D
         this.setConsumeBroadcastEnable((tag & 0x08) == 0x08);
         return this;
     }
+
+    public String toString() {
+        return super.toString();
+    }
 }

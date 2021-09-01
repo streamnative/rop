@@ -89,8 +89,7 @@ public class SubscriptionGroupManager {
     }
 
     public void deleteSubscriptionGroupConfig(String groupName) {
-        ClientGroupName clientGroupName = new ClientGroupName(groupName);
-        groupMetaManager.getSubscriptionGroupTable().remove(clientGroupName);
+        groupMetaManager.deleteGroup(groupName);
     }
 }
 
