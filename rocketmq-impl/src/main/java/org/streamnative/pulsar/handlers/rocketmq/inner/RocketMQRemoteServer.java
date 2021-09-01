@@ -23,9 +23,7 @@ import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.timeout.IdleState;
 import io.netty.handler.timeout.IdleStateEvent;
 import io.netty.util.concurrent.DefaultEventExecutorGroup;
-import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.security.cert.CertificateException;
 import java.util.NoSuchElementException;
 import java.util.Timer;
 import java.util.TimerTask;
@@ -42,7 +40,6 @@ import org.apache.rocketmq.remoting.RemotingServer;
 import org.apache.rocketmq.remoting.common.Pair;
 import org.apache.rocketmq.remoting.common.RemotingHelper;
 import org.apache.rocketmq.remoting.common.RemotingUtil;
-import org.apache.rocketmq.remoting.common.TlsMode;
 import org.apache.rocketmq.remoting.exception.RemotingSendRequestException;
 import org.apache.rocketmq.remoting.exception.RemotingTimeoutException;
 import org.apache.rocketmq.remoting.exception.RemotingTooMuchRequestException;
@@ -50,11 +47,8 @@ import org.apache.rocketmq.remoting.netty.NettyEncoder;
 import org.apache.rocketmq.remoting.netty.NettyEvent;
 import org.apache.rocketmq.remoting.netty.NettyEventType;
 import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
-import org.apache.rocketmq.remoting.netty.TlsHelper;
-import org.apache.rocketmq.remoting.netty.TlsSystemConfig;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.streamnative.pulsar.handlers.rocketmq.RocketMQServiceConfiguration;
-import org.streamnative.pulsar.handlers.rocketmq.utils.FileRegionEncoder;
 
 /**
  * RocketMQ remote server.
@@ -63,8 +57,6 @@ import org.streamnative.pulsar.handlers.rocketmq.utils.FileRegionEncoder;
 public class RocketMQRemoteServer extends NettyRemotingAbstract implements RemotingServer {
 
     public static final String HANDSHAKE_HANDLER_NAME = "handshakeHandler";
-    public static final String TLS_HANDLER_NAME = "sslHandler";
-    public static final String FILE_REGION_ENCODER_NAME = "fileRegionEncoder";
     private final ExecutorService publicExecutor;
     private final ChannelEventListener channelEventListener;
     private final Timer timer = new Timer("ServerHouseKeepingService", true);
@@ -99,7 +91,6 @@ public class RocketMQRemoteServer extends NettyRemotingAbstract implements Remot
                 return new Thread(r, "NettyServerPublicExecutor_" + this.threadIndex.incrementAndGet());
             }
         });
-        //TODO loadSslContext();
         prepareSharableHandlers();
     }
 
@@ -114,24 +105,10 @@ public class RocketMQRemoteServer extends NettyRemotingAbstract implements Remot
     }
 
     private void prepareSharableHandlers() {
-        handshakeHandler = new HandshakeHandler(TlsSystemConfig.tlsMode);
+        handshakeHandler = new HandshakeHandler();
         encoder = new NettyEncoder();
         connectionManageHandler = new NettyConnectManageHandler();
         serverHandler = new NettyServerHandler();
-    }
-
-    public void loadSslContext() {
-        TlsMode tlsMode = TlsSystemConfig.tlsMode;
-        log.info("Server is running in TLS {} mode", tlsMode.getName());
-
-        if (tlsMode != TlsMode.DISABLED) {
-            try {
-                sslContext = TlsHelper.buildSslContext(false);
-                log.info("SSLContext created for server");
-            } catch (CertificateException | IOException e) {
-                log.error("Failed to create SSLContext for server", e);
-            }
-        }
     }
 
     @Override
@@ -234,14 +211,8 @@ public class RocketMQRemoteServer extends NettyRemotingAbstract implements Remot
     }
 
     @ChannelHandler.Sharable
-    class HandshakeHandler extends SimpleChannelInboundHandler<ByteBuf> {
-
-        private static final byte HANDSHAKE_MAGIC_CODE = 0x16;
-        private final TlsMode tlsMode;
-
-        HandshakeHandler(TlsMode tlsMode) {
-            this.tlsMode = tlsMode;
-        }
+    static class HandshakeHandler extends SimpleChannelInboundHandler<ByteBuf> {
+        HandshakeHandler() {}
 
         @Override
         protected void channelRead0(ChannelHandlerContext ctx, ByteBuf msg) throws Exception {
@@ -249,40 +220,6 @@ public class RocketMQRemoteServer extends NettyRemotingAbstract implements Remot
             // mark the current position so that we can peek the first byte to determine if the content is starting with
             // TLS handshake
             msg.markReaderIndex();
-
-            byte b = msg.getByte(0);
-
-            if (b == HANDSHAKE_MAGIC_CODE) {
-                switch (tlsMode) {
-                    case DISABLED:
-                        ctx.close();
-                        log.warn("Clients intend to establish an SSL connection while this server "
-                                + "is running in SSL disabled mode");
-                        break;
-                    case PERMISSIVE:
-                    case ENFORCING:
-                        if (null != sslContext) {
-                            ctx.pipeline()
-                                    .addAfter(defaultEventExecutorGroup, HANDSHAKE_HANDLER_NAME, TLS_HANDLER_NAME,
-                                            sslContext.newHandler(ctx.channel().alloc()))
-                                    .addAfter(defaultEventExecutorGroup, TLS_HANDLER_NAME, FILE_REGION_ENCODER_NAME,
-                                            new FileRegionEncoder());
-                            log.info("Handlers prepended to channel pipeline to establish SSL connection");
-                        } else {
-                            ctx.close();
-                            log.error("Trying to establish an SSL connection but sslContext is null");
-                        }
-                        break;
-
-                    default:
-                        log.warn("Unknown TLS mode");
-                        break;
-                }
-            } else if (tlsMode == TlsMode.ENFORCING) {
-                ctx.close();
-                log.warn("Clients intend to establish an insecure connection while this "
-                        + "server is running in SSL enforcing mode");
-            }
 
             // reset the reader index so that handshake negotiation may proceed as normal.
             msg.resetReaderIndex();

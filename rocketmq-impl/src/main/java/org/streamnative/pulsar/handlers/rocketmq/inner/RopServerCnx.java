@@ -45,6 +45,7 @@ import org.apache.bookkeeper.mledger.impl.PositionImpl;
 import org.apache.bookkeeper.mledger.util.Futures;
 import org.apache.commons.compress.utils.Lists;
 import org.apache.commons.lang.exception.ExceptionUtils;
+import org.apache.commons.lang3.math.NumberUtils;
 import org.apache.pulsar.broker.PulsarServerException;
 import org.apache.pulsar.broker.service.BrokerService;
 import org.apache.pulsar.broker.service.persistent.PersistentTopic;
@@ -93,9 +94,9 @@ import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 @Getter
 public class RopServerCnx extends ChannelInboundHandlerAdapter implements PulsarMessageStore {
 
-    private static final int sendTimeoutInSec = 500;
-    private static final int maxBatchMessageNum = 20;
-    private static final int fetchTimeoutInMs = 100;
+    private static final int sendTimeoutInSec = 30;
+    private static final int maxPendingMessages = 1000;
+    private static final int fetchTimeoutInMs = 3000; // 3 sec
     private static final String ropHandlerName = "RopServerCnxHandler";
     private final BrokerService service;
     private final ConcurrentLongHashMap<Producer<byte[]>> producers;
@@ -178,11 +179,16 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         RocketMQTopic rmqTopic = new RocketMQTopic(messageInner.getTopic());
         int partitionId = messageInner.getQueueId();
         String pTopic = rmqTopic.getPartitionName(partitionId);
+        long deliverAtTime = getDeliverAtTime(messageInner);
+
+        if (deliverAtTime - System.currentTimeMillis() > brokerController.getServerConfig().getRopMaxDelayTime()) {
+            throw new RuntimeException("DELAY TIME IS TOO LONG");
+        }
 
         final int tranType = MessageSysFlag.getTransactionValue(messageInner.getSysFlag());
         if (tranType == MessageSysFlag.TRANSACTION_NOT_TYPE || tranType == MessageSysFlag.TRANSACTION_COMMIT_TYPE) {
             // Delay Delivery
-            if (messageInner.getDelayTimeLevel() > 0 && !rmqTopic.isDLQTopic()) {
+            if (isNotDelayMessage(deliverAtTime) && messageInner.getDelayTimeLevel() > 0 && !rmqTopic.isDLQTopic()) {
                 if (messageInner.getDelayTimeLevel() > this.brokerController.getServerConfig().getMaxDelayLevelNum()) {
                     messageInner.setDelayTimeLevel(this.brokerController.getServerConfig().getMaxDelayLevelNum());
                 }
@@ -211,7 +217,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
              * If the broker is the owner of the current partitioned topic, directly use the PersistentTopic interface
              * for publish message.
              */
-            if (this.brokerController.getTopicConfigManager()
+            if (isNotDelayMessage(deliverAtTime) && this.brokerController.getTopicConfigManager()
                     .isPartitionTopicOwner(rmqTopic.getPulsarTopicName(), partitionId)) {
                 PersistentTopic persistentTopic = this.brokerController.getTopicConfigManager()
                         .getPulsarPersistentTopic(pTopic);
@@ -233,15 +239,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                         log.info("[{}] PutMessage creating producer[id={}] and channel=[{}].",
                                 rmqTopic.getPulsarFullName(), producerId, ctx.channel());
                         if (this.producers.get(producerId) == null) {
-                            producer = this.service.pulsar().getClient()
-                                    .newProducer()
-                                    .topic(pTopic)
-                                    .maxPendingMessages(500)
-                                    .producerName(producerGroup + CommonUtils.UNDERSCORE_CHAR + producerId)
-                                    .sendTimeout(sendTimeoutInSec, TimeUnit.MILLISECONDS)
-                                    .enableBatching(false)
-                                    .blockIfQueueFull(false)
-                                    .create();
+                            producer = createNewProducer(pTopic, producerGroup, producerId);
                             Producer<byte[]> oldProducer = this.producers.put(producerId, producer);
                             if (oldProducer != null) {
                                 oldProducer.closeAsync();
@@ -249,7 +247,15 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                         }
                     }
                 }
-                messageIdFuture = this.producers.get(producerId).sendAsync(body.get(0));
+
+                if (isNotDelayMessage(deliverAtTime)) {
+                    messageIdFuture = this.producers.get(producerId).sendAsync(body.get(0));
+                } else {
+                    messageIdFuture = this.producers.get(producerId).newMessage()
+                            .value((body.get(0)))
+                            .deliverAt(deliverAtTime)
+                            .sendAsync();
+                }
             }
 
             /*
@@ -331,7 +337,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             }
 
             /*
-             * Use pulsar producer send batch message.
+             * Use pulsar producer send message.
+             * We uniformly use a single message to send messages, so as to avoid the problem of batch message parsing.
              */
             if (batchMessageFutures.isEmpty()) {
                 long producerId = buildPulsarProducerId(producerGroup, pTopic, this.remoteAddress.toString());
@@ -340,14 +347,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                     synchronized (this.producers) {
                         if (this.producers.get(producerId) == null) {
                             log.info("[{}] putMessages creating producer[id={}].", pTopic, producerId);
-                            putMsgProducer = this.service.pulsar().getClient().newProducer()
-                                    .topic(pTopic)
-                                    .producerName(producerGroup + producerId)
-                                    .batchingMaxPublishDelay(fetchTimeoutInMs, TimeUnit.MILLISECONDS)
-                                    .sendTimeout(sendTimeoutInSec, TimeUnit.MILLISECONDS)
-                                    .batchingMaxMessages(maxBatchMessageNum)
-                                    .enableBatching(false)
-                                    .create();
+                            putMsgProducer = createNewProducer(pTopic, producerGroup, producerId);
                             Producer<byte[]> oldProducer = this.producers.put(producerId, putMsgProducer);
                             if (oldProducer != null) {
                                 oldProducer.closeAsync();
@@ -413,6 +413,18 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             log.warn("putMessages batchMessage error.", e);
             throw e;
         }
+    }
+
+    private Producer<byte[]> createNewProducer(String pTopic, String producerGroup, long producerId)
+            throws PulsarServerException, PulsarClientException {
+        return this.service.pulsar().getClient().newProducer()
+                .topic(pTopic)
+                .maxPendingMessages(maxPendingMessages)
+                .producerName(producerGroup + CommonUtils.UNDERSCORE_CHAR + producerId)
+                .sendTimeout(sendTimeoutInSec, TimeUnit.MILLISECONDS)
+                .enableBatching(false)
+                .blockIfQueueFull(false)
+                .create();
     }
 
     private CompletableFuture<MessageId> publishMessage(byte[] body, PersistentTopic persistentTopic, String pTopic,
@@ -651,5 +663,19 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         Connected,
         Failed,
         Connecting
+    }
+
+    /**
+     * Get deliver at time from message properties.
+     *
+     * @param messageInner messageExtBrokerInner
+     * @return deliver at time
+     */
+    private long getDeliverAtTime(MessageExtBrokerInner messageInner) {
+        return NumberUtils.toLong(messageInner.getProperties().getOrDefault("__STARTDELIVERTIME", "0"));
+    }
+
+    private boolean isNotDelayMessage(long deliverAtTime) {
+        return deliverAtTime <= System.currentTimeMillis();
     }
 }
