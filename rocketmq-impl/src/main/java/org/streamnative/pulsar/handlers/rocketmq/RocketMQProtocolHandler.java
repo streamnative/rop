@@ -24,12 +24,17 @@ import java.util.Locale;
 import java.util.Map;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.pulsar.broker.PulsarServerException;
 import org.apache.pulsar.broker.ServiceConfiguration;
 import org.apache.pulsar.broker.ServiceConfigurationUtils;
 import org.apache.pulsar.broker.protocol.ProtocolHandler;
 import org.apache.pulsar.broker.service.BrokerService;
+import org.apache.pulsar.client.admin.PulsarAdmin;
+import org.apache.pulsar.client.admin.PulsarAdminException;
+import org.apache.pulsar.common.policies.data.ClusterData;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import org.streamnative.pulsar.handlers.rocketmq.utils.ConfigurationUtils;
+import org.streamnative.pulsar.handlers.rocketmq.utils.PulsarUtil;
 import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 
 /**
@@ -46,7 +51,7 @@ public class RocketMQProtocolHandler implements ProtocolHandler {
 
     private RocketMQServiceConfiguration rocketmqConfig;
     private BrokerService brokerService;
-    private RocketMQBrokerController rocketMQBroker;
+    private RocketMQBrokerController rocketmqBroker;
     private String bindAddress;
 
     public static int getListenerPort(String listener) {
@@ -78,8 +83,8 @@ public class RocketMQProtocolHandler implements ProtocolHandler {
         }
 
         this.bindAddress = ServiceConfigurationUtils.getDefaultOrConfiguredAddress(rocketmqConfig.getBindAddress());
-        this.rocketMQBroker = new RocketMQBrokerController(rocketmqConfig);
-        this.rocketMQBroker.initialize();
+        this.rocketmqBroker = new RocketMQBrokerController(rocketmqConfig);
+        this.rocketmqBroker.initialize();
         RocketMQTopic.init(rocketmqConfig.getRocketmqMetadataTenant(), rocketmqConfig.getRocketmqMetadataNamespace(),
                 rocketmqConfig.getRocketmqTenant(), rocketmqConfig.getRocketmqNamespace());
     }
@@ -95,8 +100,8 @@ public class RocketMQProtocolHandler implements ProtocolHandler {
     @Override
     public void start(BrokerService service) {
         brokerService = service;
-        rocketMQBroker.setBrokerService(service);
-        rocketMQBroker.setBrokerHost(brokerService.pulsar().getBindAddress());
+        rocketmqBroker.setBrokerService(service);
+        rocketmqBroker.setBrokerHost(brokerService.pulsar().getBindAddress());
         log.info("Starting RocketmqProtocolHandler, listener: {}, rop version is: '{}'",
                 rocketmqConfig.getRocketmqListeners(), RopVersion.getVersion());
         log.info("Git Revision {}", RopVersion.getGitSha());
@@ -104,12 +109,21 @@ public class RocketMQProtocolHandler implements ProtocolHandler {
                 RopVersion.getBuildUser(),
                 RopVersion.getBuildHost(),
                 RopVersion.getBuildTime());
-        try {
-            rocketMQBroker.start();
-        } catch (Exception e) {
-            log.error("start rop error.", e);
-        }
 
+        try {
+            PulsarAdmin pulsarAdmin = brokerService.getPulsar().getAdminClient();
+            ClusterData clusterData = new ClusterData(brokerService.getPulsar().getWebServiceAddress()
+                    , brokerService.getPulsar().getWebServiceAddressTls(), brokerService.getPulsar()
+                    .getBrokerServiceUrl(), brokerService.getPulsar().getBrokerServiceUrlTls());
+            PulsarUtil.createOffsetMetadataIfMissing(pulsarAdmin, clusterData, rocketmqConfig);
+            rocketmqBroker.start();
+        } catch (PulsarAdminException | PulsarServerException e) {
+            log.error("Failed to create RoP offset metadata", e);
+            throw new IllegalStateException(e);
+        } catch (Exception e) {
+            log.error("start rocketmqBroker error.", e);
+            throw new RuntimeException("start rocketmqBroker error");
+        }
     }
 
     @Override
@@ -117,7 +131,7 @@ public class RocketMQProtocolHandler implements ProtocolHandler {
         checkState(rocketmqConfig != null);
         checkState(rocketmqConfig.getRocketmqListeners() != null);
         checkState(brokerService != null);
-        checkState(rocketMQBroker != null);
+        checkState(rocketmqBroker != null);
 
         String listeners = rocketmqConfig.getRocketmqListeners();
         String[] parts = listeners.split(LISTENER_DEL);
@@ -130,7 +144,7 @@ public class RocketMQProtocolHandler implements ProtocolHandler {
                 if (listener.startsWith(PLAINTEXT_PREFIX)) {
                     builder.put(
                             new InetSocketAddress(brokerService.pulsar().getBindAddress(), getListenerPort(listener)),
-                            new RocketMQChannelInitializer(rocketmqConfig, rocketMQBroker,
+                            new RocketMQChannelInitializer(rocketmqConfig, rocketmqBroker,
                                     brokerService, false));
                 } else {
                     log.error("Rocketmq listener {} not supported. supports {}",

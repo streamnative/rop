@@ -14,15 +14,12 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.consumer;
 
-import com.google.common.base.Preconditions;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.pulsar.common.naming.TopicName;
 import org.apache.rocketmq.common.DataVersion;
-import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.subscription.SubscriptionGroupConfig;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
+import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.metadata.GroupMetaManager;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupName;
 
 /**
@@ -31,55 +28,47 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupName;
 @Slf4j
 public class SubscriptionGroupManager {
 
-    private final ConcurrentMap<ClientGroupName, SubscriptionGroupConfig> subscriptionGroupTable =
-            new ConcurrentHashMap(512);
     private final DataVersion dataVersion = new DataVersion();
-    private final RocketMQBrokerController brokerController;
+    private final GroupMetaManager groupMetaManager;
 
-    public SubscriptionGroupManager(RocketMQBrokerController brokerController) {
-        this.brokerController = brokerController;
+    public SubscriptionGroupManager(RocketMQBrokerController brokerController, GroupMetaManager groupMetaManager) {
+        this.groupMetaManager = groupMetaManager;
         this.init();
     }
 
     private void init() {
         SubscriptionGroupConfig subscriptionGroupConfig = new SubscriptionGroupConfig();
         subscriptionGroupConfig.setGroupName("TOOLS_CONSUMER");
-        this.subscriptionGroupTable.put(new ClientGroupName("TOOLS_CONSUMER"), subscriptionGroupConfig);
+        groupMetaManager.getSubscriptionGroupTable()
+                .put(new ClientGroupName("TOOLS_CONSUMER"), subscriptionGroupConfig);
 
         subscriptionGroupConfig = new SubscriptionGroupConfig();
         subscriptionGroupConfig.setGroupName("SELF_TEST_C_GROUP");
-        this.subscriptionGroupTable.put(new ClientGroupName("SELF_TEST_C_GROUP"), subscriptionGroupConfig);
+        groupMetaManager.getSubscriptionGroupTable()
+                .put(new ClientGroupName("SELF_TEST_C_GROUP"), subscriptionGroupConfig);
     }
 
     public void start() {
         log.info("starting SubscriptionGroupManager service...");
-        Preconditions.checkNotNull(brokerController);
-        ConsumerOffsetManager consumerOffsetManager = this.brokerController.getConsumerOffsetManager();
-        consumerOffsetManager.getPulsarTopicCache().forEach(((clientTopicName, persistentTopicMap) -> {
-            persistentTopicMap.values().forEach((topic) -> {
-                topic.getSubscriptions().forEach((grp, subscription) -> {
-                    SubscriptionGroupConfig config = new SubscriptionGroupConfig();
-                    ClientGroupName clientGroupName = new ClientGroupName(TopicName.get(grp));
-                    config.setGroupName(clientGroupName.getRmqGroupName());
-                    subscriptionGroupTable.put(clientGroupName, config);
-                });
-            });
-        }));
+//        Preconditions.checkNotNull(brokerController);
+//        groupMetaManager.getPulsarTopicCache().forEach(((clientTopicName, persistentTopicMap) -> {
+//            persistentTopicMap.values().forEach((topic) -> {
+//                topic.getSubscriptions().forEach((grp, subscription) -> {
+//                    SubscriptionGroupConfig config = new SubscriptionGroupConfig();
+//                    ClientGroupName clientGroupName = new ClientGroupName(TopicName.get(grp));
+//                    config.setGroupName(clientGroupName.getRmqGroupName());
+//                    groupMetaManager.getSubscriptionGroupTable().put(clientGroupName, config);
+//                });
+//            });
+//        }));
     }
 
     public void updateSubscriptionGroupConfig(SubscriptionGroupConfig config) {
-        SubscriptionGroupConfig old = this.subscriptionGroupTable
-                .put(new ClientGroupName(config.getGroupName()), config);
-        if (old != null) {
-            log.info("update subscription group config, old: {} new: {}", old, config);
-        } else {
-            log.info("create new subscription group, {}", config);
-        }
-        this.dataVersion.nextVersion();
+        groupMetaManager.updateGroup(config);
     }
 
     public void disableConsume(String groupName) {
-        SubscriptionGroupConfig old = this.subscriptionGroupTable.get(new ClientGroupName(groupName));
+        SubscriptionGroupConfig old = groupMetaManager.getSubscriptionGroupTable().get(new ClientGroupName(groupName));
         if (old != null) {
             old.setConsumeEnable(false);
             this.dataVersion.nextVersion();
@@ -88,34 +77,19 @@ public class SubscriptionGroupManager {
     }
 
     public SubscriptionGroupConfig findSubscriptionGroupConfig(String group) {
-        ClientGroupName groupName = new ClientGroupName(group);
-        SubscriptionGroupConfig subscriptionGroupConfig = this.subscriptionGroupTable.get(groupName);
-        if (null == subscriptionGroupConfig && (this.brokerController.getServerConfig().isAutoCreateSubscriptionGroup()
-                || MixAll.isSysConsumerGroup(groupName.getRmqGroupName()))) {
-            subscriptionGroupConfig = new SubscriptionGroupConfig();
-            subscriptionGroupConfig.setGroupName(groupName.getRmqGroupName());
-            SubscriptionGroupConfig preConfig = this.subscriptionGroupTable
-                    .putIfAbsent(groupName, subscriptionGroupConfig);
-            if (null == preConfig) {
-                log.info("auto create a subscription group, {}", subscriptionGroupConfig.toString());
-            }
-            this.dataVersion.nextVersion();
-        }
-        return subscriptionGroupConfig;
+        return groupMetaManager.queryGroup(group);
     }
 
-
     public ConcurrentMap<ClientGroupName, SubscriptionGroupConfig> getSubscriptionGroupTable() {
-        return this.subscriptionGroupTable;
+        return groupMetaManager.getSubscriptionGroupTable();
     }
 
     public DataVersion getDataVersion() {
-        return this.dataVersion;
+        return groupMetaManager.getDataVersion();
     }
 
     public void deleteSubscriptionGroupConfig(String groupName) {
-        ClientGroupName clientGroupName = new ClientGroupName(groupName);
-        subscriptionGroupTable.remove(clientGroupName);
+        groupMetaManager.deleteGroup(groupName);
     }
 }
 
