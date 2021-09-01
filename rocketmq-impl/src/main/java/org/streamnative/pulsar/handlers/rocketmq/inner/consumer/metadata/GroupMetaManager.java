@@ -14,10 +14,14 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.consumer.metadata;
 
+import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.SLASH_CHAR;
+
 import com.google.common.collect.Sets;
 import java.nio.ByteBuffer;
 import java.util.Map.Entry;
+import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutorService;
@@ -29,6 +33,8 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bookkeeper.mledger.ManagedCursor;
 import org.apache.bookkeeper.mledger.impl.PositionImpl;
+import org.apache.pulsar.broker.PulsarService;
+import org.apache.pulsar.broker.service.Topic;
 import org.apache.pulsar.broker.service.persistent.PersistentSubscription;
 import org.apache.pulsar.broker.service.persistent.PersistentTopic;
 import org.apache.pulsar.client.api.Message;
@@ -40,9 +46,10 @@ import org.apache.pulsar.client.api.Schema;
 import org.apache.pulsar.client.impl.MessageIdImpl;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandSubscribe.InitialPosition;
 import org.apache.pulsar.common.naming.TopicName;
+import org.apache.rocketmq.common.DataVersion;
+import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.subscription.SubscriptionGroupConfig;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
-import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.ConsumerOffsetManager;
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopPersistentTopicException;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupAndTopicName;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupName;
@@ -56,10 +63,9 @@ import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 @Slf4j
 public class GroupMetaManager {
 
-    private final RocketMQBrokerController brokerController;
-    private final ConsumerOffsetManager consumerOffsetManager;
-
     private final AtomicBoolean shuttingDown = new AtomicBoolean(false);
+    private final RocketMQBrokerController brokerController;
+    private final DataVersion dataVersion = new DataVersion();
 
     /**
      * group offset producer\reader.
@@ -128,20 +134,26 @@ public class GroupMetaManager {
     private final ConcurrentHashMap<ClientGroupAndTopicName, ConcurrentMap<Integer, Long>> offsetTable =
             new ConcurrentHashMap<>(512);
 
+    @Getter
+    private final ConcurrentHashMap<ClientGroupName, SubscriptionGroupConfig> subscriptionGroupTable =
+            new ConcurrentHashMap<>(512);
+
+    @Getter
+    private final ConcurrentHashMap<ClientTopicName, ConcurrentMap<Integer, PersistentTopic>> pulsarTopicCache =
+            new ConcurrentHashMap<>(512);
+
     private long offsetsRetentionMs;
 
     private final ConcurrentHashMap<GroupOffsetKey, Long> expireTimeTable =
             new ConcurrentHashMap<>(512);
 
-    private final ConcurrentHashMap<ClientGroupName, SubscriptionGroupConfig> groupTable =
-            new ConcurrentHashMap<>(512);
-
-    public GroupMetaManager(RocketMQBrokerController brokerController, ConsumerOffsetManager consumerOffsetManager) {
+    public GroupMetaManager(RocketMQBrokerController brokerController) {
         this.brokerController = brokerController;
-        this.consumerOffsetManager = consumerOffsetManager;
     }
 
     public void start() throws Exception {
+        log.info("Starting GroupMetaManager service...");
+
         PulsarClient pulsarClient = brokerController.getBrokerService().getPulsar().getClient();
         this.offsetsRetentionMs = brokerController.getServerConfig().getOffsetsRetentionMinutes() * 60 * 1000;
 
@@ -174,7 +186,7 @@ public class GroupMetaManager {
                 .create();
 
         offsetReaderExecutor.execute(this::loadOffsets);
-//        metaReaderExecutor.execute(this::loadGroup);
+        metaReaderExecutor.execute(this::loadGroup);
         Thread.sleep(10 * 1000);
 
         persistOffsetExecutor.scheduleAtFixedRate(() -> {
@@ -192,6 +204,8 @@ public class GroupMetaManager {
                 log.error("Clear consumerOffset error.", e);
             }
         }, 1000 * 60, brokerController.getServerConfig().getOffsetsRetentionCheckIntervalMs(), TimeUnit.MILLISECONDS);
+
+        log.info("Start GroupMetaManager service finish.");
     }
 
     /**
@@ -261,8 +275,7 @@ public class GroupMetaManager {
 
     private long getGroupOffsetFromPulsar(ClientGroupAndTopicName groupAndTopic, int queueId) {
         try {
-            PersistentTopic persistentTopic = consumerOffsetManager
-                    .getPulsarPersistentTopic(groupAndTopic.getClientTopicName(), queueId);
+            PersistentTopic persistentTopic = getPulsarPersistentTopic(groupAndTopic.getClientTopicName(), queueId);
             String pulsarGroup = groupAndTopic.getClientGroupName().getPulsarGroupName();
             PersistentSubscription subscription = persistentTopic.getSubscription(pulsarGroup);
             if (subscription != null) {
@@ -312,7 +325,7 @@ public class GroupMetaManager {
             ConcurrentMap<Integer, Long> offsetMap = entry.getValue();
 
             String pulsarGroup = groupAndTopic.getClientGroupName().getPulsarGroupName();
-            if (!consumerOffsetManager.isSystemGroup(pulsarGroup)) {
+            if (!isSystemGroup(pulsarGroup)) {
 
                 for (Entry<Integer, Long> entry1 : offsetMap.entrySet()) {
                     int partitionId = entry1.getKey();
@@ -323,8 +336,8 @@ public class GroupMetaManager {
                             continue;
                         }
 
-                        PersistentTopic persistentTopic = consumerOffsetManager.getPulsarPersistentTopic(
-                                groupAndTopic.getClientTopicName(), partitionId);
+                        PersistentTopic persistentTopic = getPulsarPersistentTopic(groupAndTopic.getClientTopicName(),
+                                partitionId);
                         if (persistentTopic != null) {
                             PersistentSubscription subscription = persistentTopic.getSubscription(pulsarGroup);
                             if (subscription == null) {
@@ -428,15 +441,15 @@ public class GroupMetaManager {
                     .eventTime(System.currentTimeMillis()).sendAsync()
                     .whenCompleteAsync((msgId, e) -> {
                         if (e != null) {
-                            log.warn("[{}] [{}] StoreOffsetMessage failed.", rmqGroupName, rmqTopicName, e);
+                            log.info("[{}] [{}] Store group offset failed.", rmqGroupName, rmqTopicName, e);
                             return;
                         }
                         if (offset <= -1) {
-                            log.info("[{}] [{}] Clear offset successfully.", rmqGroupName, rmqTopicName);
+                            log.info("[{}] [{}] Clear group offset successfully.", rmqGroupName, rmqTopicName);
                             return;
                         }
 
-                        log.info("[{}] [{}] Store offset [{}] [{}] successfully.",
+                        log.info("[{}] [{}] Store group offset [{}] [{}] successfully.",
                                 rmqGroupName, rmqTopicName, MessageIdUtils.getMessageId(offset), offset);
                         ClientGroupAndTopicName clientGroupAndTopicName = new ClientGroupAndTopicName(rmqGroupName,
                                 rmqTopicName);
@@ -444,64 +457,7 @@ public class GroupMetaManager {
                         offsetTable.get(clientGroupAndTopicName).put(queueId, offset);
                     }, groupMetaCallbackExecutor);
         } catch (Exception e) {
-            log.warn("[{}] [{}] StoreOffsetMessage failed.", rmqGroupName, rmqTopicName, e);
-        }
-    }
-
-    /**
-     * query group info.
-     */
-    private SubscriptionGroupConfig queryGroup(final ClientGroupName rmqGroupName) {
-        if (null != rmqGroupName) {
-            return groupTable.get(rmqGroupName);
-        }
-
-        return null;
-    }
-
-    /**
-     * query group info.
-     */
-    private ConcurrentHashMap<ClientGroupName, SubscriptionGroupConfig> queryAllGroup() {
-        return groupTable;
-    }
-
-    /**
-     * store group info.
-     */
-    private void storeGroup(final SubscriptionGroupConfig subGroupConfig) {
-        try {
-            GroupSubscriptionKey subscriptionKey = new GroupSubscriptionKey();
-            subscriptionKey.setGroupName(subGroupConfig.getGroupName());
-
-            GroupSubscriptionValue subscriptionValue = new GroupSubscriptionValue();
-            subscriptionValue.setGroupName(subGroupConfig.getGroupName());
-            subscriptionValue.setBrokerId(subGroupConfig.getBrokerId());
-            subscriptionValue.setConsumeBroadcastEnable(subGroupConfig.isConsumeBroadcastEnable());
-            subscriptionValue.setConsumeEnable(subGroupConfig.isConsumeEnable());
-            subscriptionValue.setRetryMaxTimes(subGroupConfig.getRetryMaxTimes());
-            subscriptionValue.setRetryQueueNums(subGroupConfig.getRetryQueueNums());
-            subscriptionValue.setConsumeFromMinEnable(subGroupConfig.isConsumeFromMinEnable());
-
-            log.info("[{}] Store subscription group config [{}] successfully.",
-                    subGroupConfig.getGroupName(), subGroupConfig);
-
-            groupMetaProducer.newMessage()
-                    .keyBytes(subscriptionKey.encode().array())
-                    .value(subscriptionValue.encode())
-                    .eventTime(System.currentTimeMillis()).sendAsync()
-                    .whenCompleteAsync((msgId, e) -> {
-                        if (e != null) {
-                            log.warn("[{}] StoreSubscriptionMessage failed.", subGroupConfig.getGroupName(), e);
-                            return;
-                        }
-
-                        // If sending fails, set the value in the map to null
-                        ClientGroupName clientGroupName = new ClientGroupName(subGroupConfig.getGroupName());
-                        groupTable.putIfAbsent(clientGroupName, subscriptionValue);
-                    }, groupMetaCallbackExecutor);
-        } catch (Exception e) {
-            log.warn("[{}] StoreSubscriptionMessage failed.", subGroupConfig.getGroupName(), e);
+            log.info("[{}] [{}] Store group offset error.", rmqGroupName, rmqTopicName, e);
         }
     }
 
@@ -509,6 +465,8 @@ public class GroupMetaManager {
      * load group info.
      */
     private void loadGroup() {
+        log.info("Start load group info.");
+
         while (!shuttingDown.get()) {
             try {
                 Message<ByteBuffer> message = groupMeatReader.readNext(1, TimeUnit.SECONDS);
@@ -522,14 +480,88 @@ public class GroupMetaManager {
                 GroupSubscriptionValue subscriptionValue = new GroupSubscriptionValue();
                 subscriptionValue.decode(message.getValue());
 
-                String group = subscriptionValue.getGroupName();
-
-                ClientGroupName groupName = new ClientGroupName(group);
-                groupTable.putIfAbsent(groupName, subscriptionValue);
+                String rmqGroupName = subscriptionKey.getGroupName();
+                ClientGroupName clientGroupName = new ClientGroupName(rmqGroupName);
+                subscriptionGroupTable.putIfAbsent(clientGroupName, subscriptionValue);
             } catch (Exception e) {
                 log.warn("Rop load group info failed.", e);
             }
         }
+    }
+
+    /**
+     * query group info.
+     */
+    public SubscriptionGroupConfig queryGroup(String group) {
+        ClientGroupName groupName = new ClientGroupName(group);
+        SubscriptionGroupConfig subscriptionGroupConfig = this.subscriptionGroupTable.get(groupName);
+        if (null == subscriptionGroupConfig && (this.brokerController.getServerConfig().isAutoCreateSubscriptionGroup()
+                || MixAll.isSysConsumerGroup(groupName.getRmqGroupName()))) {
+            subscriptionGroupConfig = new SubscriptionGroupConfig();
+            subscriptionGroupConfig.setGroupName(groupName.getRmqGroupName());
+            SubscriptionGroupConfig preConfig = this.subscriptionGroupTable
+                    .putIfAbsent(groupName, subscriptionGroupConfig);
+            if (null == preConfig) {
+                log.info("Auto create a subscription group [{}]", subscriptionGroupConfig.toString());
+            }
+            this.dataVersion.nextVersion();
+        }
+        return subscriptionGroupConfig;
+    }
+
+    /**
+     * update group.
+     */
+    public void updateGroup(SubscriptionGroupConfig config) {
+        SubscriptionGroupConfig old = subscriptionGroupTable.put(new ClientGroupName(config.getGroupName()), config);
+        if (old != null) {
+            log.info("Update subscription group config, old: [{}], new: [{}]", old, config);
+        } else {
+            log.info("Create new subscription group [{}]", config);
+        }
+        this.dataVersion.nextVersion();
+        storeGroup(config);
+    }
+
+    /**
+     * store group config.
+     */
+    private void storeGroup(SubscriptionGroupConfig config) {
+        try {
+            GroupSubscriptionKey subscriptionKey = new GroupSubscriptionKey();
+            subscriptionKey.setGroupName(config.getGroupName());
+
+            GroupSubscriptionValue subscriptionValue = new GroupSubscriptionValue();
+            subscriptionValue.setGroupName(config.getGroupName());
+            subscriptionValue.setBrokerId(config.getBrokerId());
+            subscriptionValue.setConsumeBroadcastEnable(config.isConsumeBroadcastEnable());
+            subscriptionValue.setConsumeEnable(config.isConsumeEnable());
+            subscriptionValue.setRetryMaxTimes(config.getRetryMaxTimes());
+            subscriptionValue.setRetryQueueNums(config.getRetryQueueNums());
+            subscriptionValue.setConsumeFromMinEnable(config.isConsumeFromMinEnable());
+
+            groupMetaProducer.newMessage()
+                    .keyBytes(subscriptionKey.encode().array())
+                    .value(subscriptionValue.encode())
+                    .eventTime(System.currentTimeMillis()).sendAsync()
+                    .whenCompleteAsync((msgId, e) -> {
+                        if (e != null) {
+                            log.info("[{}] Store group config failed.", config.getGroupName(), e);
+                            return;
+                        }
+
+                        log.info("[{}] Store group config [{}] successfully.", config.getGroupName(), config);
+
+                        ClientGroupName clientGroupName = new ClientGroupName(config.getGroupName());
+                        subscriptionGroupTable.put(clientGroupName, subscriptionValue);
+                    }, groupMetaCallbackExecutor);
+        } catch (Exception e) {
+            log.info("[{}] Store group config error.", config.getGroupName(), e);
+        }
+    }
+
+    public DataVersion getDataVersion() {
+        return this.dataVersion;
     }
 
     public void shutdown() {
@@ -541,4 +573,71 @@ public class GroupMetaManager {
         groupOffsetProducer.closeAsync();
         groupOffsetReader.closeAsync();
     }
+
+
+    public void putPulsarTopic(ClientTopicName clientTopicName, int partitionId, PersistentTopic pulsarTopic) {
+        if (pulsarTopic == null) {
+            return;
+        }
+
+        pulsarTopicCache.putIfAbsent(clientTopicName, new ConcurrentHashMap<>());
+        pulsarTopicCache.get(clientTopicName).put(partitionId, pulsarTopic);
+    }
+
+    public void removePulsarTopic(ClientTopicName clientTopicName, int partitionId) {
+        if (pulsarTopicCache.containsKey(clientTopicName)) {
+            pulsarTopicCache.get(clientTopicName).remove(partitionId);
+            if (pulsarTopicCache.get(clientTopicName).isEmpty()) {
+                pulsarTopicCache.remove(clientTopicName);
+            }
+        }
+    }
+
+    public PersistentTopic getPulsarPersistentTopic(ClientTopicName topicName, int partitionId)
+            throws RopPersistentTopicException {
+        if (isPulsarTopicCached(topicName, partitionId)) {
+            return this.pulsarTopicCache.get(topicName).get(partitionId);
+        }
+
+        Optional<Topic> topic;
+        try {
+            topic = getPulsarPersistentTopicAsync(topicName, partitionId).join();
+        } catch (Exception e) {
+            throw new RopPersistentTopicException(
+                    String.format("Get pulsarTopic[%s] and partition[%d] error.", topicName, partitionId));
+        }
+        if (topic.isPresent()) {
+            PersistentTopic persistentTopic = (PersistentTopic) topic.get();
+            this.pulsarTopicCache.putIfAbsent(topicName, new ConcurrentHashMap<>());
+            this.pulsarTopicCache.get(topicName).putIfAbsent(partitionId, persistentTopic);
+            return this.pulsarTopicCache.get(topicName).get(partitionId);
+        } else {
+            log.warn("Not found PulsarPersistentTopic pulsarTopic: {}, partition: {}", topicName, partitionId);
+            throw new RopPersistentTopicException("Not found PulsarPersistentTopic.");
+        }
+    }
+
+    public CompletableFuture<Optional<Topic>> getPulsarPersistentTopicAsync(ClientTopicName clientTopicName,
+            int partitionId) {
+        // setup ownership of service unit to this broker
+        TopicName pulsarTopicName = TopicName.get(clientTopicName.getPulsarTopicName());
+        TopicName partitionTopicName = pulsarTopicName.getPartition(partitionId);
+        String topicName = partitionTopicName.toString();
+        PulsarService pulsarService = this.brokerController.getBrokerService().pulsar();
+        return pulsarService.getBrokerService().getTopic(topicName, true);
+    }
+
+    public boolean isSystemGroup(String groupName) {
+        return groupName.startsWith(RocketMQTopic.getMetaTenant() + SLASH_CHAR + RocketMQTopic.getMetaNamespace())
+                || groupName
+                .startsWith(RocketMQTopic.getDefaultTenant() + SLASH_CHAR + RocketMQTopic.getDefaultNamespace());
+    }
+
+    private boolean isPulsarTopicCached(ClientTopicName topicName, int partitionId) {
+        if (topicName == null) {
+            return false;
+        }
+        return pulsarTopicCache.containsKey(topicName) && pulsarTopicCache.get(topicName).containsKey(partitionId);
+    }
+
 }
