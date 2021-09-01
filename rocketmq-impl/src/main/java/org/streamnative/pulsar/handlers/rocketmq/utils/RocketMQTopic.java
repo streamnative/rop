@@ -34,7 +34,7 @@ import org.apache.rocketmq.common.protocol.NamespaceUtil;
 public class RocketMQTopic {
 
     public static final String GROUP_METADATA_OFFSET_TOPIC_NAME = "__consumer_offsets";
-    public static final String GROUP_METADATA_SUBSCRIPTION_TOPIC_NAME = "__consumer_offsets";
+    public static final String GROUP_METADATA_SUBSCRIPTION_TOPIC_NAME = "__consumer_groups";
     private static final char TENANT_NAMESPACE_SEP = '|';
     private static final char ROCKETMQ_NAMESPACE_TOPIC_SEP = NamespaceUtil.NAMESPACE_SEPARATOR;
     private static final TopicDomain domain = TopicDomain.persistent;

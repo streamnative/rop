@@ -186,7 +186,7 @@ public class GroupMetaManager {
                 .create();
 
         offsetReaderExecutor.execute(this::loadOffsets);
-//        metaReaderExecutor.execute(this::loadGroup);
+        metaReaderExecutor.execute(this::loadGroup);
         Thread.sleep(10 * 1000);
 
         persistOffsetExecutor.scheduleAtFixedRate(() -> {
@@ -465,6 +465,8 @@ public class GroupMetaManager {
      * load group info.
      */
     private void loadGroup() {
+        log.info("Start load group info.");
+
         while (!shuttingDown.get()) {
             try {
                 Message<ByteBuffer> message = groupMeatReader.readNext(1, TimeUnit.SECONDS);
