@@ -18,6 +18,10 @@ import java.nio.ByteBuffer;
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopDecodeException;
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopEncodeException;
 
+/**
+ * Deserializer method.
+ * @param <T>
+ */
 public interface Deserializer<T> {
 
     ByteBuffer encode() throws RopEncodeException;

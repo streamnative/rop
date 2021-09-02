@@ -19,8 +19,12 @@ import java.util.HashMap;
 import java.util.Map;
 import org.apache.rocketmq.common.protocol.route.TopicRouteData;
 
+/**
+ * Rop topic route data.
+ */
 public class RopTopicRouteData extends TopicRouteData {
-  Map<Integer, String> partitionRouteInfos;
+
+    Map<Integer, String> partitionRouteInfos;
 
     public Map<Integer, String> getPartitionRouteInfos() {
         return partitionRouteInfos;
@@ -61,18 +65,18 @@ public class RopTopicRouteData extends TopicRouteData {
 
     @Override
     public boolean equals(Object obj) {
-       boolean isEquals = super.equals(obj);
-       if (isEquals) {
-           RopTopicRouteData other = (RopTopicRouteData)obj;
-           if (this.partitionRouteInfos == null) {
-               if (other.partitionRouteInfos != null) {
-                   isEquals = false;
-               }
-           } else if (!this.partitionRouteInfos.equals(other.partitionRouteInfos)) {
-               isEquals = false;
-           }
-       }
-       return isEquals;
+        boolean isEquals = super.equals(obj);
+        if (isEquals) {
+            RopTopicRouteData other = (RopTopicRouteData) obj;
+            if (this.partitionRouteInfos == null) {
+                if (other.partitionRouteInfos != null) {
+                    isEquals = false;
+                }
+            } else if (!this.partitionRouteInfos.equals(other.partitionRouteInfos)) {
+                isEquals = false;
+            }
+        }
+        return isEquals;
     }
 
     @Override

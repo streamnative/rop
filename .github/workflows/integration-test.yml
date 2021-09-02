@@ -36,4 +36,3 @@ jobs:
 
       - name: rocketmq-impl test after build
         run: mvn test -DfailIfNoTests=false -pl tests
-

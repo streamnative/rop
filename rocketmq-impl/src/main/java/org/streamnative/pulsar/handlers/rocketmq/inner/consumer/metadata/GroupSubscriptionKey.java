@@ -20,6 +20,9 @@ import lombok.EqualsAndHashCode;
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopDecodeException;
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopEncodeException;
 
+/**
+ * Group subscription key.
+ */
 @Data
 @EqualsAndHashCode
 public class GroupSubscriptionKey extends GroupMetaKey<GroupSubscriptionKey> {

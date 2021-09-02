@@ -31,6 +31,9 @@ import org.apache.rocketmq.common.subscription.SubscriptionGroupConfig;
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopDecodeException;
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopEncodeException;
 
+/**
+ * Group subscription value.
+ */
 @Data
 @EqualsAndHashCode(callSuper = true)
 public class GroupSubscriptionValue extends SubscriptionGroupConfig implements Deserializer<GroupSubscriptionValue> {

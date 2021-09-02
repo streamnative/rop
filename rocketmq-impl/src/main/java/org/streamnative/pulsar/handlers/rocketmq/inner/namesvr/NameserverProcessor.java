@@ -190,7 +190,7 @@ public class NameserverProcessor implements NettyRequestProcessor {
             partitionRouteInfos = Maps.newHashMapWithExpectedSize(topicBrokerAddr.size());
             topicRouteData.setPartitionRouteInfos(partitionRouteInfos);
             try {
-                if (topicBrokerAddr != null && !topicBrokerAddr.isEmpty()) {
+                if (!topicBrokerAddr.isEmpty()) {
                     Map<String, String> brokerNames = Maps.newHashMap();
                     topicBrokerAddr.forEach((partition, addr) -> {
                         String brokerName = addr.getHostName();
