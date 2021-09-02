@@ -27,6 +27,12 @@ import org.apache.rocketmq.common.constant.PermName;
 @Data
 public class RocketMQServiceConfiguration extends ServiceConfiguration {
 
+    // offset configuration
+    private static final int OffsetsRetentionMinutes = 15 * 24 * 60;
+    public static final int DefaultOffsetsTopicNumPartitions = 10;
+    private static final int OffsetsMessageTTL = 3 * 24 * 3600;
+    public static final long DefaultOffsetsRetentionCheckIntervalMs = 600000L;
+
     @Category
     private static final String CATEGORY_ROCKETMQ = "RocketMQ on Pulsar";
 
@@ -391,8 +397,32 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
 
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
+            doc = "Number of partitions for the offsets topic.\n"
+    )
+    private int offsetsTopicNumPartitions = DefaultOffsetsTopicNumPartitions;
+
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
+            doc = "Offsets older than this retention period will be discarded.\n"
+    )
+    private long offsetsRetentionMinutes = OffsetsRetentionMinutes;
+
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
+            doc = "Offsets message ttl in seconds. default is 259200.\n"
+    )
+    private int offsetsMessageTTL = OffsetsMessageTTL;
+
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
+            doc = "Offsets retention check interval in millicseconds. default is 600000 ms.\n"
+    )
+    private long offsetsRetentionCheckIntervalMs = DefaultOffsetsRetentionCheckIntervalMs;
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
             required = true,
             doc = "Rop delay message max delay time."
     )
     private long ropMaxDelayTime = 1000 * 60 * 60 * 24 * 40L;
+
 }

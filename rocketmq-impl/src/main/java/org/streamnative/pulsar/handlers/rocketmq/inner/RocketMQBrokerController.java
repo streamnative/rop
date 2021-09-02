@@ -55,6 +55,7 @@ import org.streamnative.pulsar.handlers.rocketmq.RocketMQServiceConfiguration;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.ConsumerManager;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.ConsumerOffsetManager;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.SubscriptionGroupManager;
+import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.metadata.GroupMetaManager;
 import org.streamnative.pulsar.handlers.rocketmq.inner.listener.AbstractTransactionalMessageCheckListener;
 import org.streamnative.pulsar.handlers.rocketmq.inner.listener.DefaultConsumerIdsChangeListener;
 import org.streamnative.pulsar.handlers.rocketmq.inner.listener.DefaultTransactionalMessageCheckListener;
@@ -79,6 +80,7 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ProducerManager;
 public class RocketMQBrokerController {
 
     private final RocketMQServiceConfiguration serverConfig;
+    private final GroupMetaManager groupMetaManager;
     private final ConsumerOffsetManager consumerOffsetManager;
     private final ConsumerManager consumerManager;
     private final ProducerManager producerManager;
@@ -132,7 +134,8 @@ public class RocketMQBrokerController {
 
     public RocketMQBrokerController(final RocketMQServiceConfiguration serverConfig) throws PulsarServerException {
         this.serverConfig = serverConfig;
-        this.consumerOffsetManager = new ConsumerOffsetManager(this);
+        this.groupMetaManager = new GroupMetaManager(this);
+        this.consumerOffsetManager = new ConsumerOffsetManager(this, groupMetaManager);
         this.topicConfigManager = new MQTopicManager(this);
         this.pullMessageProcessor = new PullMessageProcessor(this);
         this.pullRequestHoldService = new PullRequestHoldService(this);
@@ -141,7 +144,7 @@ public class RocketMQBrokerController {
         this.consumerManager = new ConsumerManager(this.consumerIdsChangeListener);
         this.producerManager = new ProducerManager();
         this.clientHousekeepingService = new ClientHousekeepingService(this);
-        this.subscriptionGroupManager = new SubscriptionGroupManager(this);
+        this.subscriptionGroupManager = new SubscriptionGroupManager(this, groupMetaManager);
 
         this.sendThreadPoolQueue = new LinkedBlockingQueue<Runnable>(
                 this.serverConfig.getSendThreadPoolQueueCapacity());
@@ -249,16 +252,16 @@ public class RocketMQBrokerController {
             }
         }, initialDelay, period, TimeUnit.MILLISECONDS);
 
-        this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    RocketMQBrokerController.this.consumerOffsetManager.persist();
-                } catch (Throwable e) {
-                    log.error("schedule persist consumerOffset error.", e);
-                }
-            }
-        }, 1000 * 10, this.serverConfig.getFlushConsumerOffsetInterval(), TimeUnit.MILLISECONDS);
+//        this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
+//            @Override
+//            public void run() {
+//                try {
+//                    RocketMQBrokerController.this.consumerOffsetManager.persist();
+//                } catch (Throwable e) {
+//                    log.error("schedule persist consumerOffset error.", e);
+//                }
+//            }
+//        }, 1000 * 10, this.serverConfig.getFlushConsumerOffsetInterval(), TimeUnit.MILLISECONDS);
 
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
             @Override
@@ -570,6 +573,10 @@ public class RocketMQBrokerController {
     }
 
     public void shutdown() {
+        if (this.groupMetaManager != null) {
+            this.groupMetaManager.shutdown();
+        }
+
         if (this.brokerStatsManager != null) {
             this.brokerStatsManager.shutdown();
         }
@@ -636,6 +643,10 @@ public class RocketMQBrokerController {
     }
 
     public void start() throws Exception {
+
+        if (this.groupMetaManager != null) {
+            this.groupMetaManager.start();
+        }
 
         if (this.remotingServer != null) {
             this.remotingServer.start();

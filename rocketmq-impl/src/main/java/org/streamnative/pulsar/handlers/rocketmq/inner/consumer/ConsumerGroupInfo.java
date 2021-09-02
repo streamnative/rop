@@ -30,7 +30,7 @@ import org.apache.rocketmq.common.protocol.heartbeat.MessageModel;
 import org.apache.rocketmq.common.protocol.heartbeat.SubscriptionData;
 
 /**
- * Consumer group info.
+ * Online consumer group info.
  */
 @Slf4j
 public class ConsumerGroupInfo {
@@ -38,9 +38,9 @@ public class ConsumerGroupInfo {
     //rocketmq groupName
     private final String groupName;
     private final ConcurrentMap<String, SubscriptionData> subscriptionTable =
-            new ConcurrentHashMap<>();
+            new ConcurrentHashMap<>(1024);
     private final ConcurrentMap<Channel, ClientChannelInfo> channelInfoTable =
-            new ConcurrentHashMap<>(16);
+            new ConcurrentHashMap<>(1024);
     private volatile ConsumeType consumeType;
     private volatile MessageModel messageModel;
     private volatile ConsumeFromWhere consumeFromWhere;

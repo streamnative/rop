@@ -596,10 +596,15 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         final PositionImpl startPosition = MessageIdUtils.getPosition(MessageIdUtils.getOffset(startOffset));
         ManagedCursor managedCursor = cursors.computeIfAbsent(pTopic, (Function<String, ManagedCursor>) s -> {
             try {
+                PositionImpl cursorStartPosition = startPosition;
+                if (startPosition.getEntryId() > -1) {
+                    cursorStartPosition = new PositionImpl(startPosition.getLedgerId(), startPosition.getEntryId() - 1);
+                }
+
                 PersistentTopic persistentTopic = brokerController.getConsumerOffsetManager()
                         .getPulsarPersistentTopic(new ClientTopicName(rmqTopic.getPulsarTopicName()), queueId);
                 ManagedLedgerImpl managedLedger = (ManagedLedgerImpl) persistentTopic.getManagedLedger();
-                return managedLedger.newNonDurableCursor(startPosition, "Rop-cursor-" + readerId);
+                return managedLedger.newNonDurableCursor(cursorStartPosition, "Rop-cursor-" + readerId);
             } catch (Exception e) {
                 log.warn("Topic [{}] create managedLedger failed", pTopic, e);
             }
