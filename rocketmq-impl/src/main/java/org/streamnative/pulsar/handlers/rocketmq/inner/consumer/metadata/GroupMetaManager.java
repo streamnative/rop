@@ -330,57 +330,64 @@ public class GroupMetaManager {
                 for (Entry<Integer, Long> entry1 : offsetMap.entrySet()) {
                     int partitionId = entry1.getKey();
                     long offset = entry1.getValue();
+                    if (!this.brokerController.getTopicConfigManager().isPartitionTopicOwner(
+                            TopicName.get(groupAndTopic.getClientTopicName().getPulsarTopicName()), partitionId)) {
+                        continue;
+                    }
+
+                    PersistentTopic persistentTopic = null;
                     try {
-                        if (!this.brokerController.getTopicConfigManager().isPartitionTopicOwner(
-                                TopicName.get(groupAndTopic.getClientTopicName().getPulsarTopicName()), partitionId)) {
-                            continue;
-                        }
-
-                        PersistentTopic persistentTopic = getPulsarPersistentTopic(groupAndTopic.getClientTopicName(),
+                        persistentTopic = getPulsarPersistentTopic(groupAndTopic.getClientTopicName(),
                                 partitionId);
-                        if (persistentTopic != null) {
-                            PersistentSubscription subscription = persistentTopic.getSubscription(pulsarGroup);
-                            if (subscription == null) {
+                    } catch (Exception e) {
+                        log.warn("[{}] getPulsarPersistentTopic [{}] error.", groupAndTopic, offset, e);
+                    }
+                    if (persistentTopic != null) {
+                        PersistentSubscription subscription = persistentTopic.getSubscription(pulsarGroup);
+                        if (subscription == null) {
+                            try {
                                 subscription = (PersistentSubscription) persistentTopic
-                                        .createSubscription(pulsarGroup, InitialPosition.Earliest, false).get();
-                            }
-                            ManagedCursor cursor = subscription.getCursor();
-                            PositionImpl markDeletedPosition = (PositionImpl) cursor.getMarkDeletedPosition();
-                            PositionImpl commitPosition = MessageIdUtils.getPosition(offset);
-                            PositionImpl lastPosition = (PositionImpl) persistentTopic.getLastPosition();
-
-                            if (commitPosition.getEntryId() > 0) {
-                                commitPosition = MessageIdUtils.getPosition(offset - 1);
-                            }
-
-                            if (commitPosition.compareTo(lastPosition) > 0) {
-                                commitPosition = lastPosition;
-                                offset = MessageIdUtils.getOffset(new MessageIdImpl(lastPosition.getLedgerId(),
-                                        lastPosition.getEntryId() + 1,
-                                        partitionId));
-                            }
-
-                            String rmqGroupName = groupAndTopic.getClientGroupName().getRmqGroupName();
-                            String rmqTopicName = groupAndTopic.getClientTopicName().getRmqTopicName();
-                            storeOffset(rmqGroupName, rmqTopicName, partitionId, offset);
-
-                            if (commitPosition.compareTo(markDeletedPosition) > 0) {
-                                try {
-                                    cursor.markDelete(commitPosition);
-                                    log.debug("[{}] [{}] Mark delete [position = {}] successfully.",
-                                            rmqGroupName, rmqTopicName, commitPosition);
-                                } catch (Exception e) {
-                                    log.info("[{}] [{}] Mark delete [position = {}] and deletedPosition[{}] error.",
-                                            rmqGroupName, rmqTopicName, commitPosition, markDeletedPosition, e);
-                                }
-                            } else {
-                                log.debug(
-                                        "[{}] [{}] Skip mark delete for [position = {}] less than [oldPosition = {}].",
-                                        rmqGroupName, rmqTopicName, commitPosition, markDeletedPosition);
+                                        .createSubscription(pulsarGroup, InitialPosition.Earliest, false)
+                                        .get();
+                            } catch (Exception e) {
+                                log.warn("[{}] createSubscription [{}] error.", groupAndTopic, offset, e);
                             }
                         }
-                    } catch (Exception e) {
-                        log.warn("[{}] Persist offset [{}] error.", groupAndTopic, offset, e);
+                        assert subscription != null;
+                        ManagedCursor cursor = subscription.getCursor();
+                        PositionImpl markDeletedPosition = (PositionImpl) cursor.getMarkDeletedPosition();
+                        PositionImpl commitPosition = MessageIdUtils.getPosition(offset);
+                        PositionImpl lastPosition = (PositionImpl) persistentTopic.getLastPosition();
+
+                        if (commitPosition.getEntryId() > 0) {
+                            commitPosition = MessageIdUtils.getPosition(offset - 1);
+                        }
+
+                        if (commitPosition.compareTo(lastPosition) > 0) {
+                            commitPosition = lastPosition;
+                            offset = MessageIdUtils.getOffset(new MessageIdImpl(lastPosition.getLedgerId(),
+                                    lastPosition.getEntryId() + 1,
+                                    partitionId));
+                        }
+
+                        String rmqGroupName = groupAndTopic.getClientGroupName().getRmqGroupName();
+                        String rmqTopicName = groupAndTopic.getClientTopicName().getRmqTopicName();
+                        storeOffset(rmqGroupName, rmqTopicName, partitionId, offset);
+
+                        if (commitPosition.compareTo(markDeletedPosition) > 0) {
+                            try {
+                                cursor.markDelete(commitPosition);
+                                log.debug("[{}] [{}] Mark delete [position = {}] successfully.",
+                                        rmqGroupName, rmqTopicName, commitPosition);
+                            } catch (Exception e) {
+                                log.info("[{}] [{}] Mark delete [position = {}] and deletedPosition[{}] error.",
+                                        rmqGroupName, rmqTopicName, commitPosition, markDeletedPosition, e);
+                            }
+                        } else {
+                            log.debug(
+                                    "[{}] [{}] Skip mark delete for [position = {}] less than [oldPosition = {}].",
+                                    rmqGroupName, rmqTopicName, commitPosition, markDeletedPosition);
+                        }
                     }
                 }
             }

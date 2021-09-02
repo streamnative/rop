@@ -26,6 +26,9 @@ import lombok.EqualsAndHashCode;
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopDecodeException;
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopEncodeException;
 
+/**
+ * Group offset value.
+ */
 @Data
 @EqualsAndHashCode
 public class GroupOffsetValue implements Deserializer<GroupOffsetValue> {

@@ -14,6 +14,9 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.consumer.metadata;
 
+/**
+ * Group offset constant.
+ */
 public final class GroupOffsetConstant {
     //group meta fields index
     public static final int GROUP_META_VERSION_POS = 0;

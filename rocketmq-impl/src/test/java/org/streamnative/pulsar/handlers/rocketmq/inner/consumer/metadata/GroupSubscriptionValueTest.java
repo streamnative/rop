@@ -13,10 +13,10 @@
  */
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.consumer.metadata;
+
 import static org.junit.Assert.assertEquals;
 
 import java.nio.ByteBuffer;
-import java.util.Date;
 import org.junit.Before;
 import org.junit.Test;
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopDecodeException;
@@ -26,6 +26,7 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopEncodeExcept
  * Test GroupOffsetValueTest Class.
  */
 public class GroupSubscriptionValueTest {
+
     private GroupSubscriptionValue groupSubscriptionValue;
 
     @Before

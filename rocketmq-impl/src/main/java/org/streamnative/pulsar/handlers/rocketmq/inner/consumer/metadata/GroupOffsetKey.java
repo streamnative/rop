@@ -23,6 +23,9 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopDecodeExcept
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopEncodeException;
 import org.testng.util.Strings;
 
+/**
+ * Group offset key.
+ */
 @Data
 @EqualsAndHashCode
 public class GroupOffsetKey extends GroupMetaKey<GroupOffsetKey> {

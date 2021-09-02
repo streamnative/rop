@@ -26,6 +26,10 @@ import lombok.Data;
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopDecodeException;
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopEncodeException;
 
+/**
+ * Group meta key.
+ * @param <T>
+ */
 @Data
 public abstract class GroupMetaKey<T extends GroupMetaKey> implements Deserializer<T> {
 
@@ -33,6 +37,9 @@ public abstract class GroupMetaKey<T extends GroupMetaKey> implements Deserializ
     protected GroupKeyType type;
     protected String groupName;
 
+    /**
+     * Group key type.
+     */
     public enum GroupKeyType {
         GROUP_SUBSCRIPTION,
         GROUP_OFFSET;
