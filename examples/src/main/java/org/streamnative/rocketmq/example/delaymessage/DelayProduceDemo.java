@@ -22,9 +22,11 @@ public class DelayProduceDemo {
             try {
                 Message msg = new Message("test-topic", ("No." + ++i + " Hello World").getBytes());
 
-                // 延时消息，单位毫秒（ms），在指定延迟时间（当前时间之后）进行投递，例如消息在10秒后投递。
+                // Delayed messages, in milliseconds (ms),
+                // are delivered after the specified delay time (after the current time),
+                // for example, the message will be delivered after 10 seconds.
                 long delayTime = System.currentTimeMillis() + 10000;
-                // 设置消息需要被投递的时间。
+                // Set the time when the message needs to be delivered.
                 msg.putUserProperty("__STARTDELIVERTIME", String.valueOf(delayTime));
 
                 SendResult result = producer.send(msg);
