@@ -14,6 +14,7 @@
 
 package org.streamnative.rocketmq.example.delaymessage;
 
+import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 import org.apache.rocketmq.client.producer.DefaultMQProducer;
 import org.apache.rocketmq.client.producer.SendResult;
@@ -34,7 +35,8 @@ public class DelayProduceDemo {
         int i = 0;
         while (!Thread.interrupted()) {
             try {
-                Message msg = new Message("test-topic", ("No." + ++i + " Hello World").getBytes());
+                Message msg = new Message("test-topic",
+                        ("No." + ++i + " Hello World").getBytes(StandardCharsets.UTF_8));
 
                 // Delayed messages, in milliseconds (ms),
                 // are delivered after the specified delay time (after the current time),
