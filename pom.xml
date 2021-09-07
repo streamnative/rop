@@ -354,6 +354,7 @@
                     <header>resources/license.template</header>
 
                     <excludes>
+                        <exclude>**/golang/**</exclude>
                         <exclude>LICENSE</exclude>
                         <exclude>NOTICE</exclude>
                         <exclude>**/conf/**</exclude>
