@@ -26,12 +26,12 @@ import org.apache.zookeeper.data.Stat;
  */
 @Slf4j
 public class ZookeeperUtils {
-    private static final String RoPRootPath = "/rop/";
-    private static final String RoPRoutePath = "/rop/routeMap/";
-    private static final String RoPBrokersPath = "/rop/brokers/";
-    private static final String RoPCoordinatorPath = "/rop/coordinator/";
-    private static final String RoPTopicsPath = "/rop/topics/";
-    private static final String RoPGroupsPath = "/rop/groups/";
+    private static final String ROP_ROOT_PATH = "/rop/";
+    private static final String ROP_ROUTE_PATH = "/rop/routeMap/";
+    private static final String ROP_BROKERS_PATH = "/rop/brokers/";
+    private static final String ROP_COORDINATOR_PATH = "/rop/coordinator/";
+    private static final String ROP_TOPICS_PATH = "/rop/topics/";
+    private static final String ROP_GROUPS_PATH = "/rop/groups/";
 
     public static void createPath(ZooKeeper zooKeeper, String zkPath, String subPath, byte[] data) {
         try {
