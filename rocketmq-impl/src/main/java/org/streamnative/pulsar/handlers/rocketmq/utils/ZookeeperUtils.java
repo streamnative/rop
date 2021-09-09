@@ -15,6 +15,7 @@
 package org.streamnative.pulsar.handlers.rocketmq.utils;
 
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.ZooDefs;
@@ -26,6 +27,7 @@ import org.apache.zookeeper.data.Stat;
  */
 @Slf4j
 public class ZookeeperUtils {
+
     private static final String ROP_ROOT_PATH = "/rop/";
     private static final String ROP_ROUTE_PATH = "/rop/routeMap/";
     private static final String ROP_BROKERS_PATH = "/rop/brokers/";
@@ -65,5 +67,52 @@ public class ZookeeperUtils {
             log.error("get zookeeper path data error", e);
         }
         return data;
+    }
+
+    public static void setData(ZooKeeper zooKeeper, String path, byte[] data) {
+        try {
+            Stat zkStat = zooKeeper.exists(path, false);
+            if (null != zkStat) {
+                zooKeeper.setData(path, data, -1);
+            }
+        } catch (Exception e) {
+            log.error("set zookeeper path data error", e);
+        }
+    }
+
+    public static void deleteData(ZooKeeper zooKeeper, String path) {
+        try {
+            Stat zkStat = zooKeeper.exists(path, false);
+            if (null != zkStat) {
+                // Specify the version to be deleted, -1 means delete all versions
+                zooKeeper.delete(path, -1);
+                log.info("the path [{}] be removed successfully", path);
+            }
+        } catch (Exception e) {
+            log.error("delete zookeeper path data error", e);
+        }
+    }
+
+    public static void deleteDataWithChildren(ZooKeeper zooKeeper, String path) {
+        try {
+            Stat zkStat = zooKeeper.exists(path, false);
+            if (null != zkStat) {
+                // Specify the version to be deleted, -1 means delete all versions
+                zooKeeper.delete(path, -1);
+                log.info("the path [{}] be removed successfully", path);
+                List<String> subPaths = zooKeeper.getChildren(path, false);
+                if (null != subPaths) {
+                    subPaths.forEach(subPath -> {
+                        try {
+                            zooKeeper.delete(subPath, -1);
+                        } catch (Exception e) {
+                            log.error("delete zookeeper path with children data error", e);
+                        }
+                    });
+                }
+            }
+        } catch (Exception e) {
+            log.error("delete zookeeper path with children data error", e);
+        }
     }
 }
