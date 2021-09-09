@@ -35,7 +35,7 @@ public class ZookeeperUtils {
     private static final String ROP_TOPICS_PATH = "/rop/topics/";
     private static final String ROP_GROUPS_PATH = "/rop/groups/";
 
-    public static void createPath(ZooKeeper zooKeeper, String zkPath, String subPath, byte[] data) {
+    public static void createPersistentPath(ZooKeeper zooKeeper, String zkPath, String subPath, byte[] data) {
         try {
             if (zooKeeper.exists(zkPath, false) == null) {
                 zooKeeper.create(zkPath,
@@ -52,6 +52,26 @@ public class ZookeeperUtils {
                     addSubPath, new String(data, StandardCharsets.UTF_8));
         } catch (Exception e) {
             log.error("create zookeeper path error", e);
+        }
+    }
+
+    public static void createEphemeralPath(ZooKeeper zooKeeper, String zkPath, String subPath, byte[] data) {
+        try {
+            if (zooKeeper.exists(zkPath, false) == null) {
+                zooKeeper.create(zkPath,
+                        new byte[0], ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
+            }
+            String addSubPath = zkPath + subPath;
+            if (zooKeeper.exists(addSubPath, false) == null) {
+                zooKeeper.create(addSubPath,
+                        data, ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
+            } else {
+                zooKeeper.setData(addSubPath, data, -1);
+            }
+            log.debug("create ephemeral zookeeper path, addSubPath:{} data:{}.",
+                    addSubPath, new String(data, StandardCharsets.UTF_8));
+        } catch (Exception e) {
+            log.error("create ephemeral zookeeper path error", e);
         }
     }
 
