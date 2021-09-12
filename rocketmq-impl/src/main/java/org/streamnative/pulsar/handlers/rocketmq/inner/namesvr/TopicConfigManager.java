@@ -363,38 +363,6 @@ public abstract class TopicConfigManager {
         this.dataVersion.nextVersion();
     }
 
-    public void updateOrderTopicConfig(final KVTable orderKVTableFromNs) {
-
-        if (orderKVTableFromNs != null && orderKVTableFromNs.getTable() != null) {
-            boolean isChange = false;
-            Set<String> orderTopics = orderKVTableFromNs.getTable().keySet();
-            for (String topic : orderTopics) {
-                TopicConfig topicConfig = this.topicConfigTable.get(topic);
-                if (topicConfig != null && !topicConfig.isOrder()) {
-                    topicConfig.setOrder(true);
-                    isChange = true;
-                    log.info("update order topic config, topic={}, order={}", topic, true);
-                }
-            }
-
-            for (Map.Entry<String, TopicConfig> entry : this.topicConfigTable.entrySet()) {
-                String topic = entry.getKey();
-                if (!orderTopics.contains(topic)) {
-                    TopicConfig topicConfig = entry.getValue();
-                    if (topicConfig.isOrder()) {
-                        topicConfig.setOrder(false);
-                        isChange = true;
-                        log.info("update order topic config, topic={}, order={}", topic, false);
-                    }
-                }
-            }
-
-            if (isChange) {
-                this.dataVersion.nextVersion();
-            }
-        }
-    }
-
     public boolean isOrderTopic(final String topic) {
         TopicConfig topicConfig = this.topicConfigTable.get(topic);
         if (topicConfig == null) {
@@ -412,13 +380,5 @@ public abstract class TopicConfigManager {
         } else {
             log.warn("delete topic config failed, topic: {} not exists", topic);
         }
-    }
-
-    public DataVersion getDataVersion() {
-        return dataVersion;
-    }
-
-    public ConcurrentMap<String, TopicConfig> getTopicConfigTable() {
-        return topicConfigTable;
     }
 }

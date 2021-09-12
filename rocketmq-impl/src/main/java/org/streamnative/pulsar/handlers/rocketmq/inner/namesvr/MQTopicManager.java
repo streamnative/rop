@@ -29,7 +29,10 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.IntStream;
 import javax.annotation.Nullable;
 import lombok.Getter;
@@ -45,7 +48,11 @@ import org.apache.pulsar.broker.service.persistent.PersistentTopic;
 import org.apache.pulsar.client.admin.PulsarAdmin;
 import org.apache.pulsar.client.admin.PulsarAdminException.ConflictException;
 import org.apache.pulsar.client.api.ClientBuilder;
+import org.apache.pulsar.client.api.Message;
+import org.apache.pulsar.client.api.MessageId;
 import org.apache.pulsar.client.api.PulsarClient;
+import org.apache.pulsar.client.api.Reader;
+import org.apache.pulsar.client.api.Schema;
 import org.apache.pulsar.client.impl.Backoff;
 import org.apache.pulsar.client.impl.PulsarClientImpl;
 import org.apache.pulsar.common.naming.NamespaceBundle;
@@ -78,10 +85,22 @@ import org.testng.collections.Maps;
 @Slf4j
 public class MQTopicManager extends TopicConfigManager implements NamespaceBundleOwnershipListener {
 
+    private final AtomicBoolean shuttingDown = new AtomicBoolean(false);
     private final Map<String, PulsarClient> pulsarClientMap = Maps.newConcurrentMap();
     private PulsarService pulsarService;
     private BrokerService brokerService;
     private PulsarAdmin adminClient;
+
+    /**
+     * group offset reader executor.
+     */
+    private final ExecutorService routeChangeReaderExecutor = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r);
+        t.setName("Rop-routeChange-reader");
+        t.setDaemon(true);
+        return t;
+    });
+    private Reader<String> routeChangeReader;
 
     public MQTopicManager(RocketMQBrokerController brokerController) {
         super(brokerController);
@@ -100,6 +119,30 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
         this.createSysResource();
         this.pulsarService.getNamespaceService().addNamespaceBundleOwnershipListener(this);
         log.info("MQTopicManager started successfully.");
+
+        this.routeChangeReader = brokerController.getBrokerService().getPulsar().getClient()
+                .newReader(Schema.STRING)
+                .topic(RocketMQTopic.getTopicRouteChangeTopic().getPulsarFullName())
+                .startMessageId(MessageId.latest)
+                .create();
+        routeChangeReaderExecutor.execute(this::loadRouteChange);
+    }
+
+    private void loadRouteChange() {
+        log.info("Start load route change ...");
+        while (!shuttingDown.get()) {
+            try {
+                Message<String> message = routeChangeReader.readNext(1, TimeUnit.SECONDS);
+                if (message == null) {
+                    continue;
+                }
+
+                TopicName topicName = TopicName.get(message.getValue());
+                topicTableCache.invalidate(topicName);
+            } catch (Exception e) {
+                log.warn("Rop load route change failed.", e);
+            }
+        }
     }
 
     @Override
@@ -114,7 +157,9 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
     }
 
     public void shutdown() {
-        cleanUpExecutor.shutdown();
+        shuttingDown.set(true);
+        routeChangeReaderExecutor.shutdownNow();
+        cleanUpExecutor.shutdownNow();
     }
 
     public void getTopicBrokerAddr(TopicName topicName) {
@@ -388,9 +433,8 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
      * @param tc topic config
      */
     public void createOrUpdateTopic(final TopicConfig tc) {
-        String cluster = config.getClusterName();
         String fullTopicName = tc.getTopicName();
-        log.info("Create or update topic [{}].", tc.getTopicName());
+        log.info("Create or update topic [{}], config: [{}].", tc.getTopicName(), tc);
 
         TopicName topicName = TopicName.get(fullTopicName);
         String tenant = topicName.getTenant();
@@ -399,7 +443,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
 
         try {
             if (brokerController.getServerConfig().isAutoCreateTopicEnable()) {
-                createPulsarNamespaceIfNeeded(brokerService, cluster, tenant, ns);
+                createPulsarNamespaceIfNeeded(brokerService, config.getClusterName(), tenant, ns);
             }
         } catch (Exception e) {
             log.warn("CreatePulsarPartitionedTopic tenant=[{}] and namespace=[{}] error.", tenant, ns);
@@ -501,6 +545,8 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                 content = jsonMapper.writeValueAsBytes(ropTopicContent);
                 zkClient.setData(topicNodePath, content, -1);
             }
+
+            updateTopicConfig(tc);
         } catch (Exception e) {
             log.warn("[CREATE] Topic {} create or update partition failed", fullTopicName, e);
         }

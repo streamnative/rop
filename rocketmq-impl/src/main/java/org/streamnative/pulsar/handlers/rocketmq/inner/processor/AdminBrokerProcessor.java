@@ -17,7 +17,6 @@ package org.streamnative.pulsar.handlers.rocketmq.inner.processor;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import java.io.UnsupportedEncodingException;
-import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -250,8 +249,6 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
         topicConfig.setPerm(requestHeader.getPerm());
         topicConfig.setTopicSysFlag(requestHeader.getTopicSysFlag() == null ? 0 : requestHeader.getTopicSysFlag());
         topicConfig.setTopicName(RocketMQTopic.getPulsarOrigNoDomainTopic(topicConfig.getTopicName()));
-
-        this.brokerController.getTopicConfigManager().updateTopicConfig(topicConfig);
 
         this.brokerController.getTopicConfigManager().createOrUpdateTopic(topicConfig);
 
