@@ -94,7 +94,7 @@ import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 @Getter
 public class RopServerCnx extends ChannelInboundHandlerAdapter implements PulsarMessageStore {
 
-    private static final int sendTimeoutInSec = 30;
+    private static final int sendTimeoutInMs = 5000;
     private static final int maxPendingMessages = 1000;
     private static final int fetchTimeoutInMs = 3000; // 3 sec
     private static final String ropHandlerName = "RopServerCnxHandler";
@@ -421,7 +421,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 .topic(pTopic)
                 .maxPendingMessages(maxPendingMessages)
                 .producerName(producerGroup + CommonUtils.UNDERSCORE_CHAR + producerId)
-                .sendTimeout(sendTimeoutInSec, TimeUnit.MILLISECONDS)
+                .sendTimeout(sendTimeoutInMs, TimeUnit.MILLISECONDS)
                 .enableBatching(false)
                 .blockIfQueueFull(false)
                 .create();
