@@ -176,7 +176,6 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         Preconditions.checkNotNull(producerGroup);
         RocketMQTopic rmqTopic = new RocketMQTopic(messageInner.getTopic());
 
-        // TODO: hanmz 2021/9/9 从queueId转换为partitionId
         int partitionId = brokerController.getTopicConfigManager()
                 .getPulsarPartition(rmqTopic.getPulsarTopicName(), messageInner.getQueueId());
 
@@ -219,15 +218,15 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
              * If the broker is the owner of the current partitioned topic, directly use the PersistentTopic interface
              * for publish message.
              */
-//            if (isNotDelayMessage(deliverAtTime) && this.brokerController.getTopicConfigManager()
-//                    .isPartitionTopicOwner(rmqTopic.getPulsarTopicName(), partitionId)) {
-//                PersistentTopic persistentTopic = this.brokerController.getTopicConfigManager()
-//                        .getPulsarPersistentTopic(pTopic);
-//                // if persistentTopic is null, use pulsar producer to send message.
-//                if (persistentTopic != null) {
-//                    messageIdFuture = publishMessage(body.get(0), persistentTopic, pTopic, partitionId);
-//                }
-//            }
+            if (isNotDelayMessage(deliverAtTime) && this.brokerController.getTopicConfigManager()
+                    .isPartitionTopicOwner(rmqTopic.getPulsarTopicName(), partitionId)) {
+                PersistentTopic persistentTopic = this.brokerController.getTopicConfigManager()
+                        .getPulsarPersistentTopic(pTopic);
+                // if persistentTopic is null, use pulsar producer to send message.
+                if (persistentTopic != null) {
+                    messageIdFuture = publishMessage(body.get(0), persistentTopic, pTopic, partitionId);
+                }
+            }
 
             /*
              * Use pulsar producer send message.
@@ -307,7 +306,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
     public void putMessages(MessageExtBatch batchMessage, String producerGroup, PutMessageCallback callback)
             throws Exception {
         RocketMQTopic rmqTopic = new RocketMQTopic(batchMessage.getTopic());
-        int partitionId = batchMessage.getQueueId();
+        int partitionId = brokerController.getTopicConfigManager()
+                .getPulsarPartition(rmqTopic.getPulsarTopicName(), batchMessage.getQueueId());
         String pTopic = rmqTopic.getPartitionName(partitionId);
 
         try {
@@ -544,7 +544,6 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
 
         RocketMQTopic rmqTopic = new RocketMQTopic(topicName);
 
-        // TODO: hanmz 2021/9/9 从queueId转换为partitionId
         int partitionId = brokerController.getTopicConfigManager()
                 .getPulsarPartition(rmqTopic.getPulsarTopicName(), queueId);
 
