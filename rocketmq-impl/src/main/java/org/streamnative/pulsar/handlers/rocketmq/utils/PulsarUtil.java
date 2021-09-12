@@ -36,6 +36,7 @@ import org.apache.pulsar.client.api.SubscriptionType;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandSubscribe.InitialPosition;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandSubscribe.SubType;
 import org.apache.pulsar.common.api.proto.PulsarApi.KeyValue;
+import org.apache.pulsar.common.naming.TopicName;
 import org.apache.pulsar.common.policies.data.ClusterData;
 import org.apache.pulsar.common.policies.data.RetentionPolicies;
 import org.apache.pulsar.common.policies.data.TenantInfo;
@@ -263,5 +264,9 @@ public class PulsarUtil {
             log.info("Resources creating for subscription:{} of topic : {}, caused by : {}", subscriptionName, topic,
                     e.getMessage());
         }
+    }
+
+    public static String getNoDomainTopic(TopicName topicName) {
+        return topicName.getPartitionedTopicName().replace(topicName.getDomain().value() + "://", "");
     }
 }

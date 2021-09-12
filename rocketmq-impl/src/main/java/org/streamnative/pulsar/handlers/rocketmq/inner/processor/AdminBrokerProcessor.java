@@ -249,6 +249,7 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
         topicConfig.setTopicFilterType(requestHeader.getTopicFilterTypeEnum());
         topicConfig.setPerm(requestHeader.getPerm());
         topicConfig.setTopicSysFlag(requestHeader.getTopicSysFlag() == null ? 0 : requestHeader.getTopicSysFlag());
+        topicConfig.setTopicName(RocketMQTopic.getPulsarOrigNoDomainTopic(topicConfig.getTopicName()));
 
         this.brokerController.getTopicConfigManager().updateTopicConfig(topicConfig);
 
@@ -750,10 +751,11 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
                 }
             }
 
-            Map<Integer, InetSocketAddress> topicBrokerAddr = brokerController.getTopicConfigManager()
-                    .getTopicBrokerAddr(topicName, Strings.EMPTY);
+            Map<String, List<Integer>> topicBrokerAddr = brokerController.getTopicConfigManager()
+                    .getTopicRoute(topicName, Strings.EMPTY);
+            List<Integer> queueList = topicBrokerAddr.get(brokerController.getBrokerHost());
 
-            for (int i = 0; i < topicConfig.getReadQueueNums(); i++) {
+            for (int i = 0; i < queueList.size(); i++) {
                 if (!topicBrokerAddr.containsKey(i)) {
                     log.debug("getConsumeStats not found this queue, topic: {}, queue: {}", topic, i);
                     continue;
@@ -768,7 +770,7 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
 
                 MessageQueue mq = new MessageQueue();
                 mq.setTopic(topic);
-                mq.setBrokerName(topicBrokerAddr.get(i).getHostName());
+                mq.setBrokerName(brokerController.getBrokerHost());
                 mq.setQueueId(i);
 
                 RopOffsetWrapper offsetWrapper = new RopOffsetWrapper();

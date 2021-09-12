@@ -127,13 +127,14 @@ public class Broker2Client {
 
         Map<MessageQueue, Long> offsetTable = new HashMap<>();
         String lookupTopic = RocketMQTopic.getPulsarOrigNoDomainTopic(topic);
-        Map<Integer, InetSocketAddress> topicBrokerAddr = topicManager
-                .getTopicBrokerAddr(TopicName.get(lookupTopic),
-                        ConfigurationUtils.getDefaultListenerName(brokerController.getServerConfig()));
+        Map<String, List<Integer>> topicBrokerAddr =
+                topicManager.getTopicRoute(TopicName.get(lookupTopic), Strings.EMPTY);
 
-        for (int i = 0; i < topicConfig.getWriteQueueNums(); i++) {
+        List<Integer> queueList = topicBrokerAddr.get(brokerController.getBrokerHost());
+
+        for (int i = 0; i < queueList.size(); i++) {
             MessageQueue mq = new MessageQueue();
-            mq.setBrokerName(topicBrokerAddr.get(i).getHostName());
+            mq.setBrokerName(brokerController.getBrokerHost());
             mq.setTopic(topic);
             mq.setQueueId(i);
 

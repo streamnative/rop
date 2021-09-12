@@ -23,6 +23,7 @@ import com.google.common.base.Joiner;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import io.netty.channel.ChannelHandlerContext;
+import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -45,7 +46,6 @@ import org.apache.rocketmq.common.protocol.body.ClusterInfo;
 import org.apache.rocketmq.common.protocol.header.namesrv.GetRouteInfoRequestHeader;
 import org.apache.rocketmq.common.protocol.route.BrokerData;
 import org.apache.rocketmq.common.protocol.route.QueueData;
-import org.apache.rocketmq.common.protocol.route.TopicRouteData;
 import org.apache.rocketmq.remoting.common.RemotingHelper;
 import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
@@ -60,7 +60,7 @@ import org.testng.collections.Sets;
  * Nameserver processor.
  */
 @Slf4j
-public class NameserverProcessor implements NettyRequestProcessor {
+public class NameserverProcessorBackup implements NettyRequestProcessor {
 
     public static final Pattern BROKER_ADDER_PAT = Pattern.compile("([^/:]+:)(\\d+)");
     /**
@@ -72,7 +72,7 @@ public class NameserverProcessor implements NettyRequestProcessor {
     private final MQTopicManager mqTopicManager;
     private final int servicePort;
 
-    public NameserverProcessor(RocketMQBrokerController brokerController) {
+    public NameserverProcessorBackup(RocketMQBrokerController brokerController) {
         this.brokerController = brokerController;
         this.config = brokerController.getServerConfig();
         this.mqTopicManager = brokerController.getTopicConfigManager();
@@ -144,9 +144,10 @@ public class NameserverProcessor implements NettyRequestProcessor {
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
         final GetRouteInfoRequestHeader requestHeader =
                 (GetRouteInfoRequestHeader) request.decodeCommandCustomHeader(GetRouteInfoRequestHeader.class);
-        TopicRouteData topicRouteData = new TopicRouteData();
+        RopTopicRouteData topicRouteData = new RopTopicRouteData();
         List<BrokerData> brokerDatas = new ArrayList<>();
         List<QueueData> queueDatas = new ArrayList<>();
+        Map<Integer, String> partitionRouteInfos;
         topicRouteData.setBrokerDatas(brokerDatas);
         topicRouteData.setQueueDatas(queueDatas);
 
@@ -184,22 +185,30 @@ public class NameserverProcessor implements NettyRequestProcessor {
         String requestTopic = requestHeader.getTopic();
         if (Strings.isNotBlank(requestTopic)) {
             RocketMQTopic mqTopic = RocketMQTopic.getRocketMQDefaultTopic(requestTopic);
-            Map<String, List<Integer>> topicBrokerAddr =
-                    mqTopicManager.getTopicRoute(mqTopic.getPulsarTopicName(), Strings.EMPTY);
+            Map<Integer, InetSocketAddress> topicBrokerAddr = null;
+//                    mqTopicManager.getTopicBrokerAddr(mqTopic.getPulsarTopicName(), Strings.EMPTY);
+            partitionRouteInfos = Maps.newHashMapWithExpectedSize(topicBrokerAddr.size());
+            topicRouteData.setPartitionRouteInfos(partitionRouteInfos);
             try {
                 if (!topicBrokerAddr.isEmpty()) {
-                    topicBrokerAddr.forEach((brokerName, queueList) -> {
-                        String advertiseAddress = getBrokerAddressByListenerName(brokerName, listenerName);
-                        HashMap<Long, String> brokerAddrs = new HashMap<>(1);
-                        brokerAddrs.put(0L, advertiseAddress);
-                        brokerDatas.add(new BrokerData(clusterName, brokerName, brokerAddrs));
+                    Map<String, String> brokerNames = Maps.newHashMap();
+                    topicBrokerAddr.forEach((partition, addr) -> {
+                        String brokerName = addr.getHostName();
+                        if (!brokerNames.containsKey(brokerName)) {
+                            String advertisAddress = getBrokerAddressByListenerName(brokerName, listenerName);
+                            HashMap<Long, String> brokerAddrs = new HashMap<>(1);
+                            brokerAddrs.put(0L, advertisAddress);
+                            brokerDatas.add(new BrokerData(clusterName, brokerName, brokerAddrs));
 
-                        QueueData queueData = new QueueData();
-                        queueData.setBrokerName(brokerName);
-                        queueData.setReadQueueNums(queueList.size());
-                        queueData.setWriteQueueNums(queueList.size());
-                        queueData.setPerm(PERM_WRITE | PERM_READ);
-                        queueDatas.add(queueData);
+                            QueueData queueData = new QueueData();
+                            queueData.setBrokerName(brokerName);
+                            queueData.setReadQueueNums(topicBrokerAddr.size());
+                            queueData.setWriteQueueNums(topicBrokerAddr.size());
+                            queueData.setPerm(PERM_WRITE | PERM_READ);
+                            queueDatas.add(queueData);
+                            brokerNames.put(addr.getHostName(), advertisAddress);
+                        }
+                        partitionRouteInfos.put(partition, brokerName);
                     });
 
                     byte[] content = topicRouteData.encode();

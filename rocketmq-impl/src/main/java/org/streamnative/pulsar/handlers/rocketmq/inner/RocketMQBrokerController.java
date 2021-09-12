@@ -51,6 +51,7 @@ import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.store.MessageArrivingListener;
 import org.apache.rocketmq.store.stats.BrokerStats;
 import org.apache.rocketmq.store.stats.BrokerStatsManager;
+import org.streamnative.pulsar.handlers.rocketmq.RocketMQProtocolHandler;
 import org.streamnative.pulsar.handlers.rocketmq.RocketMQServiceConfiguration;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.ConsumerManager;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.ConsumerOffsetManager;
@@ -71,6 +72,7 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.processor.QueryMessagePro
 import org.streamnative.pulsar.handlers.rocketmq.inner.processor.SendMessageProcessor;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientTopicName;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ProducerManager;
+import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkClient;
 
 /**
  * RocketMQ broker controller.
@@ -108,6 +110,7 @@ public class RocketMQBrokerController {
     private final List<SendMessageHook> sendMessageHookList = new ArrayList<>();
     private final List<ConsumeMessageHook> consumeMessageHookList = new ArrayList<>();
     private final RocketMQRemoteServer remotingServer;
+    private final RopZkClient ropZkClient;
     private final Broker2Client broker2Client = new Broker2Client(this);
 
     private MQTopicManager topicConfigManager;
@@ -123,6 +126,7 @@ public class RocketMQBrokerController {
     private ExecutorService endTransactionExecutor;
     private BrokerStats brokerStats;
     private String brokerHost;
+    private String brokerAddress;
     private TransactionalMessageCheckService transactionalMessageCheckService;
     private TransactionalMessageService transactionalMessageService;
     private AbstractTransactionalMessageCheckListener transactionalMessageCheckListener;
@@ -167,6 +171,7 @@ public class RocketMQBrokerController {
         this.brokerStatsManager = new BrokerStatsManager(serverConfig.getBrokerName());
         this.remotingServer = new RocketMQRemoteServer(this.serverConfig, this.clientHousekeepingService);
         this.delayedMessageService = new ScheduleMessageService(this, serverConfig);
+        this.ropZkClient = new RopZkClient(this);
     }
 
     public void initialize() throws Exception {
@@ -643,6 +648,13 @@ public class RocketMQBrokerController {
     }
 
     public void start() throws Exception {
+        this.brokerHost = brokerService.pulsar().getAdvertisedAddress();
+        this.brokerAddress = brokerService.pulsar().getAdvertisedAddress() + ":" +
+                RocketMQProtocolHandler.getListenerPort(serverConfig.getRocketmqListeners());
+
+        if (this.ropZkClient != null) {
+            this.ropZkClient.start();
+        }
 
         if (this.groupMetaManager != null) {
             this.groupMetaManager.start();

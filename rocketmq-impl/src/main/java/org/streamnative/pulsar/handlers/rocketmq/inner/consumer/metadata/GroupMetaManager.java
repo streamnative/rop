@@ -17,6 +17,7 @@ package org.streamnative.pulsar.handlers.rocketmq.inner.consumer.metadata;
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.SLASH_CHAR;
 
 import com.google.common.collect.Sets;
+import com.google.common.util.concurrent.Uninterruptibles;
 import java.nio.ByteBuffer;
 import java.util.Map.Entry;
 import java.util.Optional;
@@ -187,7 +188,7 @@ public class GroupMetaManager {
 
         offsetReaderExecutor.execute(this::loadOffsets);
         metaReaderExecutor.execute(this::loadGroup);
-        Thread.sleep(10 * 1000);
+//        Thread.sleep(10 * 1000);
 
         persistOffsetExecutor.scheduleAtFixedRate(() -> {
             try {
@@ -251,6 +252,7 @@ public class GroupMetaManager {
                 offsetTable.get(clientGroupAndTopicName).put(queueId, offset);
             } catch (Exception e) {
                 log.warn("Rop load offset failed.", e);
+                Uninterruptibles.sleepUninterruptibly(100, TimeUnit.MILLISECONDS);
             }
         }
     }
@@ -499,6 +501,7 @@ public class GroupMetaManager {
                 subscriptionGroupTable.put(clientGroupName, subscriptionValue);
             } catch (Exception e) {
                 log.warn("Rop load group info failed.", e);
+                Uninterruptibles.sleepUninterruptibly(100, TimeUnit.MILLISECONDS);
             }
         }
     }
