@@ -25,6 +25,7 @@ import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.pulsar.common.naming.TopicName;
 import org.apache.rocketmq.common.DataVersion;
+import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.subscription.SubscriptionGroupConfig;
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException;
@@ -153,11 +154,19 @@ public class SubscriptionGroupManager {
             String groupNodePath = String.format(RopZkPath.groupBasePathMatch, clientGroupName.getPulsarGroupName());
             byte[] content = zkClient.getData(groupNodePath, null, null);
             RopGroupContent ropGroupContent = jsonMapper.readValue(content, RopGroupContent.class);
-
             subscriptionGroupTableCache.put(clientGroupName, ropGroupContent.getConfig());
-
             return ropGroupContent.getConfig();
         } catch (Exception e) {
+            if (brokerController.getServerConfig().isAutoCreateSubscriptionGroup() ||
+                    MixAll.isSysConsumerGroup(group)) {
+                subscriptionGroupConfig = new SubscriptionGroupConfig();
+                subscriptionGroupConfig.setGroupName(group);
+                try {
+                    updateSubscriptionGroupConfig(subscriptionGroupConfig);
+                } catch (Exception ignore) {
+                }
+                return subscriptionGroupConfig;
+            }
             log.error("Find subscription group [{}] config error.", group, e);
             throw new RuntimeException("Find subscription group config failed.");
         }
