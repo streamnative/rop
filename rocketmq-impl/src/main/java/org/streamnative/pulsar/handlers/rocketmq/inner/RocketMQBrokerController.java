@@ -148,7 +148,7 @@ public class RocketMQBrokerController {
         this.consumerManager = new ConsumerManager(this.consumerIdsChangeListener);
         this.producerManager = new ProducerManager();
         this.clientHousekeepingService = new ClientHousekeepingService(this);
-        this.subscriptionGroupManager = new SubscriptionGroupManager(this, groupMetaManager);
+        this.subscriptionGroupManager = new SubscriptionGroupManager(this);
 
         this.sendThreadPoolQueue = new LinkedBlockingQueue<Runnable>(
                 this.serverConfig.getSendThreadPoolQueueCapacity());
@@ -578,6 +578,10 @@ public class RocketMQBrokerController {
     }
 
     public void shutdown() {
+        if (this.subscriptionGroupManager != null) {
+            this.subscriptionGroupManager.shutdown();
+        }
+
         if (this.groupMetaManager != null) {
             this.groupMetaManager.shutdown();
         }

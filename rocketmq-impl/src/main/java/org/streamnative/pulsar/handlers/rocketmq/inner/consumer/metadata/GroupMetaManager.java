@@ -47,13 +47,9 @@ import org.apache.pulsar.client.api.Schema;
 import org.apache.pulsar.client.impl.MessageIdImpl;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandSubscribe.InitialPosition;
 import org.apache.pulsar.common.naming.TopicName;
-import org.apache.rocketmq.common.DataVersion;
-import org.apache.rocketmq.common.MixAll;
-import org.apache.rocketmq.common.subscription.SubscriptionGroupConfig;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopPersistentTopicException;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupAndTopicName;
-import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupName;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientTopicName;
 import org.streamnative.pulsar.handlers.rocketmq.utils.MessageIdUtils;
 import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
@@ -66,7 +62,6 @@ public class GroupMetaManager {
 
     private final AtomicBoolean shuttingDown = new AtomicBoolean(false);
     private final RocketMQBrokerController brokerController;
-    private final DataVersion dataVersion = new DataVersion();
 
     /**
      * group offset producer\reader.
@@ -75,27 +70,11 @@ public class GroupMetaManager {
     private Reader<ByteBuffer> groupOffsetReader;
 
     /**
-     * group meta producer\reader.
-     */
-    private Producer<ByteBuffer> groupMetaProducer;
-    private Reader<ByteBuffer> groupMeatReader;
-
-    /**
      * group offset reader executor.
      */
     private final ExecutorService offsetReaderExecutor = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r);
         t.setName("Rop-group-offset-reader");
-        t.setDaemon(true);
-        return t;
-    });
-
-    /**
-     * group meta executor.
-     */
-    private final ExecutorService metaReaderExecutor = Executors.newSingleThreadExecutor(r -> {
-        Thread t = new Thread(r);
-        t.setName("Rop-group-meta-reader");
         t.setDaemon(true);
         return t;
     });
@@ -136,10 +115,6 @@ public class GroupMetaManager {
             new ConcurrentHashMap<>(512);
 
     @Getter
-    private final ConcurrentHashMap<ClientGroupName, SubscriptionGroupConfig> subscriptionGroupTable =
-            new ConcurrentHashMap<>(512);
-
-    @Getter
     private final ConcurrentHashMap<ClientTopicName, ConcurrentMap<Integer, PersistentTopic>> pulsarTopicCache =
             new ConcurrentHashMap<>(512);
 
@@ -172,22 +147,7 @@ public class GroupMetaManager {
                 .readCompacted(true)
                 .create();
 
-        this.groupMetaProducer = pulsarClient.newProducer(Schema.BYTEBUFFER)
-                .maxPendingMessages(1000)
-                .sendTimeout(5, TimeUnit.SECONDS)
-                .enableBatching(false)
-                .blockIfQueueFull(false)
-                .topic(RocketMQTopic.getGroupMetaSubscriptionTopic().getPulsarFullName())
-                .create();
-
-        this.groupMeatReader = pulsarClient.newReader(Schema.BYTEBUFFER)
-                .topic(RocketMQTopic.getGroupMetaSubscriptionTopic().getPulsarFullName())
-                .startMessageId(MessageId.earliest)
-                .readCompacted(true)
-                .create();
-
         offsetReaderExecutor.execute(this::loadOffsets);
-        metaReaderExecutor.execute(this::loadGroup);
 //        Thread.sleep(10 * 1000);
 
         persistOffsetExecutor.scheduleAtFixedRate(() -> {
@@ -468,133 +428,6 @@ public class GroupMetaManager {
         } catch (Exception e) {
             log.info("[{}] [{}] Store group offset error.", rmqGroupName, rmqTopicName, e);
         }
-    }
-
-    /**
-     * load group info.
-     */
-    private void loadGroup() {
-        log.info("Start load group info.");
-
-        while (!shuttingDown.get()) {
-            try {
-                Message<ByteBuffer> message = groupMeatReader.readNext(1, TimeUnit.SECONDS);
-                if (message == null) {
-                    continue;
-                }
-
-                GroupSubscriptionKey subscriptionKey = (GroupSubscriptionKey) GroupMetaKey
-                        .decodeKey(ByteBuffer.wrap(message.getKeyBytes()));
-                String rmqGroupName = subscriptionKey.getGroupName();
-                ClientGroupName clientGroupName = new ClientGroupName(rmqGroupName);
-
-                // remove deleted group from subscriptionGroupTable
-                if (message.getValue() == null) {
-                    subscriptionGroupTable.remove(clientGroupName);
-                    return;
-                }
-
-                GroupSubscriptionValue subscriptionValue = new GroupSubscriptionValue();
-                subscriptionValue.decode(message.getValue());
-
-                log.info("Load group config: [{}]", subscriptionValue);
-                subscriptionGroupTable.put(clientGroupName, subscriptionValue);
-            } catch (Exception e) {
-                log.warn("Rop load group info failed.", e);
-                Uninterruptibles.sleepUninterruptibly(100, TimeUnit.MILLISECONDS);
-            }
-        }
-    }
-
-    /**
-     * query group info.
-     */
-    public SubscriptionGroupConfig queryGroup(String group) {
-        ClientGroupName groupName = new ClientGroupName(group);
-        SubscriptionGroupConfig subscriptionGroupConfig = this.subscriptionGroupTable.get(groupName);
-        if (null == subscriptionGroupConfig && (this.brokerController.getServerConfig().isAutoCreateSubscriptionGroup()
-                || MixAll.isSysConsumerGroup(groupName.getRmqGroupName()))) {
-            subscriptionGroupConfig = new SubscriptionGroupConfig();
-            subscriptionGroupConfig.setGroupName(groupName.getRmqGroupName());
-            SubscriptionGroupConfig preConfig = this.subscriptionGroupTable
-                    .putIfAbsent(groupName, subscriptionGroupConfig);
-            if (null == preConfig) {
-                log.info("Auto create a subscription group [{}]", subscriptionGroupConfig.toString());
-            }
-            this.dataVersion.nextVersion();
-        }
-        return subscriptionGroupConfig;
-    }
-
-    /**
-     * update group.
-     */
-    public void updateGroup(SubscriptionGroupConfig config) {
-        SubscriptionGroupConfig old = subscriptionGroupTable.put(new ClientGroupName(config.getGroupName()), config);
-        if (old != null) {
-            log.info("Update subscription group config, old: [{}], new: [{}]", old, config);
-        } else {
-            log.info("Create new subscription group [{}]", config);
-        }
-        this.dataVersion.nextVersion();
-        storeGroup(config.getGroupName(), config);
-    }
-
-    /**
-     * delete group.
-     */
-    public void deleteGroup(String groupName) {
-        ClientGroupName clientGroupName = new ClientGroupName(groupName);
-        subscriptionGroupTable.remove(clientGroupName);
-        storeGroup(groupName, null);
-    }
-
-    /**
-     * store group config.
-     */
-    private void storeGroup(String groupName, SubscriptionGroupConfig config) {
-        try {
-            GroupSubscriptionKey subscriptionKey = new GroupSubscriptionKey();
-            subscriptionKey.setGroupName(groupName);
-
-            GroupSubscriptionValue subscriptionValue = null;
-            if (config != null) {
-                subscriptionValue = new GroupSubscriptionValue();
-                subscriptionValue.setGroupName(config.getGroupName());
-                subscriptionValue.setBrokerId(config.getBrokerId());
-                subscriptionValue.setConsumeBroadcastEnable(config.isConsumeBroadcastEnable());
-                subscriptionValue.setConsumeEnable(config.isConsumeEnable());
-                subscriptionValue.setRetryMaxTimes(config.getRetryMaxTimes());
-                subscriptionValue.setRetryQueueNums(config.getRetryQueueNums());
-                subscriptionValue.setConsumeFromMinEnable(config.isConsumeFromMinEnable());
-            }
-
-            groupMetaProducer.newMessage()
-                    .keyBytes(subscriptionKey.encode().array())
-                    .value(subscriptionValue == null ? null : subscriptionValue.encode())
-                    .eventTime(System.currentTimeMillis()).sendAsync()
-                    .whenCompleteAsync((msgId, e) -> {
-                        if (e != null) {
-                            log.info("[{}] Store group config failed.", groupName, e);
-                            return;
-                        }
-                        if (config == null) {
-                            log.info("[{}] Delete group config successfully.", groupName);
-                            return;
-                        }
-
-                        log.info("[{}] Store group config [{}] successfully.", groupName, config);
-
-                        ClientGroupName clientGroupName = new ClientGroupName(groupName);
-                        subscriptionGroupTable.put(clientGroupName, config);
-                    }, groupMetaCallbackExecutor);
-        } catch (Exception e) {
-            log.info("[{}] Store group config error.", groupName, e);
-        }
-    }
-
-    public DataVersion getDataVersion() {
-        return this.dataVersion;
     }
 
     public void shutdown() {
