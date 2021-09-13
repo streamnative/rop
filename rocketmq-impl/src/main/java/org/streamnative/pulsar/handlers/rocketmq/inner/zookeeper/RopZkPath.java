@@ -14,22 +14,25 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper;
 
+/**
+ * Rop path for zookeeper.
+ */
 public class RopZkPath {
 
-    public static final String ropPath = "/rop";
+    public static final String ROP_PATH = "/rop";
 
-    public static final String coordinatorPath = ropPath + "/coordinator";
+    public static final String COORDINATOR_PATH = ROP_PATH + "/coordinator";
 
-    public static final String brokerPath = ropPath + "/brokers";
+    public static final String BROKER_PATH = ROP_PATH + "/brokers";
 
-    public static final String topicBasePath = ropPath + "/topics";
+    public static final String TOPIC_BASE_PATH = ROP_PATH + "/topics";
 
-    public static final String topicBasePathMatch = ropPath + "/topics/%s";
-    public static final String tenantBasePathMatch = ropPath + "/topics/%s";
-    public static final String namespacesBasePathMatch = ropPath + "/topics/%s";
+    public static final String TOPIC_BASE_PATH_MATCH = ROP_PATH + "/topics/%s";
+    public static final String TENANT_BASE_PATH_MATCH = ROP_PATH + "/topics/%s";
+    public static final String NAMESPACES_BASE_PATH_MATCH = ROP_PATH + "/topics/%s";
 
-    public static final String groupBasePath = ropPath + "/groups";
+    public static final String GROUP_BASE_PATH = ROP_PATH + "/groups";
 
-    public static final String groupBasePathMatch = ropPath + "/groups/%s";
+    public static final String GROUP_BASE_PATH_MATCH = ROP_PATH + "/groups/%s";
 
 }

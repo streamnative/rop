@@ -653,8 +653,9 @@ public class RocketMQBrokerController {
 
     public void start() throws Exception {
         this.brokerHost = brokerService.pulsar().getAdvertisedAddress();
-        this.brokerAddress = brokerService.pulsar().getAdvertisedAddress() + ":" +
-                RocketMQProtocolHandler.getListenerPort(serverConfig.getRocketmqListeners());
+        this.brokerAddress = brokerService.pulsar().getAdvertisedAddress()
+                + ":"
+                + RocketMQProtocolHandler.getListenerPort(serverConfig.getRocketmqListeners());
 
         if (this.ropZkClient != null) {
             this.ropZkClient.start();

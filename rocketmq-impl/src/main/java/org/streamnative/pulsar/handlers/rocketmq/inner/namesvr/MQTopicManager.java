@@ -203,7 +203,8 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
         getTopicBrokerAddr(topicName, listenerName);
 
         try {
-            String topicNodePath = String.format(RopZkPath.topicBasePathMatch, PulsarUtil.getNoDomainTopic(topicName));
+            String topicNodePath = String.format(RopZkPath.TOPIC_BASE_PATH_MATCH,
+                    PulsarUtil.getNoDomainTopic(topicName));
 
             byte[] content = zkClient.getData(topicNodePath, null, null);
             ropTopicContent = jsonMapper.readValue(content, RopTopicContent.class);
@@ -494,7 +495,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
 
             // Create or update zk topic node
             String topicNodePath = String
-                    .format(RopZkPath.topicBasePathMatch, PulsarUtil.getNoDomainTopic(topicName));
+                    .format(RopZkPath.TOPIC_BASE_PATH_MATCH, PulsarUtil.getNoDomainTopic(topicName));
 
             byte[] content = new byte[0];
             try {
@@ -523,7 +524,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
             }
 
             // Create tenant node if not exist
-            String tenantNodePath = String.format(RopZkPath.tenantBasePathMatch, tenant);
+            String tenantNodePath = String.format(RopZkPath.TENANT_BASE_PATH_MATCH, tenant);
             Stat exists = null;
             try {
                 exists = zkClient.exists(tenantNodePath, false);
@@ -542,7 +543,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
             }
 
             // Create namespaces node if not exist
-            String nsNodePath = String.format(RopZkPath.namespacesBasePathMatch, topicName.getNamespace());
+            String nsNodePath = String.format(RopZkPath.NAMESPACES_BASE_PATH_MATCH, topicName.getNamespace());
             Stat nsExists = null;
             try {
                 nsExists = zkClient.exists(nsNodePath, false);
@@ -583,7 +584,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
             }
 
             String topicNodePath = String
-                    .format(RopZkPath.topicBasePathMatch, PulsarUtil.getNoDomainTopic(topicName));
+                    .format(RopZkPath.TOPIC_BASE_PATH_MATCH, PulsarUtil.getNoDomainTopic(topicName));
 
             byte[] content = new byte[0];
             try {
@@ -656,7 +657,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
             }
 
             String topicNodePath = String
-                    .format(RopZkPath.topicBasePathMatch, PulsarUtil.getNoDomainTopic(TopicName.get(fullTopicName)));
+                    .format(RopZkPath.TOPIC_BASE_PATH_MATCH, PulsarUtil.getNoDomainTopic(TopicName.get(fullTopicName)));
             try {
                 zkClient.delete(topicNodePath, -1);
             } catch (KeeperException.NoNodeException ignore) {

@@ -556,7 +556,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
 //            return getResult;
 //        }
 //
-//        if (requestFilterCache.getIfPresent(new PullRequestFilterKey(consumerGroupName, topicName, partitionId)) != null) {
+//        if (requestFilterCache.getIfPresent(new
+//              PullRequestFilterKey(consumerGroupName, topicName, partitionId)) != null) {
 //            getResult.setStatus(GetMessageStatus.OFFSET_FOUND_NULL);
 //            requestHeader.setSysFlag(requestHeader.getSysFlag() | 2);
 //            return getResult;
@@ -607,7 +608,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
 //            try {
 //                PositionImpl cursorStartPosition = startPosition;
 //                if (startPosition.getEntryId() > -1) {
-//                    cursorStartPosition = new PositionImpl(startPosition.getLedgerId(), startPosition.getEntryId() - 1);
+//                    cursorStartPosition = new PositionImpl(startPosition.getLedgerId(),
+//                      startPosition.getEntryId() - 1);
 //                }
 //
 //                PersistentTopic persistentTopic = brokerController.getConsumerOffsetManager()
@@ -626,7 +628,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
 //                List<Entry> entries = managedCursor.readEntries(maxMsgNums);
 //                for (Entry entry : entries) {
 //                    try {
-//                        nextBeginOffset = MessageIdUtils.getOffset(entry.getLedgerId(), entry.getEntryId(), partitionId);
+//                        nextBeginOffset = MessageIdUtils.getOffset(entry.getLedgerId(),
+//                                entry.getEntryId(), partitionId);
 //                        ByteBuffer byteBuffer = this.entryFormatter
 //                                .decodePulsarMessage(entry.getDataBuffer(), nextBeginOffset, messageFilter);
 //                        if (byteBuffer != null) {

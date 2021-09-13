@@ -96,7 +96,7 @@ public class SubscriptionGroupManager {
         ClientGroupName clientGroupName = new ClientGroupName(config.getGroupName());
 
         TopicName topicName = TopicName.get(clientGroupName.getPulsarGroupName());
-        String groupNodePath = String.format(RopZkPath.groupBasePathMatch, clientGroupName.getPulsarGroupName());
+        String groupNodePath = String.format(RopZkPath.GROUP_BASE_PATH_MATCH, clientGroupName.getPulsarGroupName());
 
         try {
             RopGroupContent ropGroupContent = new RopGroupContent(config);
@@ -105,7 +105,7 @@ public class SubscriptionGroupManager {
             subscriptionGroupTableCache.put(clientGroupName, ropGroupContent.getConfig());
         } catch (KeeperException.NoNodeException e) {
             try {
-                String tenantNodePath = String.format(RopZkPath.groupBasePathMatch, topicName.getTenant());
+                String tenantNodePath = String.format(RopZkPath.GROUP_BASE_PATH_MATCH, topicName.getTenant());
                 if (zkClient.exists(tenantNodePath, false) == null) {
                     try {
                         zkClient.create(tenantNodePath,
@@ -117,7 +117,7 @@ public class SubscriptionGroupManager {
                     }
                 }
 
-                String nsNodePath = String.format(RopZkPath.groupBasePathMatch, topicName.getNamespace());
+                String nsNodePath = String.format(RopZkPath.GROUP_BASE_PATH_MATCH, topicName.getNamespace());
                 if (zkClient.exists(nsNodePath, false) == null) {
                     try {
                         zkClient.create(nsNodePath,
@@ -157,14 +157,14 @@ public class SubscriptionGroupManager {
         }
 
         try {
-            String groupNodePath = String.format(RopZkPath.groupBasePathMatch, clientGroupName.getPulsarGroupName());
+            String groupNodePath = String.format(RopZkPath.GROUP_BASE_PATH_MATCH, clientGroupName.getPulsarGroupName());
             byte[] content = zkClient.getData(groupNodePath, null, null);
             RopGroupContent ropGroupContent = jsonMapper.readValue(content, RopGroupContent.class);
             subscriptionGroupTableCache.put(clientGroupName, ropGroupContent.getConfig());
             return ropGroupContent.getConfig();
         } catch (Exception e) {
-            if (brokerController.getServerConfig().isAutoCreateSubscriptionGroup() ||
-                    MixAll.isSysConsumerGroup(group)) {
+            if (brokerController.getServerConfig().isAutoCreateSubscriptionGroup()
+                    || MixAll.isSysConsumerGroup(group)) {
                 subscriptionGroupConfig = new SubscriptionGroupConfig();
                 subscriptionGroupConfig.setGroupName(group);
                 try {
@@ -185,7 +185,7 @@ public class SubscriptionGroupManager {
     public void deleteSubscriptionGroupConfig(String group) {
         ClientGroupName clientGroupName = new ClientGroupName(group);
 
-        String groupNodePath = String.format(RopZkPath.groupBasePathMatch, clientGroupName.getPulsarGroupName());
+        String groupNodePath = String.format(RopZkPath.GROUP_BASE_PATH_MATCH, clientGroupName.getPulsarGroupName());
         try {
             zkClient.delete(groupNodePath, -1);
             subscriptionGroupTableCache.invalidate(clientGroupName);

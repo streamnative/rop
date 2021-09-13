@@ -21,7 +21,7 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkClient;
 import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkPath;
 
 /**
- * Rop broker
+ * Rop broker.
  */
 @Slf4j
 public class RopBroker {
@@ -33,7 +33,7 @@ public class RopBroker {
 
     public RopBroker(RocketMQBrokerController rocketBroker, RopZkClient ropZkClient) {
         this.ropZkClient = ropZkClient;
-        this.zkNodePath = RopZkPath.brokerPath + "/" + rocketBroker.getBrokerHost();
+        this.zkNodePath = RopZkPath.BROKER_PATH + "/" + rocketBroker.getBrokerHost();
     }
 
     public void start() {

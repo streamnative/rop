@@ -26,6 +26,9 @@ import org.apache.zookeeper.ZooKeeper;
 import org.apache.zookeeper.data.Stat;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 
+/**
+ * Rop Zk client.
+ */
 @Slf4j
 public class RopZkClient implements Watcher {
 
@@ -44,62 +47,62 @@ public class RopZkClient implements Watcher {
          * init rop zk node
          */
         try {
-            Stat stat = zooKeeper.exists(RopZkPath.ropPath, false);
+            Stat stat = zooKeeper.exists(RopZkPath.ROP_PATH, false);
             if (stat == null) {
-                zooKeeper.create(RopZkPath.ropPath,
+                zooKeeper.create(RopZkPath.ROP_PATH,
                         "".getBytes(StandardCharsets.UTF_8),
                         ZooDefs.Ids.OPEN_ACL_UNSAFE,
                         CreateMode.PERSISTENT);
             }
         } catch (KeeperException.NodeExistsException e) {
-            log.info("Zk node [{}] has exist.", RopZkPath.ropPath);
+            log.info("Zk node [{}] has exist.", RopZkPath.ROP_PATH);
         } catch (Exception e) {
-            log.error("Failed to create zk node {}", RopZkPath.ropPath, e);
+            log.error("Failed to create zk node {}", RopZkPath.ROP_PATH, e);
             throw new RuntimeException(e);
         }
 
         try {
-            Stat stat = zooKeeper.exists(RopZkPath.brokerPath, false);
+            Stat stat = zooKeeper.exists(RopZkPath.BROKER_PATH, false);
             if (stat == null) {
-                zooKeeper.create(RopZkPath.brokerPath,
+                zooKeeper.create(RopZkPath.BROKER_PATH,
                         "".getBytes(StandardCharsets.UTF_8),
                         ZooDefs.Ids.OPEN_ACL_UNSAFE,
                         CreateMode.PERSISTENT);
             }
         } catch (KeeperException.NodeExistsException e) {
-            log.info("Zk node [{}] has exist.", RopZkPath.brokerPath);
+            log.info("Zk node [{}] has exist.", RopZkPath.BROKER_PATH);
         } catch (Exception e) {
-            log.error("Failed to create zk node {}", RopZkPath.brokerPath, e);
+            log.error("Failed to create zk node {}", RopZkPath.BROKER_PATH, e);
             throw new RuntimeException(e);
         }
 
         try {
-            Stat stat = zooKeeper.exists(RopZkPath.topicBasePath, false);
+            Stat stat = zooKeeper.exists(RopZkPath.TOPIC_BASE_PATH, false);
             if (stat == null) {
-                zooKeeper.create(RopZkPath.topicBasePath,
+                zooKeeper.create(RopZkPath.TOPIC_BASE_PATH,
                         "".getBytes(StandardCharsets.UTF_8),
                         ZooDefs.Ids.OPEN_ACL_UNSAFE,
                         CreateMode.PERSISTENT);
             }
         } catch (KeeperException.NodeExistsException e) {
-            log.info("Zk node [{}] has exist.", RopZkPath.topicBasePath);
+            log.info("Zk node [{}] has exist.", RopZkPath.TOPIC_BASE_PATH);
         } catch (Exception e) {
-            log.error("Failed to create zk node {}", RopZkPath.topicBasePath, e);
+            log.error("Failed to create zk node {}", RopZkPath.TOPIC_BASE_PATH, e);
             throw new RuntimeException(e);
         }
 
         try {
-            Stat stat = zooKeeper.exists(RopZkPath.groupBasePath, false);
+            Stat stat = zooKeeper.exists(RopZkPath.GROUP_BASE_PATH, false);
             if (stat == null) {
-                zooKeeper.create(RopZkPath.groupBasePath,
+                zooKeeper.create(RopZkPath.GROUP_BASE_PATH,
                         "".getBytes(StandardCharsets.UTF_8),
                         ZooDefs.Ids.OPEN_ACL_UNSAFE,
                         CreateMode.PERSISTENT);
             }
         } catch (KeeperException.NodeExistsException e) {
-            log.info("Zk node [{}] has exist.", RopZkPath.groupBasePath);
+            log.info("Zk node [{}] has exist.", RopZkPath.GROUP_BASE_PATH);
         } catch (Exception e) {
-            log.error("Failed to create zk node {}", RopZkPath.groupBasePath, e);
+            log.error("Failed to create zk node {}", RopZkPath.GROUP_BASE_PATH, e);
             throw new RuntimeException(e);
         }
     }
@@ -108,9 +111,9 @@ public class RopZkClient implements Watcher {
         try {
             zooKeeper.create(path, content, ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
         } catch (KeeperException.NodeExistsException e) {
-            log.info("Zk node [{}] has exist.", RopZkPath.groupBasePath);
+            log.info("Zk node [{}] has exist.", RopZkPath.GROUP_BASE_PATH);
         } catch (Exception e) {
-            log.error("Failed to create zk node {}", RopZkPath.groupBasePath, e);
+            log.error("Failed to create zk node {}", RopZkPath.GROUP_BASE_PATH, e);
             throw new RuntimeException(e);
         }
     }

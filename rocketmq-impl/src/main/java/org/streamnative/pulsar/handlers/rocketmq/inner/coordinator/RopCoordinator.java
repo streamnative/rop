@@ -34,7 +34,7 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkPath;
 import org.testng.collections.Maps;
 
 /**
- * Rop coordinator
+ * Rop coordinator.
  */
 @Slf4j
 public class RopCoordinator {
@@ -47,7 +47,7 @@ public class RopCoordinator {
     private ZooKeeper zkClient;
 
 
-    private final AtomicReference<RopCoordinatorBroker> currentCoordinator = new AtomicReference<RopCoordinatorBroker>();
+    private final AtomicReference<RopCoordinatorBroker> currentCoordinator = new AtomicReference<>();
     private final AtomicBoolean isCoordinator = new AtomicBoolean();
     private boolean elected = false;
 
@@ -67,11 +67,11 @@ public class RopCoordinator {
 
     private void elect() {
         try {
-            byte[] data = zkClient.getData(RopZkPath.coordinatorPath, event -> {
+            byte[] data = zkClient.getData(RopZkPath.COORDINATOR_PATH, event -> {
                 log.warn("Type of the event is [{}] and path is [{}]", event.getType(), event.getPath());
                 if (event.getType() == EventType.NodeDeleted) {
                     log.warn("Election node {} is deleted, attempting re-election...", event.getPath());
-                    if (event.getPath().equals(RopZkPath.coordinatorPath)) {
+                    if (event.getPath().equals(RopZkPath.COORDINATOR_PATH)) {
                         log.info("This should call elect again...");
                         executor.execute(() -> {
                             // If the node is deleted, attempt the re-election
@@ -100,7 +100,7 @@ public class RopCoordinator {
             try {
                 // Create the root node and add current broker's URL as its contents
                 LeaderBroker leaderBroker = new LeaderBroker(pulsar.getSafeWebServiceAddress());
-                ZkUtils.createFullPathOptimistic(pulsar.getLocalZkCache().getZooKeeper(), RopZkPath.coordinatorPath,
+                ZkUtils.createFullPathOptimistic(pulsar.getLocalZkCache().getZooKeeper(), RopZkPath.COORDINATOR_PATH,
                         jsonMapper.writeValueAsBytes(leaderBroker), Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
 
                 // Update the current leader and set the flag to true
@@ -128,7 +128,7 @@ public class RopCoordinator {
         } catch (Exception e) {
             // Kill the broker
             log.error("Could not get the content of [{}], got exception [{}]. Shutting down the broker...",
-                    RopZkPath.coordinatorPath, e);
+                    RopZkPath.COORDINATOR_PATH, e);
             pulsar.getShutdownService().shutdown(-1);
         }
     }
@@ -158,7 +158,7 @@ public class RopCoordinator {
     public void close() {
         if (isCoordinator()) {
             try {
-                pulsar.getLocalZkCache().getZooKeeper().delete(RopZkPath.coordinatorPath, -1);
+                pulsar.getLocalZkCache().getZooKeeper().delete(RopZkPath.COORDINATOR_PATH, -1);
             } catch (Throwable t) {
                 log.warn("Failed to cleanup election root znode", t);
             }

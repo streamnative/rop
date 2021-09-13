@@ -19,6 +19,9 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.apache.rocketmq.common.subscription.SubscriptionGroupConfig;
 
+/**
+ * Rop group content.
+ */
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
