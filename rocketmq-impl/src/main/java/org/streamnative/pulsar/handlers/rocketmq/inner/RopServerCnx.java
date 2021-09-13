@@ -94,8 +94,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
     private static final String ropHandlerName = "RopServerCnxHandler";
     private final BrokerService service;
     private final ConcurrentLongHashMap<Producer<byte[]>> producers;
-    private final ConcurrentLongHashMap<MessageIdImpl> nextBeginOffsets;
     private final ConcurrentLongHashMap<Reader<byte[]>> readers;
+    private final ConcurrentLongHashMap<MessageIdImpl> nextBeginOffsets;
     private final ConcurrentHashMap<String, ManagedCursor> cursors;
     private final HashMap<Long, Reader<byte[]>> lookMsgReaders;
     private final RopEntryFormatter entryFormatter = new RopEntryFormatter();
@@ -123,8 +123,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         this.remoteAddress = ctx.channel().remoteAddress();
         this.state = State.Connected;
         this.producers = new ConcurrentLongHashMap<>(2, 1);
-        this.nextBeginOffsets = new ConcurrentLongHashMap<>(2, 1);
         this.readers = new ConcurrentLongHashMap<>(2, 1);
+        this.nextBeginOffsets = new ConcurrentLongHashMap<>(2, 1);
         this.lookMsgReaders = new HashMap<>();
         this.cursors = new ConcurrentHashMap<>(4);
         synchronized (this.ctx) {
@@ -663,43 +663,46 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                     startOffset = new MessageIdImpl(startOffset.getLedgerId(), startOffset.getEntryId() - 1,
                             startOffset.getPartitionIndex());
                 }
-                Reader<byte[]> reader = null;
                 try {
-                    reader = this.service.pulsar().getClient().newReader()
+                    Reader<byte[]> reader = this.service.pulsar().getClient().newReader()
                             .topic(pTopic)
                             .receiverQueueSize(maxMsgNums)
                             .startMessageId(startOffset)
                             .readerName(consumerGroupName + readerId)
                             .create();
+                    Reader<byte[]> oldReader = this.readers.put(readerId, reader);
+                    if (oldReader != null) {
+                        oldReader.closeAsync();
+                    }
                 } catch (Exception e) {
                     log.warn("create new reader error, group = [{}], topicName = [{}], startOffset=[{}].",
                             consumerGroupName, topicName, startOffset, e);
                 }
-                Reader<byte[]> oldReader = this.readers.put(readerId, reader);
-                if (oldReader != null) {
-                    oldReader.closeAsync();
-                }
             }
-        }
 
-        ReaderImpl<byte[]> reader = (ReaderImpl<byte[]>) this.readers.get(readerId);
-        for (int i = 0; i < maxMsgNums; i++) {
-            Message<byte[]> message = null;
+            ReaderImpl<byte[]> reader = (ReaderImpl<byte[]>) this.readers.get(readerId);
+
+            // seek offset if startOffset not equals lastNextBeginOffset
+            MessageIdImpl lastNextBeginOffset = nextBeginOffsets.get(readerId);
             try {
-                message = reader.readNext(1, TimeUnit.MILLISECONDS);
+                if (lastNextBeginOffset != null && !lastNextBeginOffset.equals(startOffset)) {
+                    log.info("[{}] [{}] Seek offset to [{}]", consumerGroupName, pTopic, startOffset);
+                    reader.seek(startOffset);
+                }
+
+                for (int i = 0; i < maxMsgNums; i++) {
+                    Message<byte[]> message = null;
+                    message = reader.readNext(1, TimeUnit.MILLISECONDS);
+                    if (message != null) {
+                        messageList.add(message);
+                        nextBeginOffset = MessageIdUtils.getOffset((MessageIdImpl) message.getMessageId());
+                    } else {
+                        break;
+                    }
+                }
             } catch (PulsarClientException e) {
                 log.warn("retrieve message error, group = [{}], topicName = [{}], startOffset=[{}].",
                         consumerGroupName, topicName, startOffset, e);
-            }
-            if (message != null) {
-                MessageIdImpl curMsgId = (MessageIdImpl) message.getMessageId();
-                if (startOffset.getLedgerId() != curMsgId.getLedgerId()
-                        || (startOffset.getEntryId()) != curMsgId.getEntryId()) {
-                    messageList.add(message);
-                }
-                nextBeginOffset = MessageIdUtils.getOffset((MessageIdImpl) message.getMessageId());
-            } else {
-                break;
             }
         }
 

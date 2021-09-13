@@ -499,46 +499,48 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                 ropTopicContent.setRouteMap(routeMap);
                 content = jsonMapper.writeValueAsBytes(ropTopicContent);
                 zkClient.setData(topicNodePath, content, -1);
+            } catch (KeeperException.NoNodeException e) {
+                // Create tenant node if not exist
+                String tenantNodePath = String.format(RopZkPath.TOPIC_BASE_PATH_MATCH, tenant);
+                try {
+                    Stat exists = zkClient.exists(tenantNodePath, false);
+                    if (exists == null) {
+                        zkClient.create(tenantNodePath,
+                                "".getBytes(StandardCharsets.UTF_8),
+                                ZooDefs.Ids.OPEN_ACL_UNSAFE,
+                                CreateMode.PERSISTENT);
+                    }
+                } catch (KeeperException | InterruptedException tenantNodeEx) {
+                    log.warn("create topic node path [{}] error: ", tenantNodePath, tenantNodeEx);
+                }
+
+                // Create namespaces node if not exist
+                String nsNodePath = String.format(RopZkPath.TOPIC_BASE_PATH_MATCH, topicName.getNamespace());
+                try {
+                    Stat nsExists = zkClient.exists(nsNodePath, false);
+                    if (nsExists == null) {
+                        zkClient.create(nsNodePath,
+                                "".getBytes(StandardCharsets.UTF_8),
+                                ZooDefs.Ids.OPEN_ACL_UNSAFE,
+                                CreateMode.PERSISTENT);
+
+                    }
+                } catch (KeeperException | InterruptedException nsNodeEx) {
+                    log.warn("create ns node path [{}] error: ", tenantNodePath, nsNodeEx);
+                }
+
+                RopTopicContent newRopTopicContent = new RopTopicContent(tc, routeMap);
+                try {
+                    byte[] newContent = jsonMapper.writeValueAsBytes(newRopTopicContent);
+                    zkClient.create(topicNodePath, newContent, ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
+                } catch (KeeperException | InterruptedException | JsonProcessingException ex) {
+                    log.warn("create topic path [{}] error", topicNodePath, ex);
+                }
             } catch (IOException | KeeperException | InterruptedException e) {
                 log.warn("Create or update zk topic node error: ", e);
+                throw new RuntimeException("Create or update zk topic node error: ", e);
             }
 
-            // Create tenant node if not exist
-            String tenantNodePath = String.format(RopZkPath.TENANT_BASE_PATH_MATCH, tenant);
-            try {
-                Stat exists = zkClient.exists(tenantNodePath, false);
-                if (exists == null) {
-                    zkClient.create(tenantNodePath,
-                            "".getBytes(StandardCharsets.UTF_8),
-                            ZooDefs.Ids.OPEN_ACL_UNSAFE,
-                            CreateMode.PERSISTENT);
-                }
-            } catch (KeeperException | InterruptedException e) {
-                log.warn("create topic node path [{}] error: ", tenantNodePath, e);
-            }
-
-            // Create namespaces node if not exist
-            String nsNodePath = String.format(RopZkPath.NAMESPACES_BASE_PATH_MATCH, topicName.getNamespace());
-            try {
-                Stat nsExists = zkClient.exists(nsNodePath, false);
-                if (nsExists == null) {
-                    zkClient.create(nsNodePath,
-                            "".getBytes(StandardCharsets.UTF_8),
-                            ZooDefs.Ids.OPEN_ACL_UNSAFE,
-                            CreateMode.PERSISTENT);
-
-                }
-            } catch (KeeperException | InterruptedException e) {
-                log.warn("create ns node path [{}] error: ", tenantNodePath, e);
-            }
-
-            RopTopicContent newRopTopicContent = new RopTopicContent(tc, routeMap);
-            try {
-                byte[] newContent = jsonMapper.writeValueAsBytes(newRopTopicContent);
-                zkClient.create(topicNodePath, newContent, ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
-            } catch (KeeperException | InterruptedException | JsonProcessingException e) {
-                log.warn("create topic path [{}] error", topicNodePath, e);
-            }
         } else if (currentPartitionNum <= tc.getWriteQueueNums()) {
             log.info("RocketMQ topic {} has exist. Updating it ...", fullTopicName);
 

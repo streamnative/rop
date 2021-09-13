@@ -27,12 +27,10 @@ public class RopZkPath {
 
     public static final String TOPIC_BASE_PATH = ROP_PATH + "/topics";
 
-    public static final String TOPIC_BASE_PATH_MATCH = ROP_PATH + "/topics/%s";
-    public static final String TENANT_BASE_PATH_MATCH = ROP_PATH + "/topics/%s";
-    public static final String NAMESPACES_BASE_PATH_MATCH = ROP_PATH + "/topics/%s";
+    public static final String TOPIC_BASE_PATH_MATCH = TOPIC_BASE_PATH + "/%s";
 
     public static final String GROUP_BASE_PATH = ROP_PATH + "/groups";
 
-    public static final String GROUP_BASE_PATH_MATCH = ROP_PATH + "/groups/%s";
+    public static final String GROUP_BASE_PATH_MATCH = GROUP_BASE_PATH + "/%s";
 
 }
