@@ -470,14 +470,9 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
             log.info("RocketMQ topic {} doesn't exist. Creating it ...", fullTopicName);
             try {
                 adminClient.topics().createPartitionedTopic(fullTopicName, tc.getWriteQueueNums());
-            } catch (PulsarAdminException e) {
-                log.warn("create partitioned topic [{}] error: ", fullTopicName, e);
-            }
-
-            try {
                 currentPartitionNum = adminClient.topics().getPartitionedTopicMetadata(fullTopicName).partitions;
             } catch (PulsarAdminException e) {
-                log.warn("get partitioned topic metadata [{}] error: ", fullTopicName, e);
+                log.warn("create or get partitioned topic metadata [{}] error: ", fullTopicName, e);
             }
 
             // Build the routing table
@@ -497,83 +492,53 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
             String topicNodePath = String
                     .format(RopZkPath.TOPIC_BASE_PATH_MATCH, PulsarUtil.getNoDomainTopic(topicName));
 
-            byte[] content = new byte[0];
             try {
-                content = zkClient.getData(topicNodePath, null, null);
-            } catch (Exception e) {
-                log.warn("");
-            }
-            RopTopicContent ropTopicContent = null;
-            try {
-                ropTopicContent = jsonMapper.readValue(content, RopTopicContent.class);
-            } catch (IOException e) {
-                log.warn("");
-            }
-            assert ropTopicContent != null;
-            ropTopicContent.setConfig(tc);
-            ropTopicContent.setRouteMap(routeMap);
-            try {
+                byte[] content = zkClient.getData(topicNodePath, null, null);
+                RopTopicContent ropTopicContent = jsonMapper.readValue(content, RopTopicContent.class);
+                ropTopicContent.setConfig(tc);
+                ropTopicContent.setRouteMap(routeMap);
                 content = jsonMapper.writeValueAsBytes(ropTopicContent);
-            } catch (JsonProcessingException e) {
-                e.printStackTrace();
-            }
-            try {
                 zkClient.setData(topicNodePath, content, -1);
-            } catch (Exception e) {
-                log.warn("");
+            } catch (IOException | KeeperException | InterruptedException e) {
+                log.warn("Create or update zk topic node error: ", e);
             }
 
             // Create tenant node if not exist
             String tenantNodePath = String.format(RopZkPath.TENANT_BASE_PATH_MATCH, tenant);
-            Stat exists = null;
             try {
-                exists = zkClient.exists(tenantNodePath, false);
-            } catch (Exception exception) {
-                log.warn("The path [{}] not exists", tenantNodePath, exception);
-            }
-            if (exists == null) {
-                try {
+                Stat exists = zkClient.exists(tenantNodePath, false);
+                if (exists == null) {
                     zkClient.create(tenantNodePath,
                             "".getBytes(StandardCharsets.UTF_8),
                             ZooDefs.Ids.OPEN_ACL_UNSAFE,
                             CreateMode.PERSISTENT);
-                } catch (Exception createEx) {
-                    log.warn("create persistent path [{}] error", tenantNodePath, createEx);
                 }
+            } catch (KeeperException | InterruptedException e) {
+                log.warn("create topic node path [{}] error: ", tenantNodePath, e);
             }
 
             // Create namespaces node if not exist
             String nsNodePath = String.format(RopZkPath.NAMESPACES_BASE_PATH_MATCH, topicName.getNamespace());
-            Stat nsExists = null;
             try {
-                nsExists = zkClient.exists(nsNodePath, false);
-            } catch (Exception keeperException) {
-                log.warn("The ns path [{}] not exists", nsNodePath, keeperException);
-            }
-            if (nsExists == null) {
-                try {
+                Stat nsExists = zkClient.exists(nsNodePath, false);
+                if (nsExists == null) {
                     zkClient.create(nsNodePath,
                             "".getBytes(StandardCharsets.UTF_8),
                             ZooDefs.Ids.OPEN_ACL_UNSAFE,
                             CreateMode.PERSISTENT);
-                } catch (Exception nsCreateEx) {
-                    log.warn("create ns path [{}] error", nsNodePath, nsCreateEx);
+
                 }
+            } catch (KeeperException | InterruptedException e) {
+                log.warn("create ns node path [{}] error: ", tenantNodePath, e);
             }
 
             RopTopicContent newRopTopicContent = new RopTopicContent(tc, routeMap);
-            byte[] newContent = new byte[0];
             try {
-                newContent = jsonMapper.writeValueAsBytes(newRopTopicContent);
-            } catch (Exception jsonProcessingException) {
-                log.warn("encode newRopTopicContent error", jsonProcessingException);
-            }
-            try {
+                byte[] newContent = jsonMapper.writeValueAsBytes(newRopTopicContent);
                 zkClient.create(topicNodePath, newContent, ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
-            } catch (Exception createTopicEx) {
-                log.warn("create topic path [{}] error", topicNodePath, createTopicEx);
+            } catch (KeeperException | InterruptedException | JsonProcessingException e) {
+                log.warn("create topic path [{}] error", topicNodePath, e);
             }
-
         } else if (currentPartitionNum <= tc.getWriteQueueNums()) {
             log.info("RocketMQ topic {} has exist. Updating it ...", fullTopicName);
 
@@ -589,40 +554,26 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
             byte[] content = new byte[0];
             try {
                 content = zkClient.getData(topicNodePath, null, null);
-            } catch (Exception e) {
-                log.warn("get data from path [{}] error", topicNodePath, e);
-            }
-            RopTopicContent ropTopicContent = null;
-            try {
-                ropTopicContent = jsonMapper.readValue(content, RopTopicContent.class);
-            } catch (IOException e) {
-                log.warn("decode ropTopicContent error: ", e);
-            }
-            assert ropTopicContent != null;
-            Map<String, List<Integer>> routeMap = ropTopicContent.getRouteMap();
-
-            for (int i = currentPartitionNum; i < tc.getWriteQueueNums(); i++) {
-                InetSocketAddress brokerAddress = lookupTopic(fullTopicName + PARTITIONED_TOPIC_SUFFIX + i);
-                if (brokerAddress == null) {
-                    throw new RuntimeException("Update topic error.");
+                RopTopicContent ropTopicContent = jsonMapper.readValue(content, RopTopicContent.class);
+                Map<String, List<Integer>> routeMap = ropTopicContent.getRouteMap();
+                for (int i = currentPartitionNum; i < tc.getWriteQueueNums(); i++) {
+                    InetSocketAddress brokerAddress = lookupTopic(fullTopicName + PARTITIONED_TOPIC_SUFFIX + i);
+                    if (brokerAddress == null) {
+                        throw new RuntimeException("Update topic error.");
+                    }
+                    String brokerIp = brokerAddress.getHostName();
+                    List<Integer> partitions = routeMap
+                            .computeIfAbsent(brokerIp, (Function<String, List<Integer>>) s -> Lists.newLinkedList());
+                    partitions.add(i);
                 }
-                String brokerIp = brokerAddress.getHostName();
-                List<Integer> partitions = routeMap
-                        .computeIfAbsent(brokerIp, (Function<String, List<Integer>>) s -> Lists.newLinkedList());
-                partitions.add(i);
-            }
 
-            ropTopicContent.setConfig(tc);
-            ropTopicContent.setRouteMap(routeMap);
-            try {
+                ropTopicContent.setConfig(tc);
+                ropTopicContent.setRouteMap(routeMap);
+
                 content = jsonMapper.writeValueAsBytes(ropTopicContent);
-            } catch (JsonProcessingException e) {
-                log.warn("encode ropTopicContent error: ", e);
-            }
-            try {
                 zkClient.setData(topicNodePath, content, -1);
-            } catch (Exception e) {
-                log.warn("set data for path [{}] error", topicNodePath, e);
+            } catch (KeeperException | InterruptedException | IOException e) {
+                log.warn("get data from path [{}] error", topicNodePath, e);
             }
         }
 
