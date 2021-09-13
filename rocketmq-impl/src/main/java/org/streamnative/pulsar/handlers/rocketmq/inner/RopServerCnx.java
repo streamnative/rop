@@ -94,6 +94,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
     private static final String ropHandlerName = "RopServerCnxHandler";
     private final BrokerService service;
     private final ConcurrentLongHashMap<Producer<byte[]>> producers;
+    private final ConcurrentLongHashMap<MessageIdImpl> nextBeginOffsets;
     private final ConcurrentLongHashMap<Reader<byte[]>> readers;
     private final ConcurrentLongHashMap<MessageIdImpl> nextBeginOffsets;
     private final ConcurrentHashMap<String, ManagedCursor> cursors;
@@ -123,6 +124,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         this.remoteAddress = ctx.channel().remoteAddress();
         this.state = State.Connected;
         this.producers = new ConcurrentLongHashMap<>(2, 1);
+        this.nextBeginOffsets = new ConcurrentLongHashMap<>(2, 1);
         this.readers = new ConcurrentLongHashMap<>(2, 1);
         this.nextBeginOffsets = new ConcurrentLongHashMap<>(2, 1);
         this.lookMsgReaders = new HashMap<>();
@@ -150,6 +152,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         producers.clear();
         readers.clear();
         cursors.clear();
+        nextBeginOffsets.clear();
     }
 
     @Override
