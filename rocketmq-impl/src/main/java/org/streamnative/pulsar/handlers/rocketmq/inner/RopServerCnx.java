@@ -677,7 +677,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 } catch (Exception e) {
                     log.warn("create new reader error, group = [{}], topicName = [{}], startOffset=[{}].",
                             consumerGroupName, topicName, startOffset, e);
-                    throw new RuntimeException(e);
+                    throw new RuntimeException("Create reader error");
                 }
             }
 
@@ -703,7 +703,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             } catch (PulsarClientException e) {
                 log.warn("retrieve message error, group = [{}], topicName = [{}], startOffset=[{}].",
                         consumerGroupName, topicName, startOffset, e);
-                throw new RuntimeException(e);
+                throw new RuntimeException("reader message error");
             }
         }
 
