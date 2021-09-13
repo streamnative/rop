@@ -32,5 +32,4 @@ public class RopZkPath {
     public static final String GROUP_BASE_PATH = ROP_PATH + "/groups";
 
     public static final String GROUP_BASE_PATH_MATCH = GROUP_BASE_PATH + "/%s";
-
 }

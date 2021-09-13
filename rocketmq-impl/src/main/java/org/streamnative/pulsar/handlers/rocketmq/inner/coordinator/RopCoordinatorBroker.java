@@ -25,7 +25,5 @@ import lombok.extern.slf4j.Slf4j;
 @Data
 @EqualsAndHashCode
 public class RopCoordinatorBroker {
-
     public final String serviceUrl;
-
 }

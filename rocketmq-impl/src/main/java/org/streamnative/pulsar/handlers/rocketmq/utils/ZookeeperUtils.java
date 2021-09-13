@@ -28,13 +28,6 @@ import org.apache.zookeeper.data.Stat;
 @Slf4j
 public class ZookeeperUtils {
 
-    private static final String ROP_ROOT_PATH = "/rop/";
-    private static final String ROP_ROUTE_PATH = "/rop/routeMap/";
-    private static final String ROP_BROKERS_PATH = "/rop/brokers/";
-    private static final String ROP_COORDINATOR_PATH = "/rop/coordinator/";
-    private static final String ROP_TOPICS_PATH = "/rop/topics/";
-    private static final String ROP_GROUPS_PATH = "/rop/groups/";
-
     public static void createPersistentPath(ZooKeeper zooKeeper, String zkPath, String subPath, byte[] data) {
         try {
             if (zooKeeper.exists(zkPath, false) == null) {
@@ -52,6 +45,7 @@ public class ZookeeperUtils {
                     addSubPath, new String(data, StandardCharsets.UTF_8));
         } catch (Exception e) {
             log.error("create zookeeper path error", e);
+            throw new RuntimeException(e);
         }
     }
 

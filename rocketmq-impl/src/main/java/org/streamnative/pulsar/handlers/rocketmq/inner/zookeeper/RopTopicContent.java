@@ -28,9 +28,7 @@ import org.apache.rocketmq.common.TopicConfig;
 @AllArgsConstructor
 @NoArgsConstructor
 public class RopTopicContent {
-
     private TopicConfig config;
     // key: brokerIP, value: partition list
     private Map<String, List<Integer>> routeMap;
-
 }
