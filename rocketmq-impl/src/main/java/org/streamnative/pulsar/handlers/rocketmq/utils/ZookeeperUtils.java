@@ -49,6 +49,20 @@ public class ZookeeperUtils {
         }
     }
 
+    public static void checkAndCreatePath(ZooKeeper zooKeeper, String zkPath) {
+        try {
+            if (zooKeeper.exists(zkPath, false) == null) {
+                zooKeeper.create(zkPath,
+                        new byte[0],
+                        ZooDefs.Ids.OPEN_ACL_UNSAFE,
+                        CreateMode.PERSISTENT);
+            }
+        } catch (Exception e) {
+            log.error("create zookeeper path [{}] error",zkPath, e);
+            throw new RuntimeException("create zk persistent path error.");
+        }
+    }
+
     public static void createEphemeralPath(ZooKeeper zooKeeper, String zkPath, String subPath, byte[] data) {
         try {
             if (zooKeeper.exists(zkPath, false) == null) {
@@ -103,7 +117,8 @@ public class ZookeeperUtils {
                 log.info("the path [{}] be removed successfully", path);
             }
         } catch (Exception e) {
-            log.error("delete zookeeper path data error", e);
+            log.error("delete zookeeper path [{}] data error", path, e);
+            throw new RuntimeException("Delete subscription group config failed.");
         }
     }
 
