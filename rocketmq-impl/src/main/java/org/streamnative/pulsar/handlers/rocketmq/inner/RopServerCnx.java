@@ -100,6 +100,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
     private static final String ropHandlerName = "RopServerCnxHandler";
     private final BrokerService service;
     private final ConcurrentLongHashMap<Producer<byte[]>> producers;
+    private final ConcurrentLongHashMap<MessageIdImpl> nextBeginOffsets;
     private final ConcurrentHashMap<String, ManagedCursor> cursors;
     private final HashMap<Long, Reader<byte[]>> lookMsgReaders;
     private final RopEntryFormatter entryFormatter = new RopEntryFormatter();
@@ -127,6 +128,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         this.remoteAddress = ctx.channel().remoteAddress();
         this.state = State.Connected;
         this.producers = new ConcurrentLongHashMap<>(2, 1);
+        this.nextBeginOffsets = new ConcurrentLongHashMap<>(2, 1);
         this.lookMsgReaders = new HashMap<>();
         this.cursors = new ConcurrentHashMap<>(4);
         synchronized (this.ctx) {
@@ -613,6 +615,14 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
 
         if (managedCursor != null) {
             Position position = startPosition;
+
+            // seek offset if startOffset not equals lastNextBeginOffset
+            MessageIdImpl lastNextBeginOffset = nextBeginOffsets.get(readerId);
+            if (lastNextBeginOffset != null && !lastNextBeginOffset.equals(startOffset)) {
+                log.info("[{}] [{}] Seek offset to [{}]", consumerGroupName, pTopic, startOffset);
+                managedCursor.seek(startPosition);
+            }
+
             try {
                 List<Entry> entries = managedCursor.readEntries(maxMsgNums);
                 for (Entry entry : entries) {
@@ -647,6 +657,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         getResult.setMinOffset(minOffset);
         getResult.setStatus(status);
         getResult.setNextBeginOffset(nextBeginOffset);
+        nextBeginOffsets.put(readerId, MessageIdUtils.getMessageId(nextBeginOffset));
         return getResult;
     }
 
