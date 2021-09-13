@@ -95,6 +95,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
     private final BrokerService service;
     private final ConcurrentLongHashMap<Producer<byte[]>> producers;
     private final ConcurrentLongHashMap<Reader<byte[]>> readers;
+    private final ConcurrentLongHashMap<MessageIdImpl> nextBeginOffsets;
     private final ConcurrentHashMap<String, ManagedCursor> cursors;
     private final HashMap<Long, Reader<byte[]>> lookMsgReaders;
     private final RopEntryFormatter entryFormatter = new RopEntryFormatter();
@@ -123,6 +124,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         this.state = State.Connected;
         this.producers = new ConcurrentLongHashMap<>(2, 1);
         this.readers = new ConcurrentLongHashMap<>(2, 1);
+        this.nextBeginOffsets = new ConcurrentLongHashMap<>(2, 1);
         this.lookMsgReaders = new HashMap<>();
         this.cursors = new ConcurrentHashMap<>(4);
         synchronized (this.ctx) {
@@ -668,20 +670,28 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                         oldReader.closeAsync();
                     }
                 }
-            }
 
-            ReaderImpl<byte[]> reader = (ReaderImpl<byte[]>) this.readers.get(readerId);
-            for (int i = 0; i < maxMsgNums; i++) {
-                Message<byte[]> message = reader.readNext(1, TimeUnit.MILLISECONDS);
-                if (message != null) {
-                    MessageIdImpl curMsgId = (MessageIdImpl) message.getMessageId();
-                    if (startOffset.getLedgerId() != curMsgId.getLedgerId()
-                            || (startOffset.getEntryId()) != curMsgId.getEntryId()) {
-                        messageList.add(message);
+                ReaderImpl<byte[]> reader = (ReaderImpl<byte[]>) this.readers.get(readerId);
+
+                // seek offset if startOffset not equals lastNextBeginOffset
+                MessageIdImpl lastNextBeginOffset = nextBeginOffsets.get(readerId);
+                if (lastNextBeginOffset != null && !lastNextBeginOffset.equals(startOffset)) {
+                    log.info("[{}] [{}] Seek offset to [{}]", consumerGroupName, pTopic, startOffset);
+                    reader.seek(startOffset);
+                }
+
+                for (int i = 0; i < maxMsgNums; i++) {
+                    Message<byte[]> message = reader.readNext(1, TimeUnit.MILLISECONDS);
+                    if (message != null) {
+                        MessageIdImpl curMsgId = (MessageIdImpl) message.getMessageId();
+                        if (startOffset.getLedgerId() != curMsgId.getLedgerId()
+                                || (startOffset.getEntryId()) != curMsgId.getEntryId()) {
+                            messageList.add(message);
+                        }
+                        nextBeginOffset = MessageIdUtils.getOffset((MessageIdImpl) message.getMessageId());
+                    } else {
+                        break;
                     }
-                    nextBeginOffset = MessageIdUtils.getOffset((MessageIdImpl) message.getMessageId());
-                } else {
-                    break;
                 }
             }
         } catch (Exception e) {
@@ -702,6 +712,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         getResult.setMinOffset(minOffset);
         getResult.setStatus(status);
         getResult.setNextBeginOffset(nextBeginOffset);
+        nextBeginOffsets.put(readerId, MessageIdUtils.getMessageId(nextBeginOffset));
         return getResult;
     }
 
