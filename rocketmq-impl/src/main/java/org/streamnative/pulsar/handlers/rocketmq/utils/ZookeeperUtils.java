@@ -45,7 +45,7 @@ public class ZookeeperUtils {
                     addSubPath, new String(data, StandardCharsets.UTF_8));
         } catch (Exception e) {
             log.error("create zookeeper path error", e);
-            throw new RuntimeException(e);
+            throw new RuntimeException("create zk persistent path error.");
         }
     }
 
