@@ -152,6 +152,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         cursors.values().forEach(v -> v.asyncClose(new Futures.CloseFuture(), null));
         producers.clear();
         cursors.clear();
+        nextBeginOffsets.clear();
     }
 
     @Override
