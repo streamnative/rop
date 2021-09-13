@@ -487,7 +487,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                     zkClient.setData(topicNodePath, content, -1);
                 } catch (KeeperException.NoNodeException e) {
                     // Create tenant node if not exist
-                    String tenantNodePath = String.format(RopZkPath.tenantBasePathMatch, tenant);
+                    String tenantNodePath = String.format(RopZkPath.topicBasePathMatch, tenant);
                     if (zkClient.exists(tenantNodePath, false) == null) {
                         try {
                             zkClient.create(tenantNodePath, "".getBytes(), ZooDefs.Ids.OPEN_ACL_UNSAFE,
@@ -499,7 +499,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                     }
 
                     // Create namespaces node if not exist
-                    String nsNodePath = String.format(RopZkPath.namespacesBasePathMatch, topicName.getNamespace());
+                    String nsNodePath = String.format(RopZkPath.topicBasePathMatch, topicName.getNamespace());
                     if (zkClient.exists(nsNodePath, false) == null) {
                         try {
                             zkClient.create(nsNodePath, "".getBytes(), ZooDefs.Ids.OPEN_ACL_UNSAFE,
