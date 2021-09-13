@@ -14,17 +14,11 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper;
 
-import java.nio.charset.StandardCharsets;
-import java.util.List;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.zookeeper.CreateMode;
-import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.Watcher;
-import org.apache.zookeeper.ZooDefs;
 import org.apache.zookeeper.ZooKeeper;
-import org.apache.zookeeper.data.Stat;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import org.streamnative.pulsar.handlers.rocketmq.utils.ZookeeperUtils;
 
@@ -46,28 +40,16 @@ public class RopZkClient implements Watcher {
         this.zooKeeper = brokerController.getBrokerService().pulsar().getZkClient();
 
         // init rop zk node
-        ZookeeperUtils.createPersistentPath(zooKeeper,
-                RopZkPath.ROP_PATH,
-                "",
-                "".getBytes(StandardCharsets.UTF_8));
+        ZookeeperUtils.createPersistentNodeIfNotExist(zooKeeper, RopZkPath.ROP_PATH);
 
         // init broker zk node
-        ZookeeperUtils.createPersistentPath(zooKeeper,
-                RopZkPath.BROKER_PATH,
-                "",
-                "".getBytes(StandardCharsets.UTF_8));
+        ZookeeperUtils.createPersistentNodeIfNotExist(zooKeeper, RopZkPath.BROKER_PATH);
 
         // init topic zk node
-        ZookeeperUtils.createPersistentPath(zooKeeper,
-                RopZkPath.TOPIC_BASE_PATH,
-                "",
-                "".getBytes(StandardCharsets.UTF_8));
+        ZookeeperUtils.createPersistentNodeIfNotExist(zooKeeper, RopZkPath.TOPIC_BASE_PATH);
 
         // init group zk node
-        ZookeeperUtils.createPersistentPath(zooKeeper,
-                RopZkPath.GROUP_BASE_PATH,
-                "",
-                "".getBytes(StandardCharsets.UTF_8));
+        ZookeeperUtils.createPersistentNodeIfNotExist(zooKeeper, RopZkPath.GROUP_BASE_PATH);
     }
 
     @Override

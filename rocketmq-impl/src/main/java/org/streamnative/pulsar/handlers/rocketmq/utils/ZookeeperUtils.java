@@ -18,6 +18,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.zookeeper.CreateMode;
+import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.ZooDefs;
 import org.apache.zookeeper.ZooKeeper;
 import org.apache.zookeeper.data.Stat;
@@ -28,16 +29,29 @@ import org.apache.zookeeper.data.Stat;
 @Slf4j
 public class ZookeeperUtils {
 
+    public static void createPersistentNodeIfNotExist(ZooKeeper zooKeeper, String zkPath) {
+        createPersistentNodeIfNotExist(zooKeeper, zkPath, new byte[0]);
+    }
+
+    public static void createPersistentNodeIfNotExist(ZooKeeper zooKeeper, String zkPath, byte[] content) {
+        try {
+            zooKeeper.create(zkPath, content, ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
+        } catch (KeeperException.NodeExistsException e) {
+            log.debug("Zookeeper path {} has exist.", zkPath);
+        } catch (Exception e) {
+            log.error("Create zookeeper path [{}] error", zkPath, e);
+            throw new RuntimeException("Create zookeeper path [" + zkPath + "] error.");
+        }
+    }
+
     public static void createPersistentPath(ZooKeeper zooKeeper, String zkPath, String subPath, byte[] data) {
         try {
             if (zooKeeper.exists(zkPath, false) == null) {
-                zooKeeper.create(zkPath,
-                        new byte[0], ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
+                zooKeeper.create(zkPath, new byte[0], ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
             }
             String addSubPath = zkPath + subPath;
             if (zooKeeper.exists(addSubPath, false) == null) {
-                zooKeeper.create(addSubPath,
-                        data, ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
+                zooKeeper.create(addSubPath, data, ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
             } else {
                 zooKeeper.setData(addSubPath, data, -1);
             }
@@ -58,7 +72,7 @@ public class ZookeeperUtils {
                         CreateMode.PERSISTENT);
             }
         } catch (Exception e) {
-            log.error("create zookeeper path [{}] error",zkPath, e);
+            log.error("create zookeeper path [{}] error", zkPath, e);
             throw new RuntimeException("create zk persistent path error.");
         }
     }
@@ -110,14 +124,11 @@ public class ZookeeperUtils {
 
     public static void deleteData(ZooKeeper zooKeeper, String path) {
         try {
-            Stat zkStat = zooKeeper.exists(path, false);
-            if (null != zkStat) {
-                // Specify the version to be deleted, -1 means delete all versions
-                zooKeeper.delete(path, -1);
-                log.info("the path [{}] be removed successfully", path);
-            }
+            zooKeeper.delete(path, -1);
+        } catch (KeeperException.NoNodeException e) {
+            log.debug("Zk path [{}] has deleted.", path);
         } catch (Exception e) {
-            log.error("delete zookeeper path [{}] data error", path, e);
+            log.error("Delete zookeeper path [{}] error", path, e);
             throw new RuntimeException("Delete subscription group config failed.");
         }
     }

@@ -14,7 +14,6 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.coordinator;
 
-import java.nio.charset.StandardCharsets;
 import lombok.extern.slf4j.Slf4j;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkClient;
@@ -26,6 +25,7 @@ import org.streamnative.pulsar.handlers.rocketmq.utils.ZookeeperUtils;
  */
 @Slf4j
 public class RopBroker {
+
     private final RopZkClient ropZkClient;
     private final String zkNodePath;
 
@@ -35,10 +35,7 @@ public class RopBroker {
     }
 
     public void start() {
-        ZookeeperUtils.createPersistentPath(ropZkClient.getZooKeeper(),
-                zkNodePath,
-                "",
-                "".getBytes(StandardCharsets.UTF_8));
+        ZookeeperUtils.createPersistentNodeIfNotExist(ropZkClient.getZooKeeper(), zkNodePath);
     }
 
     public void close() {

@@ -18,7 +18,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.RemovalNotification;
-import java.nio.charset.StandardCharsets;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -105,14 +104,14 @@ public class SubscriptionGroupManager {
         } catch (KeeperException.NoNodeException e) {
             try {
                 String tenantNodePath = String.format(RopZkPath.GROUP_BASE_PATH_MATCH, topicName.getTenant());
-                ZookeeperUtils.checkAndCreatePath(zkClient, tenantNodePath);
+                ZookeeperUtils.createPersistentNodeIfNotExist(zkClient, tenantNodePath);
 
                 String nsNodePath = String.format(RopZkPath.GROUP_BASE_PATH_MATCH, topicName.getNamespace());
-                ZookeeperUtils.checkAndCreatePath(zkClient, nsNodePath);
+                ZookeeperUtils.createPersistentNodeIfNotExist(zkClient, nsNodePath);
 
                 RopGroupContent ropGroupContent = new RopGroupContent(config);
                 byte[] content = jsonMapper.writeValueAsBytes(ropGroupContent);
-                ZookeeperUtils.createPersistentPath(zkClient, groupNodePath, "", content);
+                ZookeeperUtils.createPersistentNodeIfNotExist(zkClient, groupNodePath, content);
                 subscriptionGroupTableCache.put(clientGroupName, ropGroupContent.getConfig());
             } catch (Exception ee) {
                 log.error("Update subscription group [{}] config error.", config.getGroupName(), ee);
@@ -135,9 +134,8 @@ public class SubscriptionGroupManager {
 
         try {
             String groupNodePath = String.format(RopZkPath.GROUP_BASE_PATH_MATCH, clientGroupName.getPulsarGroupName());
-            String content = ZookeeperUtils.getData(zkClient, groupNodePath, "");
-            RopGroupContent ropGroupContent = jsonMapper
-                    .readValue(content.getBytes(StandardCharsets.UTF_8), RopGroupContent.class);
+            byte[] content = zkClient.getData(groupNodePath, null, null);
+            RopGroupContent ropGroupContent = jsonMapper.readValue(content, RopGroupContent.class);
             subscriptionGroupTableCache.put(clientGroupName, ropGroupContent.getConfig());
             return ropGroupContent.getConfig();
         } catch (Exception e) {

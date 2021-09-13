@@ -23,7 +23,6 @@ import com.google.common.base.Joiner;
 import com.google.common.collect.Sets;
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
@@ -71,7 +70,6 @@ import org.apache.rocketmq.common.TopicConfig;
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.ZooDefs;
-import org.apache.zookeeper.data.Stat;
 import org.streamnative.pulsar.handlers.rocketmq.inner.InternalProducer;
 import org.streamnative.pulsar.handlers.rocketmq.inner.InternalServerCnx;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
@@ -81,6 +79,7 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopTopicContent
 import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkPath;
 import org.streamnative.pulsar.handlers.rocketmq.utils.PulsarUtil;
 import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
+import org.streamnative.pulsar.handlers.rocketmq.utils.ZookeeperUtils;
 import org.testng.collections.Lists;
 import org.testng.collections.Maps;
 
@@ -506,32 +505,11 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
             } catch (KeeperException.NoNodeException e) {
                 // Create tenant node if not exist
                 String tenantNodePath = String.format(RopZkPath.TOPIC_BASE_PATH_MATCH, tenant);
-                try {
-                    Stat exists = zkClient.exists(tenantNodePath, false);
-                    if (exists == null) {
-                        zkClient.create(tenantNodePath,
-                                "".getBytes(StandardCharsets.UTF_8),
-                                ZooDefs.Ids.OPEN_ACL_UNSAFE,
-                                CreateMode.PERSISTENT);
-                    }
-                } catch (KeeperException | InterruptedException tenantNodeEx) {
-                    log.warn("create topic node path [{}] error: ", tenantNodePath, tenantNodeEx);
-                }
+                ZookeeperUtils.createPersistentNodeIfNotExist(zkClient, tenantNodePath);
 
                 // Create namespaces node if not exist
                 String nsNodePath = String.format(RopZkPath.TOPIC_BASE_PATH_MATCH, topicName.getNamespace());
-                try {
-                    Stat nsExists = zkClient.exists(nsNodePath, false);
-                    if (nsExists == null) {
-                        zkClient.create(nsNodePath,
-                                "".getBytes(StandardCharsets.UTF_8),
-                                ZooDefs.Ids.OPEN_ACL_UNSAFE,
-                                CreateMode.PERSISTENT);
-
-                    }
-                } catch (KeeperException | InterruptedException nsNodeEx) {
-                    log.warn("create ns node path [{}] error: ", tenantNodePath, nsNodeEx);
-                }
+                ZookeeperUtils.createPersistentNodeIfNotExist(zkClient, nsNodePath);
 
                 RopTopicContent newRopTopicContent = new RopTopicContent(tc, routeMap);
                 try {
@@ -539,6 +517,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                     zkClient.create(topicNodePath, newContent, ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
                 } catch (KeeperException | InterruptedException | JsonProcessingException ex) {
                     log.warn("create topic path [{}] error", topicNodePath, ex);
+                    throw new RuntimeException("Create topic error.");
                 }
             } catch (IOException | KeeperException | InterruptedException e) {
                 log.warn("Create or update zk topic node error: ", e);
@@ -606,7 +585,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
      */
     public void deleteTopic(final String topic) {
         String fullTopicName = RocketMQTopic.getPulsarOrigNoDomainTopic(topic);
-        log.info("Create or update topic [{}].", fullTopicName);
+        log.info("Delete topic [{}].", fullTopicName);
 
         try {
             PartitionedTopicMetadata topicMetadata = adminClient.topics().getPartitionedTopicMetadata(fullTopicName);
@@ -619,7 +598,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
             try {
                 zkClient.delete(topicNodePath, -1);
             } catch (KeeperException.NoNodeException ignore) {
-
+                log.info("Topic [{}] has deleted.", topic);
             }
         } catch (Exception e) {
             log.warn("[DELETE] Topic {} create or update partition failed", fullTopicName, e);
