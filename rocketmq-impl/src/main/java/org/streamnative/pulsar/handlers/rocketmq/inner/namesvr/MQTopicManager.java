@@ -460,9 +460,12 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
         try {
             topicMetadata = adminClient.topics().getPartitionedTopicMetadata(fullTopicName);
         } catch (PulsarAdminException e) {
-            log.warn("get partitioned topic metadata error: ", e);
+            log.warn("get partitioned topic metadata error", e);
         }
-        assert topicMetadata != null;
+        if (topicMetadata == null) {
+            throw new RuntimeException("Get partitioned topic metadata error");
+        }
+
         int currentPartitionNum = topicMetadata.partitions;
 
         // If the partition < 0, the topic does not exist, let us to create topic.
@@ -473,6 +476,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                 currentPartitionNum = adminClient.topics().getPartitionedTopicMetadata(fullTopicName).partitions;
             } catch (PulsarAdminException e) {
                 log.warn("create or get partitioned topic metadata [{}] error: ", fullTopicName, e);
+                throw new RuntimeException("Create topic error.");
             }
 
             // Build the routing table
@@ -538,7 +542,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                 }
             } catch (IOException | KeeperException | InterruptedException e) {
                 log.warn("Create or update zk topic node error: ", e);
-                throw new RuntimeException("Create or update zk topic node error: ", e);
+                throw new RuntimeException("Create or update zk topic node error.");
             }
 
         } else if (currentPartitionNum <= tc.getWriteQueueNums()) {
@@ -548,6 +552,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                 adminClient.topics().updatePartitionedTopic(fullTopicName, tc.getWriteQueueNums());
             } catch (PulsarAdminException e) {
                 log.warn("update partitioned topic [{}] error: ", fullTopicName, e);
+                throw new RuntimeException("Update topic error.");
             }
 
             String topicNodePath = String
@@ -575,6 +580,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                 zkClient.setData(topicNodePath, content, -1);
             } catch (KeeperException | InterruptedException | IOException e) {
                 log.warn("get data from path [{}] error", topicNodePath, e);
+                throw new RuntimeException("Update topic error.");
             }
         }
 

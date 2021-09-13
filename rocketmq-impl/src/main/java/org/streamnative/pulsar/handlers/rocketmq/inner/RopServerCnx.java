@@ -677,6 +677,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 } catch (Exception e) {
                     log.warn("create new reader error, group = [{}], topicName = [{}], startOffset=[{}].",
                             consumerGroupName, topicName, startOffset, e);
+                    throw new RuntimeException("Create reader error");
                 }
             }
 
@@ -691,8 +692,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 }
 
                 for (int i = 0; i < maxMsgNums; i++) {
-                    Message<byte[]> message = null;
-                    message = reader.readNext(1, TimeUnit.MILLISECONDS);
+                    Message<byte[]> message = reader.readNext(1, TimeUnit.MILLISECONDS);
                     if (message != null) {
                         messageList.add(message);
                         nextBeginOffset = MessageIdUtils.getOffset((MessageIdImpl) message.getMessageId());
