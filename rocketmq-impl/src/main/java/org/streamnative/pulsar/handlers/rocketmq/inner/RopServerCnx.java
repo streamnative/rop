@@ -703,6 +703,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             } catch (PulsarClientException e) {
                 log.warn("retrieve message error, group = [{}], topicName = [{}], startOffset=[{}].",
                         consumerGroupName, topicName, startOffset, e);
+                throw new RuntimeException("reader message error");
             }
         }
 

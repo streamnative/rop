@@ -19,17 +19,15 @@ import lombok.extern.slf4j.Slf4j;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkClient;
 import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkPath;
+import org.streamnative.pulsar.handlers.rocketmq.utils.ZookeeperUtils;
 
 /**
  * Rop broker.
  */
 @Slf4j
 public class RopBroker {
-
     private final RopZkClient ropZkClient;
-
     private final String zkNodePath;
-
 
     public RopBroker(RocketMQBrokerController rocketBroker, RopZkClient ropZkClient) {
         this.ropZkClient = ropZkClient;
@@ -37,16 +35,18 @@ public class RopBroker {
     }
 
     public void start() {
-        ropZkClient.create(zkNodePath, "".getBytes(StandardCharsets.UTF_8));
+        ZookeeperUtils.createPersistentPath(ropZkClient.getZooKeeper(),
+                zkNodePath,
+                "",
+                "".getBytes(StandardCharsets.UTF_8));
     }
 
     public void close() {
         try {
-            ropZkClient.delete(zkNodePath);
+            ZookeeperUtils.deleteData(ropZkClient.getZooKeeper(), zkNodePath);
         } catch (Throwable t) {
             log.warn("Failed to delete rop broker.", t);
         }
         log.info("RopBroker stopped");
     }
-
 }

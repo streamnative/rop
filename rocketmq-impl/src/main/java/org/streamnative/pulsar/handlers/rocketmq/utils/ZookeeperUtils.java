@@ -28,13 +28,6 @@ import org.apache.zookeeper.data.Stat;
 @Slf4j
 public class ZookeeperUtils {
 
-    private static final String ROP_ROOT_PATH = "/rop/";
-    private static final String ROP_ROUTE_PATH = "/rop/routeMap/";
-    private static final String ROP_BROKERS_PATH = "/rop/brokers/";
-    private static final String ROP_COORDINATOR_PATH = "/rop/coordinator/";
-    private static final String ROP_TOPICS_PATH = "/rop/topics/";
-    private static final String ROP_GROUPS_PATH = "/rop/groups/";
-
     public static void createPersistentPath(ZooKeeper zooKeeper, String zkPath, String subPath, byte[] data) {
         try {
             if (zooKeeper.exists(zkPath, false) == null) {
@@ -52,6 +45,21 @@ public class ZookeeperUtils {
                     addSubPath, new String(data, StandardCharsets.UTF_8));
         } catch (Exception e) {
             log.error("create zookeeper path error", e);
+            throw new RuntimeException("create zk persistent path error.");
+        }
+    }
+
+    public static void checkAndCreatePath(ZooKeeper zooKeeper, String zkPath) {
+        try {
+            if (zooKeeper.exists(zkPath, false) == null) {
+                zooKeeper.create(zkPath,
+                        new byte[0],
+                        ZooDefs.Ids.OPEN_ACL_UNSAFE,
+                        CreateMode.PERSISTENT);
+            }
+        } catch (Exception e) {
+            log.error("create zookeeper path [{}] error",zkPath, e);
+            throw new RuntimeException("create zk persistent path error.");
         }
     }
 
@@ -109,7 +117,8 @@ public class ZookeeperUtils {
                 log.info("the path [{}] be removed successfully", path);
             }
         } catch (Exception e) {
-            log.error("delete zookeeper path data error", e);
+            log.error("delete zookeeper path [{}] data error", path, e);
+            throw new RuntimeException("Delete subscription group config failed.");
         }
     }
 

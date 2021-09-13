@@ -26,7 +26,5 @@ import org.apache.rocketmq.common.subscription.SubscriptionGroupConfig;
 @AllArgsConstructor
 @NoArgsConstructor
 public class RopGroupContent {
-
     private SubscriptionGroupConfig config;
-
 }

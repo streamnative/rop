@@ -28,14 +28,13 @@ import org.apache.pulsar.common.naming.TopicName;
 import org.apache.rocketmq.common.DataVersion;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.subscription.SubscriptionGroupConfig;
-import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException;
-import org.apache.zookeeper.ZooDefs;
 import org.apache.zookeeper.ZooKeeper;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupName;
 import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopGroupContent;
 import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkPath;
+import org.streamnative.pulsar.handlers.rocketmq.utils.ZookeeperUtils;
 
 /**
  * Subscription group manager.
@@ -106,37 +105,15 @@ public class SubscriptionGroupManager {
         } catch (KeeperException.NoNodeException e) {
             try {
                 String tenantNodePath = String.format(RopZkPath.GROUP_BASE_PATH_MATCH, topicName.getTenant());
-                if (zkClient.exists(tenantNodePath, false) == null) {
-                    try {
-                        zkClient.create(tenantNodePath,
-                                "".getBytes(StandardCharsets.UTF_8),
-                                ZooDefs.Ids.OPEN_ACL_UNSAFE,
-                                CreateMode.PERSISTENT);
-                    } catch (KeeperException.NodeExistsException ignore) {
-
-                    }
-                }
+                ZookeeperUtils.checkAndCreatePath(zkClient, tenantNodePath);
 
                 String nsNodePath = String.format(RopZkPath.GROUP_BASE_PATH_MATCH, topicName.getNamespace());
-                if (zkClient.exists(nsNodePath, false) == null) {
-                    try {
-                        zkClient.create(nsNodePath,
-                                "".getBytes(StandardCharsets.UTF_8),
-                                ZooDefs.Ids.OPEN_ACL_UNSAFE,
-                                CreateMode.PERSISTENT);
-                    } catch (KeeperException.NodeExistsException ignore) {
+                ZookeeperUtils.checkAndCreatePath(zkClient, nsNodePath);
 
-                    }
-                }
-
-                try {
-                    RopGroupContent ropGroupContent = new RopGroupContent(config);
-                    byte[] content = jsonMapper.writeValueAsBytes(ropGroupContent);
-                    zkClient.create(groupNodePath, content, ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
-                    subscriptionGroupTableCache.put(clientGroupName, ropGroupContent.getConfig());
-                } catch (KeeperException.NodeExistsException ignore) {
-
-                }
+                RopGroupContent ropGroupContent = new RopGroupContent(config);
+                byte[] content = jsonMapper.writeValueAsBytes(ropGroupContent);
+                ZookeeperUtils.createPersistentPath(zkClient, groupNodePath, "", content);
+                subscriptionGroupTableCache.put(clientGroupName, ropGroupContent.getConfig());
             } catch (Exception ee) {
                 log.error("Update subscription group [{}] config error.", config.getGroupName(), ee);
                 throw new RuntimeException("Update subscription group config failed.");
@@ -158,8 +135,9 @@ public class SubscriptionGroupManager {
 
         try {
             String groupNodePath = String.format(RopZkPath.GROUP_BASE_PATH_MATCH, clientGroupName.getPulsarGroupName());
-            byte[] content = zkClient.getData(groupNodePath, null, null);
-            RopGroupContent ropGroupContent = jsonMapper.readValue(content, RopGroupContent.class);
+            String content = ZookeeperUtils.getData(zkClient, groupNodePath, "");
+            RopGroupContent ropGroupContent = jsonMapper
+                    .readValue(content.getBytes(StandardCharsets.UTF_8), RopGroupContent.class);
             subscriptionGroupTableCache.put(clientGroupName, ropGroupContent.getConfig());
             return ropGroupContent.getConfig();
         } catch (Exception e) {
@@ -167,10 +145,7 @@ public class SubscriptionGroupManager {
                     || MixAll.isSysConsumerGroup(group)) {
                 subscriptionGroupConfig = new SubscriptionGroupConfig();
                 subscriptionGroupConfig.setGroupName(group);
-                try {
-                    updateSubscriptionGroupConfig(subscriptionGroupConfig);
-                } catch (Exception ignore) {
-                }
+                updateSubscriptionGroupConfig(subscriptionGroupConfig);
                 return subscriptionGroupConfig;
             }
             log.error("Find subscription group [{}] config error.", group, e);
@@ -186,15 +161,8 @@ public class SubscriptionGroupManager {
         ClientGroupName clientGroupName = new ClientGroupName(group);
 
         String groupNodePath = String.format(RopZkPath.GROUP_BASE_PATH_MATCH, clientGroupName.getPulsarGroupName());
-        try {
-            zkClient.delete(groupNodePath, -1);
-            subscriptionGroupTableCache.invalidate(clientGroupName);
-        } catch (KeeperException.NoNodeException ignore) {
-
-        } catch (Exception e) {
-            log.error("Delete subscription group [{}] config error.", group, e);
-            throw new RuntimeException("Delete subscription group config failed.");
-        }
+        ZookeeperUtils.deleteData(zkClient, groupNodePath);
+        subscriptionGroupTableCache.invalidate(clientGroupName);
     }
 
     public DataVersion getDataVersion() {

@@ -16,6 +16,7 @@ package org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException;
@@ -25,15 +26,16 @@ import org.apache.zookeeper.ZooDefs;
 import org.apache.zookeeper.ZooKeeper;
 import org.apache.zookeeper.data.Stat;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
+import org.streamnative.pulsar.handlers.rocketmq.utils.ZookeeperUtils;
 
 /**
  * Rop Zk client.
  */
 @Slf4j
+@Data
 public class RopZkClient implements Watcher {
 
     private final RocketMQBrokerController brokerController;
-
     private ZooKeeper zooKeeper;
 
     public RopZkClient(RocketMQBrokerController brokerController) {
@@ -43,107 +45,29 @@ public class RopZkClient implements Watcher {
     public void start() {
         this.zooKeeper = brokerController.getBrokerService().pulsar().getZkClient();
 
-        /*
-         * init rop zk node
-         */
-        try {
-            Stat stat = zooKeeper.exists(RopZkPath.ROP_PATH, false);
-            if (stat == null) {
-                zooKeeper.create(RopZkPath.ROP_PATH,
-                        "".getBytes(StandardCharsets.UTF_8),
-                        ZooDefs.Ids.OPEN_ACL_UNSAFE,
-                        CreateMode.PERSISTENT);
-            }
-        } catch (KeeperException.NodeExistsException e) {
-            log.info("Zk node [{}] has exist.", RopZkPath.ROP_PATH);
-        } catch (Exception e) {
-            log.error("Failed to create zk node {}", RopZkPath.ROP_PATH, e);
-            throw new RuntimeException(e);
-        }
+        // init rop zk node
+        ZookeeperUtils.createPersistentPath(zooKeeper,
+                RopZkPath.ROP_PATH,
+                "",
+                "".getBytes(StandardCharsets.UTF_8));
 
-        try {
-            Stat stat = zooKeeper.exists(RopZkPath.BROKER_PATH, false);
-            if (stat == null) {
-                zooKeeper.create(RopZkPath.BROKER_PATH,
-                        "".getBytes(StandardCharsets.UTF_8),
-                        ZooDefs.Ids.OPEN_ACL_UNSAFE,
-                        CreateMode.PERSISTENT);
-            }
-        } catch (KeeperException.NodeExistsException e) {
-            log.info("Zk node [{}] has exist.", RopZkPath.BROKER_PATH);
-        } catch (Exception e) {
-            log.error("Failed to create zk node {}", RopZkPath.BROKER_PATH, e);
-            throw new RuntimeException(e);
-        }
+        // init broker zk node
+        ZookeeperUtils.createPersistentPath(zooKeeper,
+                RopZkPath.BROKER_PATH,
+                "",
+                "".getBytes(StandardCharsets.UTF_8));
 
-        try {
-            Stat stat = zooKeeper.exists(RopZkPath.TOPIC_BASE_PATH, false);
-            if (stat == null) {
-                zooKeeper.create(RopZkPath.TOPIC_BASE_PATH,
-                        "".getBytes(StandardCharsets.UTF_8),
-                        ZooDefs.Ids.OPEN_ACL_UNSAFE,
-                        CreateMode.PERSISTENT);
-            }
-        } catch (KeeperException.NodeExistsException e) {
-            log.info("Zk node [{}] has exist.", RopZkPath.TOPIC_BASE_PATH);
-        } catch (Exception e) {
-            log.error("Failed to create zk node {}", RopZkPath.TOPIC_BASE_PATH, e);
-            throw new RuntimeException(e);
-        }
+        // init topic zk node
+        ZookeeperUtils.createPersistentPath(zooKeeper,
+                RopZkPath.TOPIC_BASE_PATH,
+                "",
+                "".getBytes(StandardCharsets.UTF_8));
 
-        try {
-            Stat stat = zooKeeper.exists(RopZkPath.GROUP_BASE_PATH, false);
-            if (stat == null) {
-                zooKeeper.create(RopZkPath.GROUP_BASE_PATH,
-                        "".getBytes(StandardCharsets.UTF_8),
-                        ZooDefs.Ids.OPEN_ACL_UNSAFE,
-                        CreateMode.PERSISTENT);
-            }
-        } catch (KeeperException.NodeExistsException e) {
-            log.info("Zk node [{}] has exist.", RopZkPath.GROUP_BASE_PATH);
-        } catch (Exception e) {
-            log.error("Failed to create zk node {}", RopZkPath.GROUP_BASE_PATH, e);
-            throw new RuntimeException(e);
-        }
-    }
-
-    public void create(String path, byte[] content) {
-        try {
-            zooKeeper.create(path, content, ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
-        } catch (KeeperException.NodeExistsException e) {
-            log.info("Zk node [{}] has exist.", RopZkPath.GROUP_BASE_PATH);
-        } catch (Exception e) {
-            log.error("Failed to create zk node {}", RopZkPath.GROUP_BASE_PATH, e);
-            throw new RuntimeException(e);
-        }
-    }
-
-    public List<String> getChildren(String path) {
-        try {
-            return zooKeeper.getChildren(path, null);
-        } catch (KeeperException | InterruptedException e) {
-            log.error("Failed to get children from {}: {}", path, e);
-            throw new RuntimeException(e);
-        }
-    }
-
-
-    public byte[] getData(String path) {
-        try {
-            return zooKeeper.getData(path, null, null);
-        } catch (KeeperException | InterruptedException e) {
-            log.error("Failed to get data from {}: {}", path, e);
-            throw new RuntimeException(e);
-        }
-    }
-
-    public void delete(String path) {
-        try {
-            zooKeeper.delete(path, -1);
-        } catch (KeeperException | InterruptedException e) {
-            log.error("Failed to get data from {}: {}", path, e);
-            throw new RuntimeException(e);
-        }
+        // init group zk node
+        ZookeeperUtils.createPersistentPath(zooKeeper,
+                RopZkPath.GROUP_BASE_PATH,
+                "",
+                "".getBytes(StandardCharsets.UTF_8));
     }
 
     @Override
