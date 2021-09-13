@@ -684,11 +684,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 for (int i = 0; i < maxMsgNums; i++) {
                     Message<byte[]> message = reader.readNext(1, TimeUnit.MILLISECONDS);
                     if (message != null) {
-                        MessageIdImpl curMsgId = (MessageIdImpl) message.getMessageId();
-                        if (startOffset.getLedgerId() != curMsgId.getLedgerId()
-                                || (startOffset.getEntryId()) != curMsgId.getEntryId()) {
-                            messageList.add(message);
-                        }
+                        messageList.add(message);
                         nextBeginOffset = MessageIdUtils.getOffset((MessageIdImpl) message.getMessageId());
                     } else {
                         break;
