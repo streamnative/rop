@@ -551,9 +551,8 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
             String topicNodePath = String
                     .format(RopZkPath.TOPIC_BASE_PATH_MATCH, PulsarUtil.getNoDomainTopic(topicName));
 
-            byte[] content = new byte[0];
             try {
-                content = zkClient.getData(topicNodePath, null, null);
+                byte[] content = zkClient.getData(topicNodePath, null, null);
                 RopTopicContent ropTopicContent = jsonMapper.readValue(content, RopTopicContent.class);
                 Map<String, List<Integer>> routeMap = ropTopicContent.getRouteMap();
                 for (int i = currentPartitionNum; i < tc.getWriteQueueNums(); i++) {
