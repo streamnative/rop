@@ -18,6 +18,7 @@ import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -29,6 +30,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.compress.utils.Lists;
 import org.apache.logging.log4j.util.Strings;
 import org.apache.pulsar.broker.PulsarServerException;
 import org.apache.pulsar.client.admin.PulsarAdmin;
@@ -751,6 +753,11 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
             Map<String, List<Integer>> topicBrokerAddr = brokerController.getTopicConfigManager()
                     .getTopicRoute(topicName, Strings.EMPTY);
             List<Integer> queueList = topicBrokerAddr.get(brokerController.getBrokerHost());
+
+            if (queueList == null) {
+                log.warn("getConsumeStats not found this queue, topic: {}", topic);
+                queueList = Collections.emptyList();
+            }
 
             for (int i = 0; i < queueList.size(); i++) {
 
