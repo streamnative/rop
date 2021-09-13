@@ -753,10 +753,6 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
             List<Integer> queueList = topicBrokerAddr.get(brokerController.getBrokerHost());
 
             for (int i = 0; i < queueList.size(); i++) {
-                if (!topicBrokerAddr.containsKey(i)) {
-                    log.debug("getConsumeStats not found this queue, topic: {}, queue: {}", topic, i);
-                    continue;
-                }
 
                 // skip this queue if this broker not owner for the request queueId topic
                 if (!this.brokerController.getTopicConfigManager().isPartitionTopicOwner(topicName, i)) {

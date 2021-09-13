@@ -18,6 +18,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.RemovalNotification;
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -107,7 +108,9 @@ public class SubscriptionGroupManager {
                 String tenantNodePath = String.format(RopZkPath.groupBasePathMatch, topicName.getTenant());
                 if (zkClient.exists(tenantNodePath, false) == null) {
                     try {
-                        zkClient.create(tenantNodePath, "".getBytes(), ZooDefs.Ids.OPEN_ACL_UNSAFE,
+                        zkClient.create(tenantNodePath,
+                                "".getBytes(StandardCharsets.UTF_8),
+                                ZooDefs.Ids.OPEN_ACL_UNSAFE,
                                 CreateMode.PERSISTENT);
                     } catch (KeeperException.NodeExistsException ignore) {
 
@@ -117,7 +120,10 @@ public class SubscriptionGroupManager {
                 String nsNodePath = String.format(RopZkPath.groupBasePathMatch, topicName.getNamespace());
                 if (zkClient.exists(nsNodePath, false) == null) {
                     try {
-                        zkClient.create(nsNodePath, "".getBytes(), ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
+                        zkClient.create(nsNodePath,
+                                "".getBytes(StandardCharsets.UTF_8),
+                                ZooDefs.Ids.OPEN_ACL_UNSAFE,
+                                CreateMode.PERSISTENT);
                     } catch (KeeperException.NodeExistsException ignore) {
 
                     }

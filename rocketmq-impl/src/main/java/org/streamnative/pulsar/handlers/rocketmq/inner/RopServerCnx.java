@@ -650,43 +650,51 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
          * Read message use reader.
          */
         List<Message<byte[]>> messageList = new ArrayList<>();
-        try {
-            synchronized (pTopic.intern()) {
-                if (!this.readers.containsKey(readerId) || !this.readers.get(readerId).isConnected()) {
-                    if (startOffset.getEntryId() > -1) {
-                        startOffset = new MessageIdImpl(startOffset.getLedgerId(), startOffset.getEntryId() - 1,
-                                startOffset.getPartitionIndex());
-                    }
-                    Reader<byte[]> reader = this.service.pulsar().getClient().newReader()
+
+        synchronized (pTopic.intern()) {
+            if (!this.readers.containsKey(readerId) || !this.readers.get(readerId).isConnected()) {
+                if (startOffset.getEntryId() > -1) {
+                    startOffset = new MessageIdImpl(startOffset.getLedgerId(), startOffset.getEntryId() - 1,
+                            startOffset.getPartitionIndex());
+                }
+                Reader<byte[]> reader = null;
+                try {
+                    reader = this.service.pulsar().getClient().newReader()
                             .topic(pTopic)
                             .receiverQueueSize(maxMsgNums)
                             .startMessageId(startOffset)
                             .readerName(consumerGroupName + readerId)
                             .create();
-                    Reader<byte[]> oldReader = this.readers.put(readerId, reader);
-                    if (oldReader != null) {
-                        oldReader.closeAsync();
-                    }
+                } catch (Exception e) {
+                    log.warn("create new reader error, group = [{}], topicName = [{}], startOffset=[{}].",
+                            consumerGroupName, topicName, startOffset, e);
+                }
+                Reader<byte[]> oldReader = this.readers.put(readerId, reader);
+                if (oldReader != null) {
+                    oldReader.closeAsync();
                 }
             }
+        }
 
-            ReaderImpl<byte[]> reader = (ReaderImpl<byte[]>) this.readers.get(readerId);
-            for (int i = 0; i < maxMsgNums; i++) {
-                Message<byte[]> message = reader.readNext(1, TimeUnit.MILLISECONDS);
-                if (message != null) {
-                    MessageIdImpl curMsgId = (MessageIdImpl) message.getMessageId();
-                    if (startOffset.getLedgerId() != curMsgId.getLedgerId()
-                            || (startOffset.getEntryId()) != curMsgId.getEntryId()) {
-                        messageList.add(message);
-                    }
-                    nextBeginOffset = MessageIdUtils.getOffset((MessageIdImpl) message.getMessageId());
-                } else {
-                    break;
-                }
+        ReaderImpl<byte[]> reader = (ReaderImpl<byte[]>) this.readers.get(readerId);
+        for (int i = 0; i < maxMsgNums; i++) {
+            Message<byte[]> message = null;
+            try {
+                message = reader.readNext(1, TimeUnit.MILLISECONDS);
+            } catch (PulsarClientException e) {
+                log.warn("retrieve message error, group = [{}], topicName = [{}], startOffset=[{}].",
+                        consumerGroupName, topicName, startOffset, e);
             }
-        } catch (Exception e) {
-            log.warn("retrieve message error, group = [{}], topicName = [{}], startOffset=[{}].",
-                    consumerGroupName, topicName, startOffset, e);
+            if (message != null) {
+                MessageIdImpl curMsgId = (MessageIdImpl) message.getMessageId();
+                if (startOffset.getLedgerId() != curMsgId.getLedgerId()
+                        || (startOffset.getEntryId()) != curMsgId.getEntryId()) {
+                    messageList.add(message);
+                }
+                nextBeginOffset = MessageIdUtils.getOffset((MessageIdImpl) message.getMessageId());
+            } else {
+                break;
+            }
         }
 
         List<ByteBuffer> messagesBufferList = this.entryFormatter
