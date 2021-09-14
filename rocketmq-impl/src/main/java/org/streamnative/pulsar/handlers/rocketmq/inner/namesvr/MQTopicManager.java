@@ -524,7 +524,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                 throw new RuntimeException("Create or update zk topic node error.");
             }
 
-        } else if (currentPartitionNum <= tc.getWriteQueueNums()) {
+        } else if (currentPartitionNum < tc.getWriteQueueNums()) {
             log.info("RocketMQ topic {} has exist. Updating it ...", fullTopicName);
 
             try {
