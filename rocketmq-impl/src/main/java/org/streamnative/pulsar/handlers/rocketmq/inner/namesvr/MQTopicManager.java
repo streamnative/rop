@@ -524,14 +524,25 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                 throw new RuntimeException("Create or update zk topic node error.");
             }
 
-        } else if (currentPartitionNum < tc.getWriteQueueNums()) {
+        } else {
             log.info("RocketMQ topic {} has exist. Updating it ...", fullTopicName);
 
+            // expand partition
             try {
-                adminClient.topics().updatePartitionedTopic(fullTopicName, tc.getWriteQueueNums());
+                if (currentPartitionNum < tc.getWriteQueueNums()) {
+                    log.info("Expend partition for topic [{}], from [{}] to [{}].", fullTopicName, currentPartitionNum,
+                            tc.getWriteQueueNums());
+                    adminClient.topics().updatePartitionedTopic(fullTopicName, tc.getWriteQueueNums());
+                    currentPartitionNum = tc.getWriteQueueNums();
+                }
             } catch (PulsarAdminException e) {
-                log.warn("update partitioned topic [{}] error: ", fullTopicName, e);
+                log.warn("Expend partitioned for topic [{}] error.", fullTopicName, e);
                 throw new RuntimeException("Update topic error.");
+            }
+
+            // partition can not be shrink
+            if (currentPartitionNum > tc.getWriteQueueNums()) {
+                tc.setWriteQueueNums(currentPartitionNum);
             }
 
             String topicNodePath = String
@@ -541,7 +552,14 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                 byte[] content = zkClient.getData(topicNodePath, null, null);
                 RopTopicContent ropTopicContent = jsonMapper.readValue(content, RopTopicContent.class);
                 Map<String, List<Integer>> routeMap = ropTopicContent.getRouteMap();
-                for (int i = currentPartitionNum; i < tc.getWriteQueueNums(); i++) {
+                Set<Integer> currentPartition = Sets.newHashSet();
+                routeMap.forEach((k, v) -> currentPartition.addAll(v));
+
+                for (int i = 0; i < currentPartitionNum; i++) {
+                    if (currentPartition.contains(i)) {
+                        continue;
+                    }
+
                     InetSocketAddress brokerAddress = lookupTopic(fullTopicName + PARTITIONED_TOPIC_SUFFIX + i);
                     if (brokerAddress == null) {
                         throw new RuntimeException("Update topic error.");

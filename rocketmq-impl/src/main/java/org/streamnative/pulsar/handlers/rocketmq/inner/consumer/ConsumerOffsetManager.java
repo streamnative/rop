@@ -31,6 +31,7 @@ import org.apache.bookkeeper.mledger.Position;
 import org.apache.bookkeeper.mledger.impl.ManagedLedgerImpl;
 import org.apache.bookkeeper.mledger.impl.PositionImpl;
 import org.apache.pulsar.broker.service.persistent.PersistentTopic;
+import org.apache.pulsar.common.naming.TopicName;
 import org.apache.rocketmq.common.UtilAll;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.metadata.GroupMetaManager;
@@ -40,6 +41,7 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupName;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientTopicName;
 import org.streamnative.pulsar.handlers.rocketmq.utils.MessageIdUtils;
 import org.streamnative.pulsar.handlers.rocketmq.utils.OffsetFinder;
+import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 
 /**
  * Consumer offset manager.
@@ -48,9 +50,11 @@ import org.streamnative.pulsar.handlers.rocketmq.utils.OffsetFinder;
 public class ConsumerOffsetManager {
 
     private final GroupMetaManager groupMetaManager;
+    private final RocketMQBrokerController brokerController;
 
     public ConsumerOffsetManager(RocketMQBrokerController brokerController, GroupMetaManager groupMetaManager) {
         this.groupMetaManager = groupMetaManager;
+        this.brokerController = brokerController;
     }
 
     //restore topic cache from pulsar and offset info from pulsar
@@ -90,11 +94,15 @@ public class ConsumerOffsetManager {
 
     public void commitOffset(final String clientHost, final String group, final String topic, final int queueId,
             final long offset) {
-        groupMetaManager.commitOffset(group, topic, queueId, offset);
+        TopicName pulsarTopicName = new RocketMQTopic(topic).getPulsarTopicName();
+        int partitionId = brokerController.getTopicConfigManager().getPulsarPartition(pulsarTopicName, queueId);
+        groupMetaManager.commitOffset(group, topic, partitionId, offset);
     }
 
     public long queryOffset(final String group, final String topic, final int queueId) {
-        return groupMetaManager.queryOffset(group, topic, queueId);
+        TopicName pulsarTopicName = new RocketMQTopic(topic).getPulsarTopicName();
+        int partitionId = brokerController.getTopicConfigManager().getPulsarPartition(pulsarTopicName, queueId);
+        return groupMetaManager.queryOffset(group, topic, partitionId);
     }
 
     public Map<Integer, Long> queryMinOffsetInAllGroup(final String topic, final String filterGroups) {
