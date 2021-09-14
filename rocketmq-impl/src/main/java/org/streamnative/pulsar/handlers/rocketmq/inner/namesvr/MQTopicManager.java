@@ -472,18 +472,18 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
             log.info("RocketMQ topic {} doesn't exist. Creating it ...", fullTopicName);
             try {
                 adminClient.topics().createPartitionedTopic(fullTopicName, tc.getWriteQueueNums());
-                currentPartitionNum = adminClient.topics().getPartitionedTopicMetadata(fullTopicName).partitions;
+                currentPartitionNum = tc.getWriteQueueNums();
             } catch (PulsarAdminException e) {
                 log.warn("create or get partitioned topic metadata [{}] error: ", fullTopicName, e);
                 throw new RuntimeException("Create topic error.");
             }
 
-            // Build the routing table
+            // Build the <routeMap: [key: brokerIP, value: partition-list]>
             Map<String, List<Integer>> routeMap = Maps.newHashMap();
             for (int i = 0; i < currentPartitionNum; i++) {
                 InetSocketAddress brokerAddress = lookupTopic(fullTopicName + PARTITIONED_TOPIC_SUFFIX + i);
                 if (brokerAddress == null) {
-                    throw new RuntimeException("Create topic error.");
+                    throw new RuntimeException("Lookup topic error when creating topic.");
                 }
                 String brokerIp = brokerAddress.getHostName();
                 List<Integer> partitions = routeMap
