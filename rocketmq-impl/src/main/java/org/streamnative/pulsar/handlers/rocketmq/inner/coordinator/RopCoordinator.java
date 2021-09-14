@@ -31,6 +31,7 @@ import org.apache.zookeeper.ZooDefs.Ids;
 import org.apache.zookeeper.ZooKeeper;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkPath;
+import org.streamnative.pulsar.handlers.rocketmq.utils.ZookeeperUtils;
 import org.testng.collections.Maps;
 
 /**
@@ -59,6 +60,7 @@ public class RopCoordinator {
     }
 
     public void start() {
+        log.info("Start RopCoordinator");
         this.pulsar = brokerController.getBrokerService().pulsar();
         this.zkClient = pulsar.getZkClient();
         this.executor = pulsar.getExecutor();
@@ -76,7 +78,7 @@ public class RopCoordinator {
                         executor.execute(() -> {
                             // If the node is deleted, attempt the re-election
                             log.info("Broker [{}] is calling re-election from the thread",
-                                    pulsar.getSafeWebServiceAddress());
+                                    brokerController.getBrokerAddress());
                             elect();
                         });
                     }
@@ -93,25 +95,25 @@ public class RopCoordinator {
 
             // If broker comes here it is a follower. Do nothing, wait for the watch to trigger
             log.info("Rop broker [{}] is the follower now. Waiting for the watch to trigger...",
-                    pulsar.getSafeWebServiceAddress());
+                    brokerController.getBrokerAddress());
 
         } catch (NoNodeException nne) {
             // There's no leader yet... try to become the leader
             try {
                 // Create the root node and add current broker's URL as its contents
-                LeaderBroker leaderBroker = new LeaderBroker(pulsar.getSafeWebServiceAddress());
+                RopCoordinatorBroker leaderBroker = new RopCoordinatorBroker(brokerController.getBrokerAddress());
                 ZkUtils.createFullPathOptimistic(pulsar.getLocalZkCache().getZooKeeper(), RopZkPath.COORDINATOR_PATH,
                         jsonMapper.writeValueAsBytes(leaderBroker), Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
 
                 // Update the current leader and set the flag to true
-                currentCoordinator.set(new RopCoordinatorBroker(leaderBroker.getServiceUrl()));
+                currentCoordinator.set(leaderBroker);
                 isCoordinator.set(true);
                 elected = true;
 
                 // Notify the listener that this broker is now the leader so that it can collect usage and start load
                 // manager.
                 log.info("Rop broker [{}] is the leader now, notifying the listener...",
-                        pulsar.getSafeWebServiceAddress());
+                        brokerController.getBrokerAddress());
                 becomeCoordinator();
             } catch (NodeExistsException nee) {
                 // Re-elect the new leader
@@ -155,15 +157,15 @@ public class RopCoordinator {
 
     }
 
-    public void close() {
+    public void shutdown() {
+        log.info("Shutdown RopCoordinator");
         if (isCoordinator()) {
             try {
-                pulsar.getLocalZkCache().getZooKeeper().delete(RopZkPath.COORDINATOR_PATH, -1);
+                ZookeeperUtils.deleteData(zkClient, RopZkPath.COORDINATOR_PATH);
             } catch (Throwable t) {
-                log.warn("Failed to cleanup election root znode", t);
+                log.error("Delete rop coordinator zk node error", t);
             }
         }
-        log.info("RopCoordinator stopped");
     }
 
     public boolean isCoordinator() {

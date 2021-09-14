@@ -57,6 +57,8 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.ConsumerManager;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.ConsumerOffsetManager;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.SubscriptionGroupManager;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.metadata.GroupMetaManager;
+import org.streamnative.pulsar.handlers.rocketmq.inner.coordinator.RopBroker;
+import org.streamnative.pulsar.handlers.rocketmq.inner.coordinator.RopCoordinator;
 import org.streamnative.pulsar.handlers.rocketmq.inner.listener.AbstractTransactionalMessageCheckListener;
 import org.streamnative.pulsar.handlers.rocketmq.inner.listener.DefaultConsumerIdsChangeListener;
 import org.streamnative.pulsar.handlers.rocketmq.inner.listener.DefaultTransactionalMessageCheckListener;
@@ -111,6 +113,8 @@ public class RocketMQBrokerController {
     private final List<ConsumeMessageHook> consumeMessageHookList = new ArrayList<>();
     private final RocketMQRemoteServer remotingServer;
     private final RopZkClient ropZkClient;
+    private final RopBroker ropBroker;
+    private final RopCoordinator ropCoordinator;
     private final Broker2Client broker2Client = new Broker2Client(this);
 
     private MQTopicManager topicConfigManager;
@@ -172,6 +176,8 @@ public class RocketMQBrokerController {
         this.remotingServer = new RocketMQRemoteServer(this.serverConfig, this.clientHousekeepingService);
         this.delayedMessageService = new ScheduleMessageService(this, serverConfig);
         this.ropZkClient = new RopZkClient(this);
+        this.ropBroker = new RopBroker(this);
+        this.ropCoordinator = new RopCoordinator(this);
     }
 
     public void initialize() throws Exception {
@@ -578,6 +584,14 @@ public class RocketMQBrokerController {
     }
 
     public void shutdown() {
+        if (this.ropBroker != null) {
+            this.ropBroker.shutdown();
+        }
+
+        if (this.ropCoordinator != null) {
+            this.ropCoordinator.shutdown();
+        }
+
         if (this.subscriptionGroupManager != null) {
             this.subscriptionGroupManager.shutdown();
         }
@@ -659,6 +673,14 @@ public class RocketMQBrokerController {
 
         if (this.ropZkClient != null) {
             this.ropZkClient.start();
+        }
+
+        if (this.ropBroker != null) {
+            this.ropBroker.start();
+        }
+
+        if (this.ropCoordinator != null) {
+            this.ropCoordinator.start();
         }
 
         if (this.groupMetaManager != null) {

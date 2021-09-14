@@ -15,8 +15,8 @@
 package org.streamnative.pulsar.handlers.rocketmq.inner.coordinator;
 
 import lombok.extern.slf4j.Slf4j;
+import org.apache.zookeeper.ZooKeeper;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
-import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkClient;
 import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkPath;
 import org.streamnative.pulsar.handlers.rocketmq.utils.ZookeeperUtils;
 
@@ -26,24 +26,27 @@ import org.streamnative.pulsar.handlers.rocketmq.utils.ZookeeperUtils;
 @Slf4j
 public class RopBroker {
 
-    private final RopZkClient ropZkClient;
-    private final String zkNodePath;
+    private final RocketMQBrokerController brokerController;
+    private ZooKeeper zkClient;
+    private String zkNodePath;
 
-    public RopBroker(RocketMQBrokerController rocketBroker, RopZkClient ropZkClient) {
-        this.ropZkClient = ropZkClient;
-        this.zkNodePath = RopZkPath.BROKER_PATH + "/" + rocketBroker.getBrokerHost();
+    public RopBroker(RocketMQBrokerController brokerController) {
+        this.brokerController = brokerController;
     }
 
     public void start() {
-        ZookeeperUtils.createPersistentNodeIfNotExist(ropZkClient.getZooKeeper(), zkNodePath);
+        log.info("Start RopBroker");
+        this.zkClient = brokerController.getBrokerService().pulsar().getZkClient();
+        this.zkNodePath = RopZkPath.BROKER_PATH + "/" + brokerController.getBrokerAddress();
+        ZookeeperUtils.createPersistentNodeIfNotExist(zkClient, zkNodePath);
     }
 
-    public void close() {
+    public void shutdown() {
+        log.info("Shutdown RopBroker");
         try {
-            ZookeeperUtils.deleteData(ropZkClient.getZooKeeper(), zkNodePath);
+            ZookeeperUtils.deleteData(zkClient, zkNodePath);
         } catch (Throwable t) {
-            log.warn("Failed to delete rop broker.", t);
+            log.error("Delete rop broker zk node error", t);
         }
-        log.info("RopBroker stopped");
     }
 }
