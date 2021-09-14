@@ -14,6 +14,7 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper;
 
+import com.google.common.collect.Maps;
 import java.util.List;
 import java.util.Map;
 import lombok.AllArgsConstructor;
@@ -28,7 +29,12 @@ import org.apache.rocketmq.common.TopicConfig;
 @AllArgsConstructor
 @NoArgsConstructor
 public class RopTopicContent {
+
     private TopicConfig config;
     // key: brokerIP, value: partition list
     private Map<String, List<Integer>> routeMap;
+
+    public Map<String, List<Integer>> getRouteMap() {
+        return routeMap == null ? Maps.newHashMap() : routeMap;
+    }
 }

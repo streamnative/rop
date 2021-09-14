@@ -12,7 +12,7 @@
  * limitations under the License.
  */
 
-package org.streamnative.pulsar.handlers.rocketmq.inner.coordinator;
+package org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper;
 
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -24,6 +24,6 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 @Data
 @EqualsAndHashCode
-public class RopCoordinatorBroker {
+public class RopCoordinatorContent {
     public final String serviceUrl;
 }

@@ -22,7 +22,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bookkeeper.util.ZkUtils;
 import org.apache.pulsar.broker.PulsarService;
-import org.apache.pulsar.broker.loadbalance.LeaderBroker;
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException.NoNodeException;
 import org.apache.zookeeper.KeeperException.NodeExistsException;
@@ -30,6 +29,7 @@ import org.apache.zookeeper.Watcher.Event.EventType;
 import org.apache.zookeeper.ZooDefs.Ids;
 import org.apache.zookeeper.ZooKeeper;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
+import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopCoordinatorContent;
 import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkPath;
 import org.streamnative.pulsar.handlers.rocketmq.utils.ZookeeperUtils;
 import org.testng.collections.Maps;
@@ -48,7 +48,7 @@ public class RopCoordinator {
     private ZooKeeper zkClient;
 
 
-    private final AtomicReference<RopCoordinatorBroker> currentCoordinator = new AtomicReference<>();
+    private final AtomicReference<RopCoordinatorContent> currentCoordinator = new AtomicReference<>();
     private final AtomicBoolean isCoordinator = new AtomicBoolean();
     private boolean elected = false;
 
@@ -87,7 +87,7 @@ public class RopCoordinator {
                 }
             }, null);
 
-            RopCoordinatorBroker leaderBroker = jsonMapper.readValue(data, RopCoordinatorBroker.class);
+            RopCoordinatorContent leaderBroker = jsonMapper.readValue(data, RopCoordinatorContent.class);
             currentCoordinator.set(leaderBroker);
             isCoordinator.set(false);
             elected = true;
@@ -101,7 +101,7 @@ public class RopCoordinator {
             // There's no leader yet... try to become the leader
             try {
                 // Create the root node and add current broker's URL as its contents
-                RopCoordinatorBroker leaderBroker = new RopCoordinatorBroker(brokerController.getBrokerAddress());
+                RopCoordinatorContent leaderBroker = new RopCoordinatorContent(brokerController.getBrokerAddress());
                 ZkUtils.createFullPathOptimistic(pulsar.getLocalZkCache().getZooKeeper(), RopZkPath.COORDINATOR_PATH,
                         jsonMapper.writeValueAsBytes(leaderBroker), Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
 
