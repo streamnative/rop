@@ -145,15 +145,7 @@ public class RopCoordinator {
 
     }
 
-    public void addBroker() {
-
-    }
-
     public void removeBroker() {
-
-    }
-
-    public void rebalance() {
 
     }
 
