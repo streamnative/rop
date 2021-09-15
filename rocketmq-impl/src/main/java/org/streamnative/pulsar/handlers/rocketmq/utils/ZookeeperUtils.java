@@ -44,6 +44,17 @@ public class ZookeeperUtils {
         }
     }
 
+    public static void createEphemeralNodeIfNotExist(ZooKeeper zooKeeper, String zkPath) {
+        try {
+            zooKeeper.create(zkPath, new byte[0], ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
+        } catch (KeeperException.NodeExistsException e) {
+            log.debug("Zookeeper path {} has exist.", zkPath);
+        } catch (Exception e) {
+            log.error("Create zookeeper path [{}] error", zkPath, e);
+            throw new RuntimeException("Create zookeeper path [" + zkPath + "] error.");
+        }
+    }
+
     public static void createPersistentPath(ZooKeeper zooKeeper, String zkPath, String subPath, byte[] data) {
         try {
             if (zooKeeper.exists(zkPath, false) == null) {
