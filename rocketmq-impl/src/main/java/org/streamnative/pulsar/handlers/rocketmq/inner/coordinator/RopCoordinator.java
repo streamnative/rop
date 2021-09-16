@@ -207,7 +207,7 @@ public class RopCoordinator {
                 }
             }
         } catch (KeeperException | InterruptedException | IOException e) {
-            e.printStackTrace();
+            log.error("When broker down, update message route error: ", e);
         }
     }
 
