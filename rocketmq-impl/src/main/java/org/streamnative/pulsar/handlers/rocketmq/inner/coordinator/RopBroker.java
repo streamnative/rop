@@ -38,7 +38,7 @@ public class RopBroker {
         log.info("Start RopBroker");
         this.zkClient = brokerController.getBrokerService().pulsar().getZkClient();
         this.zkNodePath = RopZkPath.BROKER_PATH + "/" + brokerController.getBrokerAddress();
-        ZookeeperUtils.createPersistentNodeIfNotExist(zkClient, zkNodePath);
+        ZookeeperUtils.createEphemeralNodeIfNotExist(zkClient, zkNodePath);
     }
 
     public void shutdown() {
