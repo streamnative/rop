@@ -15,6 +15,10 @@
 package org.streamnative.pulsar.handlers.rocketmq.inner.coordinator;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -23,6 +27,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.bookkeeper.util.ZkUtils;
 import org.apache.pulsar.broker.PulsarService;
 import org.apache.zookeeper.CreateMode;
+import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.KeeperException.NoNodeException;
 import org.apache.zookeeper.KeeperException.NodeExistsException;
 import org.apache.zookeeper.Watcher.Event.EventType;
@@ -30,6 +35,7 @@ import org.apache.zookeeper.ZooDefs.Ids;
 import org.apache.zookeeper.ZooKeeper;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopCoordinatorContent;
+import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopTopicContent;
 import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkPath;
 import org.streamnative.pulsar.handlers.rocketmq.utils.ZookeeperUtils;
 import org.testng.collections.Maps;
@@ -145,16 +151,64 @@ public class RopCoordinator {
 
     }
 
-    public void addBroker() {
-
-    }
-
     public void removeBroker() {
+        try {
+            // first: get brokers list from [/rop/brokers]
+            List<String> brokerURLs = zkClient.getChildren(RopZkPath.BROKER_PATH, null);
 
+            // second: add watcher to listener changes off [/rop/brokers]
+            zkClient.getData(RopZkPath.BROKER_PATH, watchedEvent -> {
+                String downBrokerIp = watchedEvent.getPath();
+                log.warn("The watched event is [{}] and path is [{}]", watchedEvent.getType(), downBrokerIp);
+                if (watchedEvent.getType() == EventType.NodeDeleted) {
+                    log.warn("Remove broker node {}", watchedEvent.getPath());
+                    updateAllTopicsRoute(downBrokerIp, brokerURLs);
+                } else {
+                    log.warn("Got something wrong on watch: {}", watchedEvent);
+                }
+            }, null);
+        } catch (InterruptedException | KeeperException e) {
+            log.error("Get data of broker path [{}] error", RopZkPath.BROKER_PATH, e);
+        }
     }
 
-    public void rebalance() {
+    private void updateAllTopicsRoute(String downBrokerIP, List<String> brokerUrls) {
+        try {
+            List<String> subPathListOfTenant = zkClient.getChildren(RopZkPath.TOPIC_BASE_PATH, false);
+            for (String subPathOfTenant : subPathListOfTenant) {
+                String tenantPath = RopZkPath.TOPIC_BASE_PATH + "/" + subPathOfTenant;
+                List<String> subPathListOfNs = zkClient
+                        .getChildren(tenantPath, false);
+                for (String subPathOfNs : subPathListOfNs) {
+                    String nsPath = tenantPath + "/" + subPathOfNs;
+                    List<String> subPathListOfTopic = zkClient.getChildren(nsPath, false);
+                    for (String subPathOfTopic : subPathListOfTopic) {
+                        String topicPath = nsPath + "/" + subPathOfTopic;
+                        byte[] topicsRouteData = zkClient.getData(topicPath, null, null);
+                        RopTopicContent ropTopicContent = jsonMapper.readValue(topicsRouteData, RopTopicContent.class);
+                        Map<String, List<Integer>> routeMap = ropTopicContent.getRouteMap();
+                        List<Map.Entry<String, List<Integer>>> sortList = new ArrayList<>(routeMap.entrySet());
+                        sortList.sort(Comparator.comparingInt(o -> o.getValue().size()));
 
+                        for (Map.Entry<String, List<Integer>> entry : routeMap.entrySet()) {
+                            if (downBrokerIP.equals(entry.getKey())) {
+                                // refactor message route map
+                                List<Integer> partitionedList = routeMap.get(brokerUrls.get(0));
+                                partitionedList.addAll(entry.getValue());
+                            }
+                        }
+                        // set new message route map to zk
+                        RopTopicContent newRopTopicContent = new RopTopicContent();
+                        newRopTopicContent.setRouteMap(routeMap);
+                        newRopTopicContent.setConfig(ropTopicContent.getConfig());
+                        byte[] bytes = jsonMapper.writeValueAsBytes(newRopTopicContent);
+                        zkClient.setData(topicPath, bytes, -1);
+                    }
+                }
+            }
+        } catch (KeeperException | InterruptedException | IOException e) {
+            e.printStackTrace();
+        }
     }
 
     public void shutdown() {
