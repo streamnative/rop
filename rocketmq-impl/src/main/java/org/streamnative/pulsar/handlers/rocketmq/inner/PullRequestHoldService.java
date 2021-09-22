@@ -146,9 +146,9 @@ public class PullRequestHoldService extends ServiceThread {
 
                     if (newestOffset > request.getPullFromThisOffset()) {
                         try {
-                            this.brokerController.getPullMessageProcessor()
+                          /*TODO:  this.brokerController.getPullMessageProcessor()
                                     .executeRequestWhenWakeup(request.getClientChannel(),
-                                            request.getRequestCommand());
+                                            request.getRequestCommand());*/
                         } catch (Throwable e) {
                             log.error("execute request when wakeup failed.", e);
                         }
@@ -157,9 +157,9 @@ public class PullRequestHoldService extends ServiceThread {
 
                     if (System.currentTimeMillis() >= (request.getSuspendTimestamp() + request.getTimeoutMillis())) {
                         try {
-                            this.brokerController.getPullMessageProcessor()
+                           /*TODO: this.brokerController.getPullMessageProcessor()
                                     .executeRequestWhenWakeup(request.getClientChannel(),
-                                            request.getRequestCommand());
+                                            request.getRequestCommand());*/
                         } catch (Throwable e) {
                             log.error("execute request when wakeup failed.", e);
                         }

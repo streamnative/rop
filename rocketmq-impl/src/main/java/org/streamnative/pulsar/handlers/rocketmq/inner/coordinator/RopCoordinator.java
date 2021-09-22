@@ -14,8 +14,9 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.coordinator;
 
+import static com.google.common.base.Preconditions.checkState;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -27,49 +28,46 @@ import org.apache.zookeeper.KeeperException.NoNodeException;
 import org.apache.zookeeper.KeeperException.NodeExistsException;
 import org.apache.zookeeper.Watcher.Event.EventType;
 import org.apache.zookeeper.ZooDefs.Ids;
-import org.apache.zookeeper.ZooKeeper;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
+import org.streamnative.pulsar.handlers.rocketmq.inner.proxy.RopZookeeperCacheService;
 import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopCoordinatorContent;
 import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkPath;
 import org.streamnative.pulsar.handlers.rocketmq.utils.ZookeeperUtils;
-import org.testng.collections.Maps;
 
 /**
  * Rop coordinator.
  */
 @Slf4j
-public class RopCoordinator {
+public class RopCoordinator implements AutoCloseable {
 
     private final RocketMQBrokerController brokerController;
+    private final PulsarService pulsar;
+    private final ExecutorService executor;
     private final ObjectMapper jsonMapper;
-
-    private PulsarService pulsar;
-    private ExecutorService executor;
-    private ZooKeeper zkClient;
-
 
     private final AtomicReference<RopCoordinatorContent> currentCoordinator = new AtomicReference<>();
     private final AtomicBoolean isCoordinator = new AtomicBoolean();
-    private boolean elected = false;
+    private volatile boolean elected = false;
+    private volatile boolean stopped = true;
 
-    private final Map<String, Map<String, Integer[]>> topicRouteTableCache = Maps.newConcurrentMap();
-
-    public RopCoordinator(RocketMQBrokerController brokerController) {
+    public RopCoordinator(RocketMQBrokerController brokerController,
+            RopZookeeperCacheService ropZookeeperCacheService) {
         this.brokerController = brokerController;
+        this.pulsar = brokerController.getBrokerService().pulsar();
+        this.executor = brokerController.getScheduledExecutorService();
         this.jsonMapper = new ObjectMapper();
     }
 
     public void start() {
-        log.info("Start RopCoordinator");
-        this.pulsar = brokerController.getBrokerService().pulsar();
-        this.zkClient = pulsar.getZkClient();
-        this.executor = pulsar.getExecutor();
+        checkState(stopped);
+        stopped = false;
+        log.info("RopCoordinator started");
         elect();
     }
 
     private void elect() {
         try {
-            byte[] data = zkClient.getData(RopZkPath.COORDINATOR_PATH, event -> {
+            byte[] data = pulsar.getLocalZkCache().getZooKeeper().getData(RopZkPath.COORDINATOR_PATH, event -> {
                 log.warn("Type of the event is [{}] and path is [{}]", event.getType(), event.getPath());
                 if (event.getType() == EventType.NodeDeleted) {
                     log.warn("Election node {} is deleted, attempting re-election...", event.getPath());
@@ -149,17 +147,6 @@ public class RopCoordinator {
 
     }
 
-    public void shutdown() {
-        log.info("Shutdown RopCoordinator");
-        if (isCoordinator()) {
-            try {
-                ZookeeperUtils.deleteData(zkClient, RopZkPath.COORDINATOR_PATH);
-            } catch (Throwable t) {
-                log.error("Delete rop coordinator zk node error", t);
-            }
-        }
-    }
-
     public boolean isCoordinator() {
         return isCoordinator.get();
     }
@@ -169,4 +156,16 @@ public class RopCoordinator {
     }
 
 
+    @Override
+    public void close() throws Exception {
+        log.info("Shutdown RopCoordinator");
+        if (isCoordinator()) {
+            try {
+                ZookeeperUtils.deleteData(pulsar.getLocalZkCache().getZooKeeper(), RopZkPath.COORDINATOR_PATH);
+            } catch (Exception ex) {
+                log.error("Delete rop coordinator zk node error", ex);
+                throw ex;
+            }
+        }
+    }
 }

@@ -210,6 +210,12 @@ public class RocketMQRemoteServer extends NettyRemotingAbstract implements Remot
         this.invokeOnewayImpl(channel, request, timeoutMillis);
     }
 
+    @Override
+    public void processRequestCommand(ChannelHandlerContext ctx, RemotingCommand cmd) {
+        super.processRequestCommand(ctx, cmd);
+
+    }
+
     @ChannelHandler.Sharable
     static class HandshakeHandler extends SimpleChannelInboundHandler<ByteBuf> {
         HandshakeHandler() {}

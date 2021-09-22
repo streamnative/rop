@@ -145,11 +145,18 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
             doc = "The capacity of heartbeat thread pool queue.\n"
     )
     private int heartbeatThreadPoolQueueCapacity = 50000;
+
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
             doc = "The capacity of end transaction pool queue.\n"
     )
     private int endTransactionPoolQueueCapacity = 100000;
+
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
+            doc = "The capacity of end transaction pool queue.\n"
+    )
+    private int ropBrokerRequestThreadPoolCapacity = 1000000;
 
     @FieldContext(
             category = CATEGORY_ROCKETMQ,

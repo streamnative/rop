@@ -14,7 +14,6 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
@@ -37,8 +36,6 @@ import org.apache.rocketmq.acl.common.AclException;
 import org.apache.rocketmq.acl.common.SessionCredentials;
 import org.apache.rocketmq.broker.client.ConsumerIdsChangeListener;
 import org.apache.rocketmq.broker.latency.BrokerFixedThreadPoolExecutor;
-import org.apache.rocketmq.broker.mqtrace.ConsumeMessageHook;
-import org.apache.rocketmq.broker.mqtrace.SendMessageHook;
 import org.apache.rocketmq.broker.util.ServiceProvider;
 import org.apache.rocketmq.common.ThreadFactoryImpl;
 import org.apache.rocketmq.common.UtilAll;
@@ -46,7 +43,6 @@ import org.apache.rocketmq.common.protocol.RequestCode;
 import org.apache.rocketmq.common.protocol.header.PullMessageRequestHeader;
 import org.apache.rocketmq.common.protocol.header.SendMessageRequestHeader;
 import org.apache.rocketmq.remoting.RPCHook;
-import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.store.MessageArrivingListener;
 import org.apache.rocketmq.store.stats.BrokerStats;
@@ -57,24 +53,15 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.ConsumerManager;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.ConsumerOffsetManager;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.SubscriptionGroupManager;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.metadata.GroupMetaManager;
-import org.streamnative.pulsar.handlers.rocketmq.inner.coordinator.RopBroker;
-import org.streamnative.pulsar.handlers.rocketmq.inner.coordinator.RopCoordinator;
 import org.streamnative.pulsar.handlers.rocketmq.inner.listener.AbstractTransactionalMessageCheckListener;
 import org.streamnative.pulsar.handlers.rocketmq.inner.listener.DefaultConsumerIdsChangeListener;
 import org.streamnative.pulsar.handlers.rocketmq.inner.listener.DefaultTransactionalMessageCheckListener;
 import org.streamnative.pulsar.handlers.rocketmq.inner.listener.NotifyMessageArrivingListener;
 import org.streamnative.pulsar.handlers.rocketmq.inner.namesvr.MQTopicManager;
-import org.streamnative.pulsar.handlers.rocketmq.inner.namesvr.NameserverProcessor;
-import org.streamnative.pulsar.handlers.rocketmq.inner.processor.AdminBrokerProcessor;
-import org.streamnative.pulsar.handlers.rocketmq.inner.processor.ClientManageProcessor;
-import org.streamnative.pulsar.handlers.rocketmq.inner.processor.ConsumerManageProcessor;
-import org.streamnative.pulsar.handlers.rocketmq.inner.processor.EndTransactionProcessor;
-import org.streamnative.pulsar.handlers.rocketmq.inner.processor.PullMessageProcessor;
-import org.streamnative.pulsar.handlers.rocketmq.inner.processor.QueryMessageProcessor;
 import org.streamnative.pulsar.handlers.rocketmq.inner.processor.SendMessageProcessor;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientTopicName;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ProducerManager;
-import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkClient;
+import org.streamnative.pulsar.handlers.rocketmq.inner.proxy.RopBrokerProxy;
 
 /**
  * RocketMQ broker controller.
@@ -89,8 +76,8 @@ public class RocketMQBrokerController {
     private final ConsumerManager consumerManager;
     private final ProducerManager producerManager;
     private final ClientHousekeepingService clientHousekeepingService;
-    private final PullMessageProcessor pullMessageProcessor;
     private final PullRequestHoldService pullRequestHoldService;
+    //TODO: putMessage must trigger the listener
     private final MessageArrivingListener messageArrivingListener;
     private final SubscriptionGroupManager subscriptionGroupManager;
     private final ConsumerIdsChangeListener consumerIdsChangeListener;
@@ -108,14 +95,12 @@ public class RocketMQBrokerController {
     private final BlockingQueue<Runnable> heartbeatThreadPoolQueue;
     private final BlockingQueue<Runnable> consumerManagerThreadPoolQueue;
     private final BlockingQueue<Runnable> endTransactionThreadPoolQueue;
+    private final BlockingQueue<Runnable> ropBrokerRequestThreadPoolQueue;
     private final BrokerStatsManager brokerStatsManager;
-    private final List<SendMessageHook> sendMessageHookList = new ArrayList<>();
-    private final List<ConsumeMessageHook> consumeMessageHookList = new ArrayList<>();
+
     private final RocketMQRemoteServer remotingServer;
-    private final RopZkClient ropZkClient;
-    private final RopBroker ropBroker;
-    private final RopCoordinator ropCoordinator;
     private final Broker2Client broker2Client = new Broker2Client(this);
+    private final RopBrokerProxy ropBrokerProxy;
 
     private MQTopicManager topicConfigManager;
     private ExecutorService sendMessageExecutor;
@@ -128,6 +113,7 @@ public class RocketMQBrokerController {
     private ExecutorService heartbeatExecutor;
     private ExecutorService consumerManageExecutor;
     private ExecutorService endTransactionExecutor;
+    private ExecutorService ropBrokerRequestExecutor;
     private BrokerStats brokerStats;
     private String brokerHost;
     private String brokerAddress;
@@ -136,8 +122,6 @@ public class RocketMQBrokerController {
     private AbstractTransactionalMessageCheckListener transactionalMessageCheckListener;
     private volatile BrokerService brokerService;
     private ScheduleMessageService delayedMessageService;
-
-
     public static String stringToken = Strings.EMPTY;
 
     public RocketMQBrokerController(final RocketMQServiceConfiguration serverConfig) throws PulsarServerException {
@@ -145,7 +129,6 @@ public class RocketMQBrokerController {
         this.groupMetaManager = new GroupMetaManager(this);
         this.consumerOffsetManager = new ConsumerOffsetManager(this, groupMetaManager);
         this.topicConfigManager = new MQTopicManager(this);
-        this.pullMessageProcessor = new PullMessageProcessor(this);
         this.pullRequestHoldService = new PullRequestHoldService(this);
         this.messageArrivingListener = new NotifyMessageArrivingListener(this.pullRequestHoldService);
         this.consumerIdsChangeListener = new DefaultConsumerIdsChangeListener(this);
@@ -154,30 +137,30 @@ public class RocketMQBrokerController {
         this.clientHousekeepingService = new ClientHousekeepingService(this);
         this.subscriptionGroupManager = new SubscriptionGroupManager(this);
 
-        this.sendThreadPoolQueue = new LinkedBlockingQueue<Runnable>(
+        this.sendThreadPoolQueue = new LinkedBlockingQueue<>(
                 this.serverConfig.getSendThreadPoolQueueCapacity());
-        this.sendCallbackThreadPoolQueue = new LinkedBlockingQueue<Runnable>();
-        this.pullThreadPoolQueue = new LinkedBlockingQueue<Runnable>(
+        this.sendCallbackThreadPoolQueue = new LinkedBlockingQueue<>();
+        this.pullThreadPoolQueue = new LinkedBlockingQueue<>(
                 this.serverConfig.getPullThreadPoolQueueCapacity());
-        this.replyThreadPoolQueue = new LinkedBlockingQueue<Runnable>(
+        this.replyThreadPoolQueue = new LinkedBlockingQueue<>(
                 this.serverConfig.getReplyThreadPoolQueueCapacity());
-        this.queryThreadPoolQueue = new LinkedBlockingQueue<Runnable>(
+        this.queryThreadPoolQueue = new LinkedBlockingQueue<>(
                 this.serverConfig.getQueryThreadPoolQueueCapacity());
-        this.clientManagerThreadPoolQueue = new LinkedBlockingQueue<Runnable>(
+        this.clientManagerThreadPoolQueue = new LinkedBlockingQueue<>(
                 this.serverConfig.getClientManagerThreadPoolQueueCapacity());
-        this.consumerManagerThreadPoolQueue = new LinkedBlockingQueue<Runnable>(
+        this.consumerManagerThreadPoolQueue = new LinkedBlockingQueue<>(
                 this.serverConfig.getConsumerManagerThreadPoolQueueCapacity());
-        this.heartbeatThreadPoolQueue = new LinkedBlockingQueue<Runnable>(
+        this.heartbeatThreadPoolQueue = new LinkedBlockingQueue<>(
                 this.serverConfig.getHeartbeatThreadPoolQueueCapacity());
-        this.endTransactionThreadPoolQueue = new LinkedBlockingQueue<Runnable>(
+        this.endTransactionThreadPoolQueue = new LinkedBlockingQueue<>(
                 this.serverConfig.getEndTransactionPoolQueueCapacity());
+        this.ropBrokerRequestThreadPoolQueue = new LinkedBlockingQueue<>(
+                this.serverConfig.getRopBrokerRequestThreadPoolCapacity());
 
         this.brokerStatsManager = new BrokerStatsManager(serverConfig.getBrokerName());
         this.remotingServer = new RocketMQRemoteServer(this.serverConfig, this.clientHousekeepingService);
         this.delayedMessageService = new ScheduleMessageService(this, serverConfig);
-        this.ropZkClient = new RopZkClient(this);
-        this.ropBroker = new RopBroker(this);
-        this.ropCoordinator = new RopCoordinator(this);
+        this.ropBrokerProxy = new RopBrokerProxy(this);
     }
 
     public void initialize() throws Exception {
@@ -247,6 +230,15 @@ public class RocketMQBrokerController {
                 Executors.newFixedThreadPool(this.serverConfig.getConsumerManageThreadPoolNums(),
                         new ThreadFactoryImpl(
                                 "ConsumerManageThread_"));
+
+        this.ropBrokerRequestExecutor = new BrokerFixedThreadPoolExecutor(
+                this.serverConfig.getRopBrokerRequestThreadPoolCapacity(),
+                this.serverConfig.getRopBrokerRequestThreadPoolCapacity(),
+                1000 * 60,
+                TimeUnit.MILLISECONDS,
+                this.ropBrokerRequestThreadPoolQueue,
+                new ThreadFactoryImpl("RopBrokerRequestThread_")
+        );
 
         this.registerProcessor();
 
@@ -454,91 +446,8 @@ public class RocketMQBrokerController {
         this.transactionalMessageCheckService = new TransactionalMessageCheckService(this);
     }
 
-    public void registerProcessor() throws PulsarServerException {
-
-        // SendMessageProcessor
-        SendMessageProcessor sendProcessor = new SendMessageProcessor(this);
-        sendProcessor.registerSendMessageHook(sendMessageHookList);
-        sendProcessor.registerConsumeMessageHook(consumeMessageHookList);
-
-        this.remotingServer.registerProcessor(RequestCode.SEND_MESSAGE, sendProcessor, this.sendMessageExecutor);
-        this.remotingServer.registerProcessor(RequestCode.SEND_MESSAGE_V2, sendProcessor, this.sendMessageExecutor);
-        this.remotingServer.registerProcessor(RequestCode.SEND_BATCH_MESSAGE, sendProcessor, this.sendMessageExecutor);
-        this.remotingServer
-                .registerProcessor(RequestCode.CONSUMER_SEND_MSG_BACK, sendProcessor, this.sendMessageExecutor);
-
-        // PullMessageProcessor
-        this.remotingServer
-                .registerProcessor(RequestCode.PULL_MESSAGE, this.pullMessageProcessor, this.pullMessageExecutor);
-        this.pullMessageProcessor.registerConsumeMessageHook(consumeMessageHookList);
-
-        // QueryMessageProcessor
-        NettyRequestProcessor queryProcessor = new QueryMessageProcessor(this);
-        this.remotingServer.registerProcessor(RequestCode.QUERY_MESSAGE, queryProcessor, this.queryMessageExecutor);
-        this.remotingServer
-                .registerProcessor(RequestCode.VIEW_MESSAGE_BY_ID, queryProcessor, this.queryMessageExecutor);
-
-        // ClientManageProcessor
-        ClientManageProcessor clientProcessor = new ClientManageProcessor(this);
-        this.remotingServer.registerProcessor(RequestCode.HEART_BEAT, clientProcessor, this.heartbeatExecutor);
-        this.remotingServer
-                .registerProcessor(RequestCode.UNREGISTER_CLIENT, clientProcessor, this.clientManageExecutor);
-        this.remotingServer
-                .registerProcessor(RequestCode.CHECK_CLIENT_CONFIG, clientProcessor, this.clientManageExecutor);
-
-        // ConsumerManageProcessor
-        ConsumerManageProcessor consumerManageProcessor = new ConsumerManageProcessor(this);
-        this.remotingServer.registerProcessor(RequestCode.GET_CONSUMER_LIST_BY_GROUP, consumerManageProcessor,
-                this.consumerManageExecutor);
-        this.remotingServer.registerProcessor(RequestCode.UPDATE_CONSUMER_OFFSET, consumerManageProcessor,
-                this.consumerManageExecutor);
-        this.remotingServer.registerProcessor(RequestCode.QUERY_CONSUMER_OFFSET, consumerManageProcessor,
-                this.consumerManageExecutor);
-
-        // EndTransactionProcessor
-        this.remotingServer.registerProcessor(RequestCode.END_TRANSACTION, new EndTransactionProcessor(this),
-                this.endTransactionExecutor);
-
-        // NameserverProcessor
-        NameserverProcessor namesvrProcessor = new NameserverProcessor(this);
-        this.remotingServer.registerProcessor(RequestCode.PUT_KV_CONFIG, namesvrProcessor, this.adminBrokerExecutor);
-        this.remotingServer.registerProcessor(RequestCode.GET_KV_CONFIG, namesvrProcessor, this.adminBrokerExecutor);
-        this.remotingServer.registerProcessor(RequestCode.DELETE_KV_CONFIG, namesvrProcessor, this.adminBrokerExecutor);
-        this.remotingServer
-                .registerProcessor(RequestCode.QUERY_DATA_VERSION, namesvrProcessor, this.adminBrokerExecutor);
-        this.remotingServer.registerProcessor(RequestCode.REGISTER_BROKER, namesvrProcessor, this.adminBrokerExecutor);
-        this.remotingServer
-                .registerProcessor(RequestCode.UNREGISTER_BROKER, namesvrProcessor, this.adminBrokerExecutor);
-        this.remotingServer
-                .registerProcessor(RequestCode.GET_ROUTEINTO_BY_TOPIC, namesvrProcessor, this.adminBrokerExecutor);
-        this.remotingServer
-                .registerProcessor(RequestCode.GET_BROKER_CLUSTER_INFO, namesvrProcessor, this.adminBrokerExecutor);
-        this.remotingServer
-                .registerProcessor(RequestCode.WIPE_WRITE_PERM_OF_BROKER, namesvrProcessor, this.adminBrokerExecutor);
-        this.remotingServer.registerProcessor(RequestCode.GET_ALL_TOPIC_LIST_FROM_NAMESERVER, namesvrProcessor,
-                this.adminBrokerExecutor);
-        this.remotingServer
-                .registerProcessor(RequestCode.DELETE_TOPIC_IN_NAMESRV, namesvrProcessor, this.adminBrokerExecutor);
-        this.remotingServer
-                .registerProcessor(RequestCode.GET_KVLIST_BY_NAMESPACE, namesvrProcessor, this.adminBrokerExecutor);
-        this.remotingServer
-                .registerProcessor(RequestCode.GET_TOPICS_BY_CLUSTER, namesvrProcessor, this.adminBrokerExecutor);
-        this.remotingServer.registerProcessor(RequestCode.GET_SYSTEM_TOPIC_LIST_FROM_NS, namesvrProcessor,
-                this.adminBrokerExecutor);
-        this.remotingServer
-                .registerProcessor(RequestCode.GET_UNIT_TOPIC_LIST, namesvrProcessor, this.adminBrokerExecutor);
-        this.remotingServer
-                .registerProcessor(RequestCode.GET_HAS_UNIT_SUB_TOPIC_LIST, namesvrProcessor, this.adminBrokerExecutor);
-        this.remotingServer.registerProcessor(RequestCode.GET_HAS_UNIT_SUB_UNUNIT_TOPIC_LIST, namesvrProcessor,
-                this.adminBrokerExecutor);
-        this.remotingServer
-                .registerProcessor(RequestCode.UPDATE_NAMESRV_CONFIG, namesvrProcessor, this.adminBrokerExecutor);
-        this.remotingServer
-                .registerProcessor(RequestCode.GET_NAMESRV_CONFIG, namesvrProcessor, this.adminBrokerExecutor);
-
-        // Default
-        AdminBrokerProcessor adminProcessor = new AdminBrokerProcessor(this);
-        this.remotingServer.registerDefaultProcessor(adminProcessor, this.adminBrokerExecutor);
+    public void registerProcessor() {
+        this.ropBrokerProxy.registerProcessor();
     }
 
     public long headSlowTimeMills(BlockingQueue<Runnable> q) {
@@ -584,13 +493,6 @@ public class RocketMQBrokerController {
     }
 
     public void shutdown() {
-        if (this.ropBroker != null) {
-            this.ropBroker.shutdown();
-        }
-
-        if (this.ropCoordinator != null) {
-            this.ropCoordinator.shutdown();
-        }
 
         if (this.subscriptionGroupManager != null) {
             this.subscriptionGroupManager.shutdown();
@@ -671,24 +573,16 @@ public class RocketMQBrokerController {
                 + ":"
                 + RocketMQProtocolHandler.getListenerPort(serverConfig.getRocketmqListeners());
 
-        if (this.ropZkClient != null) {
-            this.ropZkClient.start();
-        }
-
-        if (this.ropBroker != null) {
-            this.ropBroker.start();
-        }
-
-        if (this.ropCoordinator != null) {
-            this.ropCoordinator.start();
-        }
-
         if (this.groupMetaManager != null) {
             this.groupMetaManager.start();
         }
 
         if (this.remotingServer != null) {
             this.remotingServer.start();
+        }
+
+        if (this.ropBrokerProxy != null) {
+            this.ropBrokerProxy.start();
         }
 
         if (this.pullRequestHoldService != null) {
@@ -714,16 +608,6 @@ public class RocketMQBrokerController {
         if (this.subscriptionGroupManager != null) {
             this.subscriptionGroupManager.start();
         }
-    }
-
-    public void registerSendMessageHook(final SendMessageHook hook) {
-        this.sendMessageHookList.add(hook);
-        log.info("register SendMessageHook Hook, {}", hook.hookName());
-    }
-
-    public void registerConsumeMessageHook(final ConsumeMessageHook hook) {
-        this.consumeMessageHookList.add(hook);
-        log.info("register ConsumeMessageHook Hook, {}", hook.hookName());
     }
 
     public RocketMQRemoteServer getRemotingServer() {
