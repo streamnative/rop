@@ -32,7 +32,7 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.processor.SendMessageProc
 /**
  * Rop broker proxy is a rocketmq request simulator
  * find the real broker that topicPartition is stored on
- * and transfer the request to the owner broker
+ * and transfer the request to the owner broke.
  */
 @Slf4j
 public class RopBrokerProxy implements NettyRequestProcessor, AutoCloseable {
@@ -126,11 +126,21 @@ public class RopBrokerProxy implements NettyRequestProcessor, AutoCloseable {
         processorProxyRegisters.forEach(ProcessorProxyRegister::registerProxyProcessor);
     }
 
+    /**
+     * Processor Proxy Register.
+     */
     protected interface ProcessorProxyRegister {
 
+        /**
+         * register Proxy Processor.
+         * @return boolean
+         */
         boolean registerProxyProcessor();
     }
 
+    /**
+     * Admin Broker Processor Proxy.
+     */
     protected class AdminBrokerProcessorProxy extends AdminBrokerProcessor implements ProcessorProxyRegister {
 
         private final ExecutorService processorExecutor;
@@ -146,6 +156,9 @@ public class RopBrokerProxy implements NettyRequestProcessor, AutoCloseable {
             return true;
         }
 
+        /**
+         * process Request.
+         */
         @Override
         public RemotingCommand processRequest(ChannelHandlerContext ctx, RemotingCommand request)
                 throws RemotingCommandException {
@@ -154,6 +167,9 @@ public class RopBrokerProxy implements NettyRequestProcessor, AutoCloseable {
         }
     }
 
+    /**
+     * Nameserver Processor Proxy.
+     */
     protected class NameserverProcessorProxy extends NameserverProcessor implements ProcessorProxyRegister {
 
         private final ExecutorService processorExecutor;
@@ -188,6 +204,9 @@ public class RopBrokerProxy implements NettyRequestProcessor, AutoCloseable {
         }
     }
 
+    /**
+     * Consumer Manage Processor Proxy.
+     */
     protected class ConsumerManageProcessorProxy extends ConsumerManageProcessor implements ProcessorProxyRegister {
 
         private final ExecutorService processorExecutor;
@@ -206,6 +225,9 @@ public class RopBrokerProxy implements NettyRequestProcessor, AutoCloseable {
         }
     }
 
+    /**
+     * Client Manage Processor Proxy.
+     */
     protected class ClientManageProcessorProxy extends ClientManageProcessor implements ProcessorProxyRegister {
 
         private final ExecutorService processorExecutor;
@@ -224,6 +246,9 @@ public class RopBrokerProxy implements NettyRequestProcessor, AutoCloseable {
         }
     }
 
+    /**
+     * Query Message Processor Proxy.
+     */
     protected class QueryMessageProcessorProxy extends QueryMessageProcessor implements ProcessorProxyRegister {
 
         private final ExecutorService processorExecutor;
@@ -241,6 +266,9 @@ public class RopBrokerProxy implements NettyRequestProcessor, AutoCloseable {
         }
     }
 
+    /**
+     * Pull Message Processor Proxy.
+     */
     protected class PullMessageProcessorProxy extends PullMessageProcessor implements ProcessorProxyRegister {
 
         private final ExecutorService processorExecutor;
@@ -257,6 +285,9 @@ public class RopBrokerProxy implements NettyRequestProcessor, AutoCloseable {
         }
     }
 
+    /**
+     * Send Message Processor Proxy.
+     */
     protected class SendMessageProcessorProxy extends SendMessageProcessor implements ProcessorProxyRegister {
 
         private final ExecutorService processorExecutor;
@@ -278,6 +309,9 @@ public class RopBrokerProxy implements NettyRequestProcessor, AutoCloseable {
         }
     }
 
+    /**
+     * End Transaction Processor Proxy.
+     */
     protected class EndTransactionProcessorProxy extends EndTransactionProcessor implements ProcessorProxyRegister {
 
         private final ExecutorService processorExecutor;

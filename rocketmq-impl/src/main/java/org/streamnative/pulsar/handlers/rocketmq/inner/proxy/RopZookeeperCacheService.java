@@ -1,7 +1,6 @@
 package org.streamnative.pulsar.handlers.rocketmq.inner.proxy;
 
 import static org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkPath.BROKER_PATH;
-import static org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkPath.COORDINATOR_PATH;
 import static org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkPath.GROUP_BASE_PATH;
 import static org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkPath.TOPIC_BASE_PATH;
 
@@ -18,6 +17,9 @@ import org.apache.zookeeper.ZooKeeper;
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopServerException;
 import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopTopicContent;
 
+/**
+ * Rop Zookeeper Cache Service.
+ */
 @Slf4j
 @Data
 public class RopZookeeperCacheService implements AutoCloseable {

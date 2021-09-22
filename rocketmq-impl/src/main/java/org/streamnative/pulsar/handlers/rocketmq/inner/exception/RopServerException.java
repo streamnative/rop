@@ -1,5 +1,8 @@
 package org.streamnative.pulsar.handlers.rocketmq.inner.exception;
 
+/**
+ * Rop Server Exception.
+ */
 public class RopServerException extends Exception {
 
     public RopServerException() {
