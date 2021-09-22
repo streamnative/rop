@@ -14,6 +14,7 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.proxy;
 
+import static org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkPath.BROKER_CLUSTER_PATH;
 import static org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkPath.BROKER_PATH;
 import static org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkPath.GROUP_BASE_PATH;
 import static org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkPath.TOPIC_BASE_PATH;
@@ -29,6 +30,7 @@ import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.ZooDefs.Ids;
 import org.apache.zookeeper.ZooKeeper;
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopServerException;
+import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopClusterContent;
 import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopTopicContent;
 
 /**
@@ -40,6 +42,7 @@ public class RopZookeeperCacheService implements AutoCloseable {
 
     private final ZooKeeperCache cache;
     private ZooKeeperDataCache<RopTopicContent> ropTopicDataCache;
+    private ZooKeeperDataCache<RopClusterContent> ropClusterDataCache;
 
     public RopZookeeperCacheService(ZooKeeperCache cache) throws RopServerException {
         this.cache = cache;
@@ -50,11 +53,17 @@ public class RopZookeeperCacheService implements AutoCloseable {
                 return ObjectMapperFactory.getThreadLocal().readValue(content, RopTopicContent.class);
             }
         };
+        this.ropClusterDataCache = new ZooKeeperDataCache<RopClusterContent>(cache) {
+            @Override
+            public RopClusterContent deserialize(String key, byte[] content) throws Exception {
+                return ObjectMapperFactory.getThreadLocal().readValue(content, RopClusterContent.class);
+            }
+        };
     }
 
 
     private void initZK() throws RopServerException {
-        String[] paths = new String[]{BROKER_PATH, TOPIC_BASE_PATH, GROUP_BASE_PATH};
+        String[] paths = new String[]{BROKER_PATH, TOPIC_BASE_PATH, GROUP_BASE_PATH, BROKER_CLUSTER_PATH};
         try {
             ZooKeeper zk = cache.getZooKeeper();
             for (String path : paths) {

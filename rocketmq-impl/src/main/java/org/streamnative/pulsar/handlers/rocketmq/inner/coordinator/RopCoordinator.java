@@ -46,7 +46,7 @@ public class RopCoordinator implements AutoCloseable {
     private final ObjectMapper jsonMapper;
 
     private final AtomicReference<RopCoordinatorContent> currentCoordinator = new AtomicReference<>();
-    private final AtomicBoolean isCoordinator = new AtomicBoolean();
+    private final AtomicBoolean isCoordinator = new AtomicBoolean(false);
     private volatile boolean elected = false;
     private volatile boolean stopped = true;
 

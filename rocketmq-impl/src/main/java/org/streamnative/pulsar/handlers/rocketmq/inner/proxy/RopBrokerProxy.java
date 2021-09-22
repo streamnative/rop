@@ -61,6 +61,7 @@ public class RopBrokerProxy implements NettyRequestProcessor, AutoCloseable {
     private TopicConfigManager topicConfigManager;
     private final RocketMQRemoteServer remotingServer;
     private List<ProcessorProxyRegister> processorProxyRegisters = new ArrayList<>();
+    private final BrokerNetworkAPI brokerNetworkClients = new BrokerNetworkAPI(this);
 
     public RopBrokerProxy(RocketMQBrokerController brokerController) {
         this.brokerController = brokerController;
@@ -71,7 +72,6 @@ public class RopBrokerProxy implements NettyRequestProcessor, AutoCloseable {
     @Override
     public RemotingCommand processRequest(ChannelHandlerContext channelHandlerContext, RemotingCommand remotingCommand)
             throws Exception {
-
         return null;
     }
 
