@@ -49,6 +49,7 @@ import org.apache.rocketmq.remoting.netty.NettyEventType;
 import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.streamnative.pulsar.handlers.rocketmq.RocketMQServiceConfiguration;
+import org.streamnative.pulsar.handlers.rocketmq.inner.proxy.RopBrokerProxy;
 
 /**
  * RocketMQ remote server.
@@ -91,6 +92,19 @@ public class RocketMQRemoteServer extends NettyRemotingAbstract implements Remot
                 return new Thread(r, "NettyServerPublicExecutor_" + this.threadIndex.incrementAndGet());
             }
         });
+
+        this.defaultEventExecutorGroup = new DefaultEventExecutorGroup(
+                config.getServerWorkerThreads(),
+                new ThreadFactory() {
+
+                    private AtomicInteger threadIndex = new AtomicInteger(0);
+
+                    @Override
+                    public Thread newThread(Runnable r) {
+                        return new Thread(r, "NettyServerCodecThread_" + this.threadIndex.incrementAndGet());
+                    }
+                });
+
         prepareSharableHandlers();
     }
 
@@ -210,15 +224,11 @@ public class RocketMQRemoteServer extends NettyRemotingAbstract implements Remot
         this.invokeOnewayImpl(channel, request, timeoutMillis);
     }
 
-    @Override
-    public void processRequestCommand(ChannelHandlerContext ctx, RemotingCommand cmd) {
-        super.processRequestCommand(ctx, cmd);
-
-    }
-
     @ChannelHandler.Sharable
     static class HandshakeHandler extends SimpleChannelInboundHandler<ByteBuf> {
-        HandshakeHandler() {}
+
+        HandshakeHandler() {
+        }
 
         @Override
         protected void channelRead0(ChannelHandlerContext ctx, ByteBuf msg) throws Exception {

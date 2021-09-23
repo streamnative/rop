@@ -14,7 +14,6 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.proxy;
 
-import com.google.common.base.Preconditions;
 import io.netty.channel.ChannelHandlerContext;
 import java.util.ArrayList;
 import java.util.List;
@@ -26,9 +25,10 @@ import org.apache.pulsar.broker.ServiceConfiguration;
 import org.apache.rocketmq.broker.mqtrace.ConsumeMessageHook;
 import org.apache.rocketmq.broker.mqtrace.SendMessageHook;
 import org.apache.rocketmq.common.protocol.RequestCode;
+import org.apache.rocketmq.remoting.ChannelEventListener;
 import org.apache.rocketmq.remoting.exception.RemotingCommandException;
-import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
+import org.streamnative.pulsar.handlers.rocketmq.RocketMQServiceConfiguration;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQRemoteServer;
 import org.streamnative.pulsar.handlers.rocketmq.inner.coordinator.RopCoordinator;
@@ -49,49 +49,48 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.processor.SendMessageProc
  * and transfer the request to the owner broke.
  */
 @Slf4j
-public class RopBrokerProxy implements NettyRequestProcessor, AutoCloseable {
+public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseable {
 
     private final RocketMQBrokerController brokerController;
     private final List<SendMessageHook> sendMessageHookList = new ArrayList<>();
     private final List<ConsumeMessageHook> consumeMessageHookList = new ArrayList<>();
     private RopZookeeperCacheService ropZookeeperCacheService;
-    private final OrderedExecutor orderedExecutor;
     private RopCoordinator coordinator;
     private PulsarService pulsarService;
     private TopicConfigManager topicConfigManager;
-    private final RocketMQRemoteServer remotingServer;
+    private final OrderedExecutor orderedExecutor;
     private List<ProcessorProxyRegister> processorProxyRegisters = new ArrayList<>();
     private final BrokerNetworkAPI brokerNetworkClients = new BrokerNetworkAPI(this);
 
-    public RopBrokerProxy(RocketMQBrokerController brokerController) {
+    public RopBrokerProxy(final RocketMQServiceConfiguration config, RocketMQBrokerController brokerController,
+            final ChannelEventListener channelEventListener) {
+        super(config, channelEventListener);
         this.brokerController = brokerController;
-        this.remotingServer = brokerController.getRemotingServer();
         this.orderedExecutor = OrderedExecutor.newBuilder().numThreads(4).name("rop-ordered-executor").build();
     }
 
     @Override
-    public RemotingCommand processRequest(ChannelHandlerContext channelHandlerContext, RemotingCommand remotingCommand)
-            throws Exception {
-        return null;
+    public void processRequestCommand(ChannelHandlerContext ctx, RemotingCommand cmd) {
+        super.processRequestCommand(ctx, cmd);
     }
 
     @Override
-    public boolean rejectRequest() {
-        return false;
-    }
-
-    public void start() throws RopServerException {
-        Preconditions.checkNotNull(brokerController);
-        this.pulsarService = brokerController.getBrokerService().pulsar();
-        ServiceConfiguration config = this.pulsarService.getConfig();
-        RopZookeeperCache ropZkCache = new RopZookeeperCache(pulsarService.getZkClientFactory(),
-                (int) config.getZooKeeperSessionTimeoutMillis(),
-                config.getZooKeeperOperationTimeoutSeconds(), config.getZookeeperServers(), orderedExecutor,
-                brokerController.getScheduledExecutorService(), config.getZooKeeperCacheExpirySeconds());
-        ropZkCache.start();
-        this.ropZookeeperCacheService = new RopZookeeperCacheService(ropZkCache);
-        this.coordinator = new RopCoordinator(brokerController, ropZookeeperCacheService);
-        this.coordinator.start();
+    public void start() {
+        super.start();
+        try {
+            this.pulsarService = brokerController.getBrokerService().pulsar();
+            ServiceConfiguration config = this.pulsarService.getConfig();
+            RopZookeeperCache ropZkCache = new RopZookeeperCache(pulsarService.getZkClientFactory(),
+                    (int) config.getZooKeeperSessionTimeoutMillis(),
+                    config.getZooKeeperOperationTimeoutSeconds(), config.getZookeeperServers(), orderedExecutor,
+                    brokerController.getScheduledExecutorService(), config.getZooKeeperCacheExpirySeconds());
+            ropZkCache.start();
+            this.ropZookeeperCacheService = new RopZookeeperCacheService(ropZkCache);
+            this.coordinator = new RopCoordinator(brokerController, ropZookeeperCacheService);
+            this.coordinator.start();
+        } catch (RopServerException e) {
+            log.error("RopBrokerProxy fail to start.", e);
+        }
     }
 
     @Override
@@ -147,6 +146,7 @@ public class RopBrokerProxy implements NettyRequestProcessor, AutoCloseable {
 
         /**
          * register Proxy Processor.
+         *
          * @return boolean
          */
         boolean registerProxyProcessor();
@@ -166,7 +166,7 @@ public class RopBrokerProxy implements NettyRequestProcessor, AutoCloseable {
 
         @Override
         public boolean registerProxyProcessor() {
-            remotingServer.registerDefaultProcessor(this, processorExecutor);
+            RopBrokerProxy.this.registerDefaultProcessor(this, processorExecutor);
             return true;
         }
 
@@ -195,25 +195,27 @@ public class RopBrokerProxy implements NettyRequestProcessor, AutoCloseable {
 
         @Override
         public boolean registerProxyProcessor() {
-            remotingServer.registerProcessor(RequestCode.PUT_KV_CONFIG, this, processorExecutor);
-            remotingServer.registerProcessor(RequestCode.GET_KV_CONFIG, this, processorExecutor);
-            remotingServer.registerProcessor(RequestCode.DELETE_KV_CONFIG, this, processorExecutor);
-            remotingServer.registerProcessor(RequestCode.QUERY_DATA_VERSION, this, processorExecutor);
-            remotingServer.registerProcessor(RequestCode.REGISTER_BROKER, this, processorExecutor);
-            remotingServer.registerProcessor(RequestCode.UNREGISTER_BROKER, this, processorExecutor);
-            remotingServer.registerProcessor(RequestCode.GET_ROUTEINTO_BY_TOPIC, this, processorExecutor);
-            remotingServer.registerProcessor(RequestCode.GET_BROKER_CLUSTER_INFO, this, processorExecutor);
-            remotingServer.registerProcessor(RequestCode.WIPE_WRITE_PERM_OF_BROKER, this, processorExecutor);
-            remotingServer.registerProcessor(RequestCode.GET_ALL_TOPIC_LIST_FROM_NAMESERVER, this, processorExecutor);
-            remotingServer.registerProcessor(RequestCode.DELETE_TOPIC_IN_NAMESRV, this, processorExecutor);
-            remotingServer.registerProcessor(RequestCode.GET_KVLIST_BY_NAMESPACE, this, processorExecutor);
-            remotingServer.registerProcessor(RequestCode.GET_TOPICS_BY_CLUSTER, this, processorExecutor);
-            remotingServer.registerProcessor(RequestCode.GET_SYSTEM_TOPIC_LIST_FROM_NS, this, processorExecutor);
-            remotingServer.registerProcessor(RequestCode.GET_UNIT_TOPIC_LIST, this, processorExecutor);
-            remotingServer.registerProcessor(RequestCode.GET_HAS_UNIT_SUB_TOPIC_LIST, this, processorExecutor);
-            remotingServer.registerProcessor(RequestCode.GET_HAS_UNIT_SUB_UNUNIT_TOPIC_LIST, this, processorExecutor);
-            remotingServer.registerProcessor(RequestCode.UPDATE_NAMESRV_CONFIG, this, processorExecutor);
-            remotingServer.registerProcessor(RequestCode.GET_NAMESRV_CONFIG, this, processorExecutor);
+            RopBrokerProxy.this.registerProcessor(RequestCode.PUT_KV_CONFIG, this, processorExecutor);
+            RopBrokerProxy.this.registerProcessor(RequestCode.GET_KV_CONFIG, this, processorExecutor);
+            RopBrokerProxy.this.registerProcessor(RequestCode.DELETE_KV_CONFIG, this, processorExecutor);
+            RopBrokerProxy.this.registerProcessor(RequestCode.QUERY_DATA_VERSION, this, processorExecutor);
+            RopBrokerProxy.this.registerProcessor(RequestCode.REGISTER_BROKER, this, processorExecutor);
+            RopBrokerProxy.this.registerProcessor(RequestCode.UNREGISTER_BROKER, this, processorExecutor);
+            RopBrokerProxy.this.registerProcessor(RequestCode.GET_ROUTEINTO_BY_TOPIC, this, processorExecutor);
+            RopBrokerProxy.this.registerProcessor(RequestCode.GET_BROKER_CLUSTER_INFO, this, processorExecutor);
+            RopBrokerProxy.this.registerProcessor(RequestCode.WIPE_WRITE_PERM_OF_BROKER, this, processorExecutor);
+            RopBrokerProxy.this
+                    .registerProcessor(RequestCode.GET_ALL_TOPIC_LIST_FROM_NAMESERVER, this, processorExecutor);
+            RopBrokerProxy.this.registerProcessor(RequestCode.DELETE_TOPIC_IN_NAMESRV, this, processorExecutor);
+            RopBrokerProxy.this.registerProcessor(RequestCode.GET_KVLIST_BY_NAMESPACE, this, processorExecutor);
+            RopBrokerProxy.this.registerProcessor(RequestCode.GET_TOPICS_BY_CLUSTER, this, processorExecutor);
+            RopBrokerProxy.this.registerProcessor(RequestCode.GET_SYSTEM_TOPIC_LIST_FROM_NS, this, processorExecutor);
+            RopBrokerProxy.this.registerProcessor(RequestCode.GET_UNIT_TOPIC_LIST, this, processorExecutor);
+            RopBrokerProxy.this.registerProcessor(RequestCode.GET_HAS_UNIT_SUB_TOPIC_LIST, this, processorExecutor);
+            RopBrokerProxy.this
+                    .registerProcessor(RequestCode.GET_HAS_UNIT_SUB_UNUNIT_TOPIC_LIST, this, processorExecutor);
+            RopBrokerProxy.this.registerProcessor(RequestCode.UPDATE_NAMESRV_CONFIG, this, processorExecutor);
+            RopBrokerProxy.this.registerProcessor(RequestCode.GET_NAMESRV_CONFIG, this, processorExecutor);
             return true;
         }
     }
@@ -232,9 +234,9 @@ public class RopBrokerProxy implements NettyRequestProcessor, AutoCloseable {
 
         @Override
         public boolean registerProxyProcessor() {
-            remotingServer.registerProcessor(RequestCode.GET_CONSUMER_LIST_BY_GROUP, this, processorExecutor);
-            remotingServer.registerProcessor(RequestCode.UPDATE_CONSUMER_OFFSET, this, processorExecutor);
-            remotingServer.registerProcessor(RequestCode.QUERY_CONSUMER_OFFSET, this, processorExecutor);
+            RopBrokerProxy.this.registerProcessor(RequestCode.GET_CONSUMER_LIST_BY_GROUP, this, processorExecutor);
+            RopBrokerProxy.this.registerProcessor(RequestCode.UPDATE_CONSUMER_OFFSET, this, processorExecutor);
+            RopBrokerProxy.this.registerProcessor(RequestCode.QUERY_CONSUMER_OFFSET, this, processorExecutor);
             return true;
         }
     }
@@ -253,9 +255,9 @@ public class RopBrokerProxy implements NettyRequestProcessor, AutoCloseable {
 
         @Override
         public boolean registerProxyProcessor() {
-            remotingServer.registerProcessor(RequestCode.HEART_BEAT, this, processorExecutor);
-            remotingServer.registerProcessor(RequestCode.UNREGISTER_CLIENT, this, processorExecutor);
-            remotingServer.registerProcessor(RequestCode.CHECK_CLIENT_CONFIG, this, processorExecutor);
+            RopBrokerProxy.this.registerProcessor(RequestCode.HEART_BEAT, this, processorExecutor);
+            RopBrokerProxy.this.registerProcessor(RequestCode.UNREGISTER_CLIENT, this, processorExecutor);
+            RopBrokerProxy.this.registerProcessor(RequestCode.CHECK_CLIENT_CONFIG, this, processorExecutor);
             return true;
         }
     }
@@ -274,8 +276,8 @@ public class RopBrokerProxy implements NettyRequestProcessor, AutoCloseable {
 
         @Override
         public boolean registerProxyProcessor() {
-            remotingServer.registerProcessor(RequestCode.QUERY_MESSAGE, this, processorExecutor);
-            remotingServer.registerProcessor(RequestCode.VIEW_MESSAGE_BY_ID, this, processorExecutor);
+            RopBrokerProxy.this.registerProcessor(RequestCode.QUERY_MESSAGE, this, processorExecutor);
+            RopBrokerProxy.this.registerProcessor(RequestCode.VIEW_MESSAGE_BY_ID, this, processorExecutor);
             return true;
         }
     }
@@ -293,8 +295,14 @@ public class RopBrokerProxy implements NettyRequestProcessor, AutoCloseable {
         }
 
         @Override
+        public RemotingCommand processRequest(ChannelHandlerContext ctx, RemotingCommand request)
+                throws RemotingCommandException {
+            return super.processRequest(ctx, request);
+        }
+
+        @Override
         public boolean registerProxyProcessor() {
-            remotingServer.registerProcessor(RequestCode.PULL_MESSAGE, this, processorExecutor);
+            RopBrokerProxy.this.registerProcessor(RequestCode.PULL_MESSAGE, this, processorExecutor);
             return true;
         }
     }
@@ -314,11 +322,17 @@ public class RopBrokerProxy implements NettyRequestProcessor, AutoCloseable {
         }
 
         @Override
+        public RemotingCommand processRequest(ChannelHandlerContext ctx, RemotingCommand request)
+                throws RemotingCommandException {
+            return super.processRequest(ctx, request);
+        }
+
+        @Override
         public boolean registerProxyProcessor() {
-            remotingServer.registerProcessor(RequestCode.SEND_MESSAGE, this, processorExecutor);
-            remotingServer.registerProcessor(RequestCode.SEND_MESSAGE_V2, this, processorExecutor);
-            remotingServer.registerProcessor(RequestCode.SEND_BATCH_MESSAGE, this, processorExecutor);
-            remotingServer.registerProcessor(RequestCode.CONSUMER_SEND_MSG_BACK, this, processorExecutor);
+            RopBrokerProxy.this.registerProcessor(RequestCode.SEND_MESSAGE, this, processorExecutor);
+            RopBrokerProxy.this.registerProcessor(RequestCode.SEND_MESSAGE_V2, this, processorExecutor);
+            RopBrokerProxy.this.registerProcessor(RequestCode.SEND_BATCH_MESSAGE, this, processorExecutor);
+            RopBrokerProxy.this.registerProcessor(RequestCode.CONSUMER_SEND_MSG_BACK, this, processorExecutor);
             return true;
         }
     }
@@ -337,7 +351,7 @@ public class RopBrokerProxy implements NettyRequestProcessor, AutoCloseable {
 
         @Override
         public boolean registerProxyProcessor() {
-            remotingServer.registerProcessor(RequestCode.END_TRANSACTION, this, processorExecutor);
+            RopBrokerProxy.this.registerProcessor(RequestCode.END_TRANSACTION, this, processorExecutor);
             return true;
         }
     }

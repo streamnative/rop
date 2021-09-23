@@ -98,7 +98,6 @@ public class RocketMQBrokerController {
     private final BlockingQueue<Runnable> ropBrokerRequestThreadPoolQueue;
     private final BrokerStatsManager brokerStatsManager;
 
-    private final RocketMQRemoteServer remotingServer;
     private final Broker2Client broker2Client = new Broker2Client(this);
     private final RopBrokerProxy ropBrokerProxy;
 
@@ -158,9 +157,8 @@ public class RocketMQBrokerController {
                 this.serverConfig.getRopBrokerRequestThreadPoolCapacity());
 
         this.brokerStatsManager = new BrokerStatsManager(serverConfig.getBrokerName());
-        this.remotingServer = new RocketMQRemoteServer(this.serverConfig, this.clientHousekeepingService);
         this.delayedMessageService = new ScheduleMessageService(this, serverConfig);
-        this.ropBrokerProxy = new RopBrokerProxy(this);
+        this.ropBrokerProxy = new RopBrokerProxy(this.serverConfig, this, this.clientHousekeepingService);
     }
 
     public void initialize() throws Exception {
@@ -514,8 +512,8 @@ public class RocketMQBrokerController {
             this.pullRequestHoldService.shutdown();
         }
 
-        if (this.remotingServer != null) {
-            this.remotingServer.shutdown();
+        if (this.ropBrokerProxy != null) {
+            this.ropBrokerProxy.shutdown();
         }
 
         this.scheduledExecutorService.shutdown();
@@ -577,10 +575,6 @@ public class RocketMQBrokerController {
             this.groupMetaManager.start();
         }
 
-        if (this.remotingServer != null) {
-            this.remotingServer.start();
-        }
-
         if (this.ropBrokerProxy != null) {
             this.ropBrokerProxy.start();
         }
@@ -611,6 +605,6 @@ public class RocketMQBrokerController {
     }
 
     public RocketMQRemoteServer getRemotingServer() {
-        return remotingServer;
+        return ropBrokerProxy;
     }
 }

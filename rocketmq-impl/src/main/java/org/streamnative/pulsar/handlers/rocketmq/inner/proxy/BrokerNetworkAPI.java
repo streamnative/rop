@@ -52,13 +52,13 @@ public class BrokerNetworkAPI {
         });
     }
 
-    public RemotingCommand invokeSync(String s, RemotingCommand remotingCommand, long timeout)
+    public RemotingCommand invokeSync(String conn, RemotingCommand remotingCommand, long timeout)
             throws InterruptedException, RemotingConnectException, RemotingSendRequestException, RemotingTimeoutException {
-        return getRemoteClientByConn(s).invokeSync(s, remotingCommand, timeout);
+        return getRemoteClientByConn(conn).invokeSync(conn, remotingCommand, timeout);
     }
 
-    public void invokeAsync(String s, RemotingCommand remotingCommand, long timeout, InvokeCallback invokeCallback)
+    public void invokeAsync(String conn, RemotingCommand remotingCommand, long timeout, InvokeCallback invokeCallback)
             throws InterruptedException, RemotingConnectException, RemotingTooMuchRequestException, RemotingTimeoutException, RemotingSendRequestException {
-        getRemoteClientByConn(s).invokeAsync(s, remotingCommand, timeout, invokeCallback);
+        getRemoteClientByConn(conn).invokeAsync(conn, remotingCommand, timeout, invokeCallback);
     }
 }
