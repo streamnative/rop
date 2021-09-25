@@ -31,7 +31,7 @@ import org.apache.zookeeper.ZooDefs.Ids;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import org.streamnative.pulsar.handlers.rocketmq.inner.proxy.RopZookeeperCacheService;
 import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopCoordinatorContent;
-import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkPath;
+import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkUtils;
 import org.streamnative.pulsar.handlers.rocketmq.utils.ZookeeperUtils;
 
 /**
@@ -67,11 +67,11 @@ public class RopCoordinator implements AutoCloseable {
 
     private void elect() {
         try {
-            byte[] data = pulsar.getLocalZkCache().getZooKeeper().getData(RopZkPath.COORDINATOR_PATH, event -> {
+            byte[] data = pulsar.getLocalZkCache().getZooKeeper().getData(RopZkUtils.COORDINATOR_PATH, event -> {
                 log.warn("Type of the event is [{}] and path is [{}]", event.getType(), event.getPath());
                 if (event.getType() == EventType.NodeDeleted) {
                     log.warn("Election node {} is deleted, attempting re-election...", event.getPath());
-                    if (event.getPath().equals(RopZkPath.COORDINATOR_PATH)) {
+                    if (event.getPath().equals(RopZkUtils.COORDINATOR_PATH)) {
                         log.info("This should call elect again...");
                         executor.execute(() -> {
                             // If the node is deleted, attempt the re-election
@@ -100,7 +100,7 @@ public class RopCoordinator implements AutoCloseable {
             try {
                 // Create the root node and add current broker's URL as its contents
                 RopCoordinatorContent leaderBroker = new RopCoordinatorContent(brokerController.getBrokerAddress());
-                ZkUtils.createFullPathOptimistic(pulsar.getLocalZkCache().getZooKeeper(), RopZkPath.COORDINATOR_PATH,
+                ZkUtils.createFullPathOptimistic(pulsar.getLocalZkCache().getZooKeeper(), RopZkUtils.COORDINATOR_PATH,
                         jsonMapper.writeValueAsBytes(leaderBroker), Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
 
                 // Update the current leader and set the flag to true
@@ -128,7 +128,7 @@ public class RopCoordinator implements AutoCloseable {
         } catch (Exception e) {
             // Kill the broker
             log.error("Could not get the content of [{}], got exception [{}]. Shutting down the broker...",
-                    RopZkPath.COORDINATOR_PATH, e);
+                    RopZkUtils.COORDINATOR_PATH, e);
             pulsar.getShutdownService().shutdown(-1);
         }
     }
@@ -161,7 +161,7 @@ public class RopCoordinator implements AutoCloseable {
         log.info("Shutdown RopCoordinator");
         if (isCoordinator()) {
             try {
-                ZookeeperUtils.deleteData(pulsar.getLocalZkCache().getZooKeeper(), RopZkPath.COORDINATOR_PATH);
+                ZookeeperUtils.deleteData(pulsar.getLocalZkCache().getZooKeeper(), RopZkUtils.COORDINATOR_PATH);
             } catch (Exception ex) {
                 log.error("Delete rop coordinator zk node error", ex);
                 throw ex;

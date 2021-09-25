@@ -17,13 +17,13 @@ package org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper;
 /**
  * Rop path for zookeeper.
  */
-public class RopZkPath {
+public final class RopZkUtils {
 
     public static final String ROP_PATH = "/rop";
 
     public static final String COORDINATOR_PATH = ROP_PATH + "/coordinator";
 
-    public static final String BROKER_PATH = ROP_PATH + "/brokers";
+    public static final String BROKERS_PATH = ROP_PATH + "/brokers";
 
     public static final String TOPIC_BASE_PATH = ROP_PATH + "/topics";
 
@@ -34,4 +34,16 @@ public class RopZkPath {
     public static final String GROUP_BASE_PATH_MATCH = GROUP_BASE_PATH + "/%s";
 
     public static final String BROKER_CLUSTER_PATH = ROP_PATH + "/brokerCluster";
+
+    public static final String getTopicZNodePath(String topicName) {
+        return String.format(TOPIC_BASE_PATH_MATCH, topicName);
+    }
+
+    public static final String getGroupZNodePath(String groupName) {
+        return String.format(GROUP_BASE_PATH_MATCH, groupName);
+    }
+
+    public static final String getClusterZNodePath() {
+        return BROKER_CLUSTER_PATH;
+    }
 }

@@ -101,7 +101,6 @@ public class RocketMQBrokerController {
     private final Broker2Client broker2Client = new Broker2Client(this);
     private final RopBrokerProxy ropBrokerProxy;
 
-    private MQTopicManager topicConfigManager;
     private ExecutorService sendMessageExecutor;
     private ExecutorService sendCallbackExecutor;
     private ExecutorService pullMessageExecutor;
@@ -127,7 +126,7 @@ public class RocketMQBrokerController {
         this.serverConfig = serverConfig;
         this.groupMetaManager = new GroupMetaManager(this);
         this.consumerOffsetManager = new ConsumerOffsetManager(this, groupMetaManager);
-        this.topicConfigManager = new MQTopicManager(this);
+
         this.pullRequestHoldService = new PullRequestHoldService(this);
         this.messageArrivingListener = new NotifyMessageArrivingListener(this.pullRequestHoldService);
         this.consumerIdsChangeListener = new DefaultConsumerIdsChangeListener(this);
@@ -559,10 +558,6 @@ public class RocketMQBrokerController {
         if (this.endTransactionExecutor != null) {
             this.endTransactionExecutor.shutdown();
         }
-
-        if (this.topicConfigManager != null) {
-            this.topicConfigManager.shutdown();
-        }
     }
 
     public void start() throws Exception {
@@ -591,10 +586,6 @@ public class RocketMQBrokerController {
             this.brokerStatsManager.start();
         }
 
-        if (this.topicConfigManager != null) {
-            this.topicConfigManager.start();
-        }
-
         if (this.delayedMessageService != null) {
             this.delayedMessageService.start();
         }
@@ -607,4 +598,9 @@ public class RocketMQBrokerController {
     public RocketMQRemoteServer getRemotingServer() {
         return ropBrokerProxy;
     }
+
+    public MQTopicManager getTopicConfigManager() {
+        return this.ropBrokerProxy.getMqTopicManager();
+    }
+
 }

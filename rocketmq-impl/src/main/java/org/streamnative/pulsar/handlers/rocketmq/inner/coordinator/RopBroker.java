@@ -17,7 +17,7 @@ package org.streamnative.pulsar.handlers.rocketmq.inner.coordinator;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.zookeeper.ZooKeeper;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
-import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkPath;
+import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkUtils;
 import org.streamnative.pulsar.handlers.rocketmq.utils.ZookeeperUtils;
 
 /**
@@ -37,7 +37,7 @@ public class RopBroker {
     public void start() {
         log.info("Start RopBroker");
         this.zkClient = brokerController.getBrokerService().pulsar().getZkClient();
-        this.zkNodePath = RopZkPath.BROKER_PATH + "/" + brokerController.getBrokerAddress();
+        this.zkNodePath = RopZkUtils.BROKERS_PATH + "/" + brokerController.getBrokerAddress();
         ZookeeperUtils.createEphemeralNodeIfNotExist(zkClient, zkNodePath);
     }
 

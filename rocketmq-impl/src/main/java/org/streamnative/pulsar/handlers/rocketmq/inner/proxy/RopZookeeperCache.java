@@ -49,7 +49,7 @@ public class RopZookeeperCache extends ZooKeeperCache implements Closeable {
     public RopZookeeperCache(ZooKeeperClientFactory zkClientFactory, int zkSessionTimeoutMillis,
             int zkOperationTimeoutSeconds, String ropZkConnect, OrderedExecutor orderedExecutor,
             ScheduledExecutorService scheduledExecutor, int cacheExpirySeconds) {
-        super("rop-zk", null, zkOperationTimeoutSeconds, orderedExecutor, cacheExpirySeconds);
+        super("rop-zk-cache", null, zkOperationTimeoutSeconds, orderedExecutor, cacheExpirySeconds);
         this.zlClientFactory = zkClientFactory;
         this.zkSessionTimeoutMillis = zkSessionTimeoutMillis;
         this.ropZkConnect = ropZkConnect;
@@ -60,7 +60,6 @@ public class RopZookeeperCache extends ZooKeeperCache implements Closeable {
     public void start() throws RopServerException {
         CompletableFuture<ZooKeeper> zkFuture = zlClientFactory.create(ropZkConnect, SessionType.ReadWrite,
                 zkSessionTimeoutMillis);
-        // Initial session creation with global ZK must work
         try {
             ZooKeeper newSession = zkFuture.get(zkSessionTimeoutMillis, TimeUnit.MILLISECONDS);
             // Register self as a watcher to receive notification when session expires and trigger a new session to be

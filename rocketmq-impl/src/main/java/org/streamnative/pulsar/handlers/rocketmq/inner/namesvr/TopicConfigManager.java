@@ -16,18 +16,12 @@ package org.streamnative.pulsar.handlers.rocketmq.inner.namesvr;
 
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.SLASH_CHAR;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Joiner;
 import com.google.common.base.Splitter;
-import com.google.common.cache.Cache;
-import com.google.common.cache.CacheBuilder;
-import com.google.common.cache.RemovalNotification;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -37,10 +31,8 @@ import org.apache.rocketmq.common.DataVersion;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.TopicConfig;
 import org.apache.rocketmq.common.constant.PermName;
-import org.apache.zookeeper.ZooKeeper;
 import org.streamnative.pulsar.handlers.rocketmq.RocketMQServiceConfiguration;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
-import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopTopicContent;
 import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 
 /**
@@ -49,29 +41,15 @@ import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 @Slf4j
 public abstract class TopicConfigManager {
 
-    private final int maxCacheSize = 1000 * 1000;
-    private final int maxCacheTimeInSec = 60;
     protected static final long LOCK_TIMEOUT_MILLIS = 3000;
     protected final transient Lock lockTopicConfigTable = new ReentrantLock();
 
     //key = {tenant}/{ns}/{topic}
     protected final ConcurrentMap<String, TopicConfig> topicConfigTable = new ConcurrentHashMap<>(1024);
     protected final DataVersion dataVersion = new DataVersion();
-    protected final Set<String> systemTopicList = new HashSet<String>();
+    protected final Set<String> systemTopicList = new HashSet<>();
     protected final RocketMQServiceConfiguration config;
     protected transient RocketMQBrokerController brokerController;
-    protected ZooKeeper zkClient;
-
-    protected final Cache<TopicName, RopTopicContent> topicTableCache = CacheBuilder
-            .newBuilder()
-            .initialCapacity(maxCacheSize)
-            .expireAfterWrite(maxCacheTimeInSec, TimeUnit.SECONDS)
-            .removalListener((RemovalNotification<TopicName, RopTopicContent> notification) ->
-                    log.info("Remove key [{}] from routeTableCache", notification.getKey().toString()))
-            .build();
-    protected final ObjectMapper jsonMapper = new ObjectMapper();
-    protected final ScheduledExecutorService cleanUpExecutor;
-
 
     public TopicConfigManager(RocketMQBrokerController brokerController) {
         this.brokerController = brokerController;
@@ -163,14 +141,6 @@ public abstract class TopicConfigManager {
             topicConfig.setWriteQueueNums(1);
             this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);
         }
-
-        cleanUpExecutor = Executors.newScheduledThreadPool(1, r -> {
-            Thread t = new Thread(r);
-            t.setDaemon(true);
-            t.setName("Rop-topicTableCache-cleanUp");
-            return t;
-        });
-        cleanUpExecutor.scheduleWithFixedDelay(topicTableCache::cleanUp, 1, 1, TimeUnit.MINUTES);
     }
 
     protected void putPulsarTopic2Config(TopicName pulsarTopic, int partitionNum) {

@@ -21,6 +21,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.logging.log4j.util.Strings;
 import org.apache.rocketmq.remoting.InvokeCallback;
 import org.apache.rocketmq.remoting.RemotingClient;
+import org.apache.rocketmq.remoting.RemotingService;
 import org.apache.rocketmq.remoting.exception.RemotingConnectException;
 import org.apache.rocketmq.remoting.exception.RemotingSendRequestException;
 import org.apache.rocketmq.remoting.exception.RemotingTimeoutException;
@@ -33,7 +34,7 @@ import org.apache.rocketmq.remoting.protocol.RemotingCommand;
  * it help broker to access owned-partition data from each other.
  */
 @Slf4j
-public class BrokerNetworkAPI {
+public class BrokerNetworkAPI implements AutoCloseable {
 
     private final RopBrokerProxy ropBrokerProxy;
     private final Map<String, RemotingClient> innerClients = new ConcurrentHashMap<>();
@@ -60,5 +61,10 @@ public class BrokerNetworkAPI {
     public void invokeAsync(String conn, RemotingCommand remotingCommand, long timeout, InvokeCallback invokeCallback)
             throws InterruptedException, RemotingConnectException, RemotingTooMuchRequestException, RemotingTimeoutException, RemotingSendRequestException {
         getRemoteClientByConn(conn).invokeAsync(conn, remotingCommand, timeout, invokeCallback);
+    }
+
+    @Override
+    public void close() throws Exception {
+        innerClients.values().forEach(RemotingClient::shutdown);
     }
 }

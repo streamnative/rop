@@ -106,6 +106,7 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.bean.RopConsumeStats;
 import org.streamnative.pulsar.handlers.rocketmq.inner.bean.RopOffsetWrapper;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.ConsumerGroupInfo;
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopPersistentTopicException;
+import org.streamnative.pulsar.handlers.rocketmq.inner.namesvr.MQTopicManager;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupAndTopicName;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupName;
 import org.streamnative.pulsar.handlers.rocketmq.utils.MessageIdUtils;
@@ -308,8 +309,10 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
 
     private synchronized RemotingCommand updateBrokerConfig(ChannelHandlerContext ctx, RemotingCommand request) {
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
-
         log.info("updateBrokerConfig called by {}", RemotingHelper.parseChannelRemoteAddr(ctx.channel()));
+
+        MQTopicManager topicConfigManager = brokerController.getTopicConfigManager();
+        //topicConfigManager.
 
         byte[] body = request.getBody();
         if (body != null) {

@@ -14,8 +14,14 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper;
 
+import com.google.common.base.Preconditions;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
+import java.util.stream.Collectors;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.extern.slf4j.Slf4j;
@@ -27,5 +33,34 @@ import lombok.extern.slf4j.Slf4j;
 @Data
 @EqualsAndHashCode
 public class RopClusterContent {
+
+    private String clusterName;
     private Map<String/*BrokerTag*/, List<String>/*ip:port*/> brokerCluster;
+
+    public Map<String, List<Integer>> createTopicRouteMap(int partitionNum) {
+        Preconditions
+                .checkArgument(brokerCluster != null && brokerCluster.size() > 0, "Rop Cluster config haven't be set.");
+        Preconditions.checkArgument(partitionNum > 0, "the num of top partition must be more than zero.");
+        int brokerGroupNum = brokerCluster.entrySet().size();
+        int size = partitionNum / brokerGroupNum;
+        int res = partitionNum % brokerGroupNum;
+        Map<String, Integer> assignedMap = new HashMap<>();
+        for (String brokerTag : brokerCluster.keySet()) {
+            assignedMap.put(brokerTag, size + ((res--) > 0 ? 1 : 0));
+        }
+        Map<String, List<Integer>> result = new HashMap<>(brokerGroupNum);
+
+        int total = 0;
+        List<Entry<String, Integer>> shuffledAssignedEntries = assignedMap.entrySet().stream()
+                .collect(Collectors.toList());
+        Collections.shuffle(shuffledAssignedEntries);
+        for (Entry<String, Integer> entry : shuffledAssignedEntries) {
+            for (int i = 0; i < entry.getValue(); i++) {
+                List<Integer> tempList = result.computeIfAbsent(entry.getKey(), k -> new ArrayList(entry.getValue()));
+                tempList.add(i + total);
+            }
+            total += entry.getValue();
+        }
+        return result;
+    }
 }

@@ -40,16 +40,16 @@ public class RopZkClient implements Watcher {
         this.zooKeeper = brokerController.getBrokerService().pulsar().getZkClient();
 
         // init rop zk node
-        ZookeeperUtils.createPersistentNodeIfNotExist(zooKeeper, RopZkPath.ROP_PATH);
+        ZookeeperUtils.createPersistentNodeIfNotExist(zooKeeper, RopZkUtils.ROP_PATH);
 
         // init broker zk node
-        ZookeeperUtils.createPersistentNodeIfNotExist(zooKeeper, RopZkPath.BROKER_PATH);
+        ZookeeperUtils.createPersistentNodeIfNotExist(zooKeeper, RopZkUtils.BROKERS_PATH);
 
         // init topic zk node
-        ZookeeperUtils.createPersistentNodeIfNotExist(zooKeeper, RopZkPath.TOPIC_BASE_PATH);
+        ZookeeperUtils.createPersistentNodeIfNotExist(zooKeeper, RopZkUtils.TOPIC_BASE_PATH);
 
         // init group zk node
-        ZookeeperUtils.createPersistentNodeIfNotExist(zooKeeper, RopZkPath.GROUP_BASE_PATH);
+        ZookeeperUtils.createPersistentNodeIfNotExist(zooKeeper, RopZkUtils.GROUP_BASE_PATH);
     }
 
     @Override

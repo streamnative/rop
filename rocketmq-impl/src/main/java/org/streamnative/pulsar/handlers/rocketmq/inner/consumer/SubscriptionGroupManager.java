@@ -32,7 +32,7 @@ import org.apache.zookeeper.ZooKeeper;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupName;
 import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopGroupContent;
-import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkPath;
+import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkUtils;
 import org.streamnative.pulsar.handlers.rocketmq.utils.ZookeeperUtils;
 
 /**
@@ -94,7 +94,7 @@ public class SubscriptionGroupManager {
         ClientGroupName clientGroupName = new ClientGroupName(config.getGroupName());
 
         TopicName topicName = TopicName.get(clientGroupName.getPulsarGroupName());
-        String groupNodePath = String.format(RopZkPath.GROUP_BASE_PATH_MATCH, clientGroupName.getPulsarGroupName());
+        String groupNodePath = String.format(RopZkUtils.GROUP_BASE_PATH_MATCH, clientGroupName.getPulsarGroupName());
 
         try {
             RopGroupContent ropGroupContent = new RopGroupContent(config);
@@ -103,10 +103,10 @@ public class SubscriptionGroupManager {
             subscriptionGroupTableCache.put(clientGroupName, ropGroupContent.getConfig());
         } catch (KeeperException.NoNodeException e) {
             try {
-                String tenantNodePath = String.format(RopZkPath.GROUP_BASE_PATH_MATCH, topicName.getTenant());
+                String tenantNodePath = String.format(RopZkUtils.GROUP_BASE_PATH_MATCH, topicName.getTenant());
                 ZookeeperUtils.createPersistentNodeIfNotExist(zkClient, tenantNodePath);
 
-                String nsNodePath = String.format(RopZkPath.GROUP_BASE_PATH_MATCH, topicName.getNamespace());
+                String nsNodePath = String.format(RopZkUtils.GROUP_BASE_PATH_MATCH, topicName.getNamespace());
                 ZookeeperUtils.createPersistentNodeIfNotExist(zkClient, nsNodePath);
 
                 RopGroupContent ropGroupContent = new RopGroupContent(config);
@@ -133,7 +133,7 @@ public class SubscriptionGroupManager {
         }
 
         try {
-            String groupNodePath = String.format(RopZkPath.GROUP_BASE_PATH_MATCH, clientGroupName.getPulsarGroupName());
+            String groupNodePath = String.format(RopZkUtils.GROUP_BASE_PATH_MATCH, clientGroupName.getPulsarGroupName());
             byte[] content = zkClient.getData(groupNodePath, null, null);
             RopGroupContent ropGroupContent = jsonMapper.readValue(content, RopGroupContent.class);
             subscriptionGroupTableCache.put(clientGroupName, ropGroupContent.getConfig());
@@ -158,7 +158,7 @@ public class SubscriptionGroupManager {
     public void deleteSubscriptionGroupConfig(String group) {
         ClientGroupName clientGroupName = new ClientGroupName(group);
 
-        String groupNodePath = String.format(RopZkPath.GROUP_BASE_PATH_MATCH, clientGroupName.getPulsarGroupName());
+        String groupNodePath = String.format(RopZkUtils.GROUP_BASE_PATH_MATCH, clientGroupName.getPulsarGroupName());
         ZookeeperUtils.deleteData(zkClient, groupNodePath);
         subscriptionGroupTableCache.invalidate(clientGroupName);
     }
