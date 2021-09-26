@@ -141,7 +141,11 @@ public class ConsumerManageProcessor implements NettyRequestProcessor {
                     .getConsumerGroupInfo(requestHeader.getConsumerGroup());
             if (consumerGroupInfo != null) {
                 try {
-                    if (consumerGroupInfo.getConsumeFromWhere() == ConsumeFromWhere.CONSUME_FROM_FIRST_OFFSET) {
+                    if (consumerGroupInfo.getConsumeFromWhere() == ConsumeFromWhere.CONSUME_FROM_TIMESTAMP) {
+                        responseHeader.setOffset(-1L);
+                        response.setCode(ResponseCode.SUCCESS);
+                        response.setRemark(null);
+                    } else if (consumerGroupInfo.getConsumeFromWhere() == ConsumeFromWhere.CONSUME_FROM_FIRST_OFFSET) {
                         long minOffset = this.brokerController.getConsumerOffsetManager()
                                 .getMinOffsetInQueue(new ClientTopicName(requestHeader.getTopic()),
                                         requestHeader.getQueueId());

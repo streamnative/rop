@@ -29,6 +29,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Function;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bookkeeper.mledger.ManagedCursor;
@@ -305,18 +306,9 @@ public class GroupMetaManager {
     }
 
     private void commitOffset(ClientGroupAndTopicName clientGroupAndTopicName, int queueId, long offset) {
-        ConcurrentMap<Integer, Long> map = this.offsetTable.get(clientGroupAndTopicName);
-        if (null == map) {
-            map = new ConcurrentHashMap<>(32);
-            map.put(queueId, offset);
-            this.offsetTable.put(clientGroupAndTopicName, map);
-            return;
-        }
-
-        Long storeOffset = map.get(queueId);
-        if (storeOffset == null || offset >= storeOffset) {
-            map.put(queueId, offset);
-        }
+        ConcurrentMap<Integer, Long> map = this.offsetTable.computeIfAbsent(clientGroupAndTopicName,
+                groupAndTopicName -> new ConcurrentHashMap<>(32));
+        map.put(queueId, offset);
     }
 
     public void persistOffset() {
