@@ -17,7 +17,6 @@ package org.streamnative.pulsar.handlers.rocketmq.inner.processor;
 import io.netty.channel.ChannelHandlerContext;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.rocketmq.common.consumer.ConsumeFromWhere;
 import org.apache.rocketmq.common.protocol.RequestCode;
 import org.apache.rocketmq.common.protocol.ResponseCode;
 import org.apache.rocketmq.common.protocol.header.GetConsumerListByGroupRequestHeader;
@@ -33,8 +32,6 @@ import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.ConsumerGroupInfo;
-import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopPersistentTopicException;
-import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientTopicName;
 
 /**
  * Consumer manage processor.
@@ -137,37 +134,9 @@ public class ConsumerManageProcessor implements NettyRequestProcessor {
             response.setCode(ResponseCode.SUCCESS);
             response.setRemark(null);
         } else {
-            ConsumerGroupInfo consumerGroupInfo = this.brokerController.getConsumerManager()
-                    .getConsumerGroupInfo(requestHeader.getConsumerGroup());
-            if (consumerGroupInfo != null) {
-                try {
-                    if (consumerGroupInfo.getConsumeFromWhere() == ConsumeFromWhere.CONSUME_FROM_TIMESTAMP) {
-                        responseHeader.setOffset(-1L);
-                        response.setCode(ResponseCode.SUCCESS);
-                        response.setRemark(null);
-                    } else if (consumerGroupInfo.getConsumeFromWhere() == ConsumeFromWhere.CONSUME_FROM_FIRST_OFFSET) {
-                        long minOffset = this.brokerController.getConsumerOffsetManager()
-                                .getMinOffsetInQueue(new ClientTopicName(requestHeader.getTopic()),
-                                        requestHeader.getQueueId());
-                        responseHeader.setOffset(minOffset);
-                        response.setCode(ResponseCode.SUCCESS);
-                        response.setRemark(null);
-                    } else {
-                        long maxOffset = this.brokerController.getConsumerOffsetManager()
-                                .getMaxOffsetInQueue(new ClientTopicName(requestHeader.getTopic()),
-                                        requestHeader.getQueueId());
-                        responseHeader.setOffset(maxOffset);
-                        response.setCode(ResponseCode.SUCCESS);
-                        response.setRemark(null);
-                    }
-                } catch (RopPersistentTopicException e) {
-                    response.setCode(ResponseCode.QUERY_NOT_FOUND);
-                    response.setRemark("Not found, partition topic not in current node.");
-                }
-            } else {
-                response.setCode(ResponseCode.QUERY_NOT_FOUND);
-                response.setRemark("Not found, V3_0_6_SNAPSHOT maybe this group consumer boot first");
-            }
+            responseHeader.setOffset(-1L);
+            response.setCode(ResponseCode.QUERY_NOT_FOUND);
+            response.setRemark("Not found offset.");
         }
 
         return response;
