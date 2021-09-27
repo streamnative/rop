@@ -132,6 +132,9 @@ public class Broker2Client {
                         ConfigurationUtils.getDefaultListenerName(brokerController.getServerConfig()));
 
         for (int i = 0; i < topicConfig.getWriteQueueNums(); i++) {
+            if (!brokerController.getTopicConfigManager().isPartitionTopicOwner(TopicName.get(lookupTopic), i)) {
+                continue;
+            }
             MessageQueue mq = new MessageQueue();
             mq.setBrokerName(topicBrokerAddr.get(i).getHostName());
             mq.setTopic(topic);
