@@ -108,7 +108,7 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
         final PulsarApi.MessageMetadata.Builder builder = PulsarApi.MessageMetadata.newBuilder();
         builder.setProducerName("");
         builder.setSequenceId(0L);
-        builder.setPublishTime(0L);
+        builder.setPublishTime(System.currentTimeMillis());
         return builder.build();
     }
 
