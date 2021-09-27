@@ -104,7 +104,11 @@ public class OffsetFinder implements FindEntryCallback {
             }
         }
         messageFindInProgress = FALSE;
-        callback.findEntryComplete(position, null);
+        if (position != null) {
+            callback.findEntryComplete(position.getNext(), null);
+        } else {
+            callback.findEntryComplete(null, null);
+        }
     }
 
     @Override
