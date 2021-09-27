@@ -267,18 +267,9 @@ public class GroupMetaManager {
     }
 
     private void commitOffset(ClientGroupAndTopicName clientGroupAndTopicName, int queueId, long offset) {
-        ConcurrentMap<Integer, Long> map = this.offsetTable.get(clientGroupAndTopicName);
-        if (null == map) {
-            map = new ConcurrentHashMap<>(32);
-            map.put(queueId, offset);
-            this.offsetTable.put(clientGroupAndTopicName, map);
-            return;
-        }
-
-        Long storeOffset = map.get(queueId);
-        if (storeOffset == null || offset >= storeOffset) {
-            map.put(queueId, offset);
-        }
+        ConcurrentMap<Integer, Long> map = this.offsetTable.computeIfAbsent(clientGroupAndTopicName,
+                groupAndTopicName -> new ConcurrentHashMap<>(32));
+        map.put(queueId, offset);
     }
 
     public void persistOffset() {

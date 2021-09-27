@@ -131,6 +131,9 @@ public class Broker2Client {
         List<Integer> queueList = topicBrokerAddr.get(brokerController.getBrokerHost());
 
         for (int i = 0; i < queueList.size(); i++) {
+            if (!brokerController.getTopicConfigManager().isPartitionTopicOwner(TopicName.get(lookupTopic), i)) {
+                continue;
+            }
             MessageQueue mq = new MessageQueue();
             mq.setBrokerName(brokerController.getBrokerHost());
             mq.setTopic(topic);
