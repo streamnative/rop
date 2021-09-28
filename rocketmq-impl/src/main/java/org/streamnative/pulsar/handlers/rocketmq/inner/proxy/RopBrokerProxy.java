@@ -17,12 +17,17 @@ package org.streamnative.pulsar.handlers.rocketmq.inner.proxy;
 import static org.apache.bookkeeper.util.ZkUtils.createFullPathOptimistic;
 import static org.apache.bookkeeper.util.ZkUtils.deleteFullPathOptimistic;
 import static org.apache.pulsar.broker.web.PulsarWebResource.joinPath;
+import static org.apache.rocketmq.common.protocol.RequestCode.CONSUMER_SEND_MSG_BACK;
+import static org.apache.rocketmq.common.protocol.RequestCode.PULL_MESSAGE;
+import static org.apache.rocketmq.common.protocol.RequestCode.QUERY_MESSAGE;
+import static org.apache.rocketmq.common.protocol.RequestCode.SEND_BATCH_MESSAGE;
+import static org.apache.rocketmq.common.protocol.RequestCode.SEND_MESSAGE;
+import static org.apache.rocketmq.common.protocol.RequestCode.SEND_MESSAGE_V2;
 
 import io.netty.channel.ChannelHandlerContext;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
@@ -32,6 +37,7 @@ import org.apache.pulsar.broker.ServiceConfiguration;
 import org.apache.rocketmq.broker.mqtrace.ConsumeMessageHook;
 import org.apache.rocketmq.broker.mqtrace.SendMessageHook;
 import org.apache.rocketmq.common.protocol.RequestCode;
+import org.apache.rocketmq.common.protocol.header.PullMessageRequestHeader;
 import org.apache.rocketmq.remoting.ChannelEventListener;
 import org.apache.rocketmq.remoting.exception.RemotingCommandException;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
@@ -82,8 +88,26 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
         this.mqTopicManager = new MQTopicManager(brokerController);
     }
 
+    private boolean checkTopicOwnerBroker(String topic, int queueId) {
+        return true;
+    }
+
     @Override
-    public void processRequestCommand(ChannelHandlerContext ctx, RemotingCommand cmd) {
+    public void processRequestCommand(ChannelHandlerContext ctx, RemotingCommand cmd) throws RemotingCommandException {
+        switch (cmd.getCode()) {
+            case PULL_MESSAGE:
+                final PullMessageRequestHeader requestHeader =
+                        (PullMessageRequestHeader) cmd.decodeCommandCustomHeader(PullMessageRequestHeader.class);
+            case SEND_MESSAGE:
+            case SEND_MESSAGE_V2:
+            case SEND_BATCH_MESSAGE:
+            case QUERY_MESSAGE:
+            case CONSUMER_SEND_MSG_BACK: //TODO: CommitLogOffset 0
+
+                break;
+            default:
+                break;
+        }
         super.processRequestCommand(ctx, cmd);
     }
 
@@ -105,6 +129,12 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
 
             this.coordinator = new RopCoordinator(brokerController, zkService);
             this.coordinator.start();
+
+            try { //create default RoP cluster config
+                zkService.getClusterContent();
+            } catch (Exception e) {
+                throw new RuntimeException("cluster default config haven't been created.");
+            }
 
             this.mqTopicManager.start(zkService);
         } catch (Exception e) {
@@ -149,17 +179,6 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                     return null;
                 });
     }
-
-    public void registerSendMessageHook(final SendMessageHook hook) {
-        this.sendMessageHookList.add(hook);
-        log.info("register SendMessageHook Hook, {}", hook.hookName());
-    }
-
-    public void registerConsumeMessageHook(final ConsumeMessageHook hook) {
-        this.consumeMessageHookList.add(hook);
-        log.info("register ConsumeMessageHook Hook, {}", hook.hookName());
-    }
-
 
     public void registerProcessor() {
         // SendMessageProcessor
@@ -353,7 +372,7 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
 
         @Override
         public boolean registerProxyProcessor() {
-            RopBrokerProxy.this.registerProcessor(RequestCode.PULL_MESSAGE, this, processorExecutor);
+            RopBrokerProxy.this.registerProcessor(PULL_MESSAGE, this, processorExecutor);
             return true;
         }
     }
@@ -380,10 +399,10 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
 
         @Override
         public boolean registerProxyProcessor() {
-            RopBrokerProxy.this.registerProcessor(RequestCode.SEND_MESSAGE, this, processorExecutor);
-            RopBrokerProxy.this.registerProcessor(RequestCode.SEND_MESSAGE_V2, this, processorExecutor);
-            RopBrokerProxy.this.registerProcessor(RequestCode.SEND_BATCH_MESSAGE, this, processorExecutor);
-            RopBrokerProxy.this.registerProcessor(RequestCode.CONSUMER_SEND_MSG_BACK, this, processorExecutor);
+            RopBrokerProxy.this.registerProcessor(SEND_MESSAGE, this, processorExecutor);
+            RopBrokerProxy.this.registerProcessor(SEND_MESSAGE_V2, this, processorExecutor);
+            RopBrokerProxy.this.registerProcessor(SEND_BATCH_MESSAGE, this, processorExecutor);
+            RopBrokerProxy.this.registerProcessor(CONSUMER_SEND_MSG_BACK, this, processorExecutor);
             return true;
         }
     }
@@ -407,7 +426,7 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
         }
     }
 
-    public Set<String> getAllBrokers(){
+    public List<String> getAllBrokers() {
         return zkService.getAllBrokers();
     }
 

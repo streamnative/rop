@@ -14,16 +14,21 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.proxy;
 
-import static org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkUtils.BROKER_CLUSTER_PATH;
 import static org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkUtils.BROKERS_PATH;
+import static org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkUtils.BROKER_CLUSTER_PATH;
 import static org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkUtils.GROUP_BASE_PATH;
 import static org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkUtils.TOPIC_BASE_PATH;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.common.base.Preconditions;
+import com.google.common.base.Strings;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Set;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bookkeeper.util.ZkUtils;
@@ -33,6 +38,7 @@ import org.apache.pulsar.zookeeper.ZooKeeperCache;
 import org.apache.pulsar.zookeeper.ZooKeeperDataCache;
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException;
+import org.apache.zookeeper.ZooDefs;
 import org.apache.zookeeper.ZooDefs.Ids;
 import org.apache.zookeeper.ZooKeeper;
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopServerException;
@@ -140,28 +146,55 @@ public class RopZookeeperCacheService implements AutoCloseable {
         Preconditions.checkNotNull(jsonObj, "json object can't be null.");
         String strContent = ObjectMapperFactory.getThreadLocal().writeValueAsString(jsonObj);
         ZkUtils.createFullPathOptimistic(cache.getZooKeeper(), zNodePath, strContent.getBytes(StandardCharsets.UTF_8),
-                null, CreateMode.PERSISTENT);
+                ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
     }
 
-    public RopClusterContent getClusterContent() {
+    public void deleteFullPath(String zNodePath) throws KeeperException, InterruptedException {
+        if (!Strings.isNullOrEmpty(zNodePath)) {
+            ZkUtils.deleteFullPathOptimistic(cache.getZooKeeper(), zNodePath, -1);
+        }
+    }
+
+    public RopClusterContent getClusterContent() throws Exception {
         try {
             return clusterDataCache.get(BROKER_CLUSTER_PATH).get();
         } catch (Exception e) {
-            log.warn("RoP cluster configuration is missing, please reset it when RoP cluster initialized.");
+            log.warn("RoP cluster configuration is missing, please reset it after RoP cluster initialized.");
             RopClusterContent defaultClusterContent = new RopClusterContent();
             defaultClusterContent.setClusterName("DefaultCluster");
-            Set<String> allBrokers = getAllBrokers();
-            log.info(allBrokers.toString());
-            return null;
+            List<String> allBrokers = getAllBrokers();
+            log.info("RoP cluster[{}] broker list: {}.", defaultClusterContent.getClusterName(), allBrokers.toString());
+            defaultClusterContent.setBrokerCluster(genBrokerGroupData(allBrokers, 2));
+            setJsonObjectForPath(BROKER_CLUSTER_PATH, defaultClusterContent);
+            clusterDataCache.reloadCache(BROKER_CLUSTER_PATH);
+            return clusterDataCache.getDataIfPresent(BROKER_CLUSTER_PATH);
         }
     }
 
-    public Set<String> getAllBrokers() {
+    public List<String> getAllBrokers() {
         try {
-            return cache.getChildren(BROKERS_PATH);
+            return cache.getChildren(BROKERS_PATH).stream().collect(Collectors.toList());
         } catch (Exception e) {
             log.warn("RopZookeeperCacheService getAllBrokers error, caused by:", e);
         }
-        return Collections.emptySet();
+        return Collections.emptyList();
+    }
+
+    private Map<String, List<String>> genBrokerGroupData(List<String> brokers, int repFactor) {
+        Preconditions.checkArgument(brokers != null && !brokers.isEmpty());
+        Preconditions.checkArgument(repFactor > 0);
+        final String brokerTagPrefix = "broker-";
+        Collections.sort(brokers);
+        int allBrokerNum = brokers.size();
+        int groupNum = (allBrokerNum - 1) / repFactor;
+        Map<String, List<String>> result = new HashMap<>();
+        for (int i = 0; i <= groupNum; i++) {
+            String brokerTag = brokerTagPrefix + i;
+            for (int j = 0; j < repFactor && (j + i * repFactor) < allBrokerNum; j++) {
+                List<String> brokerList = result.computeIfAbsent(brokerTag, k -> new ArrayList<>(repFactor));
+                brokerList.add(brokers.get(j + i * repFactor));
+            }
+        }
+        return result;
     }
 }

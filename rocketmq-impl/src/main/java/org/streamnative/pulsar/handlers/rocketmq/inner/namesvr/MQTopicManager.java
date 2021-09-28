@@ -92,7 +92,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
 
     @Override
     protected void createPulsarPartitionedTopic(TopicConfig tc) {
-        //createOrUpdateTopic(tc);
+        createOrUpdateTopic(tc);
     }
 
     public void start(RopZookeeperCacheService zkService) throws Exception {
@@ -122,22 +122,14 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
     }
 
     public void getTopicBrokerAddr(TopicName topicName) {
-        getTopicRoute(topicName, Strings.EMPTY);
+        //TODO:getTopicRoute(topicName, Strings.EMPTY);
     }
 
-    public int getPulsarPartition(TopicName topicName, int queueId) {
-        Map<String, List<Integer>> topicRoute = getTopicRoute(topicName, Strings.EMPTY);
-        List<Integer> partitions = topicRoute.get(brokerController.getBrokerHost());
-        if (partitions == null || queueId >= partitions.size()) {
-            throw new RuntimeException("Not found queueId.");
-        }
-        return partitions.get(queueId);
-    }
-
-
-    public Map<String, List<Integer>> getTopicRoute(TopicName topicName, String listenerName) {
+    public Map<String, List<Integer>> getTopicRoutexxx(TopicName topicName, String listenerName) {
         if (isTBW12Topic(topicName)) {
             if (brokerController.getServerConfig().isAutoCreateTopicEnable()) {
+                //
+
                 List<Integer> partitions = Lists.newArrayList();
                 for (int i = 0; i < brokerController.getServerConfig().getDefaultTopicQueueNums(); i++) {
                     partitions.add(i);
@@ -335,6 +327,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
         //for test
         createPulsarNamespaceIfNeeded(brokerService, cluster, "test1", "InstanceTest");
         for (TopicConfig topicConfig : this.topicConfigTable.values()) {
+            //createOrUpdateTopic(topicConfig);
             createOrUpdateInnerTopic(topicConfig);
         }
     }
@@ -534,19 +527,17 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
         log.info("Delete topic [{}].", fullTopicName);
 
         try {
+            //delete metadata from pulsar system
             PartitionedTopicMetadata topicMetadata = adminClient.topics().getPartitionedTopicMetadata(fullTopicName);
             if (topicMetadata.partitions > 0) {
                 adminClient.topics().deletePartitionedTopic(fullTopicName, true);
             }
 
+            //delete metadata from zookeeper
             String topicNodePath = String
                     .format(RopZkUtils.TOPIC_BASE_PATH_MATCH,
                             PulsarUtil.getNoDomainTopic(TopicName.get(fullTopicName)));
-           /* try {
-                zkClient.delete(topicNodePath, -1);
-            } catch (KeeperException.NoNodeException ignore) {
-                log.info("Topic [{}] has deleted.", topic);
-            }*/
+           zkService.deleteFullPath(topicNodePath);
         } catch (Exception e) {
             log.warn("[DELETE] Topic {} create or update partition failed", fullTopicName, e);
         }
