@@ -290,6 +290,9 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 PutMessageResult putMessageResult = new PutMessageResult(PutMessageStatus.PUT_OK, appendMessageResult);
 
                 callback.callback(putMessageResult);
+
+                brokerController.getMessageArrivingListener()
+                        .arriving(messageInner.getTopic(), messageInner.getQueueId(), offset, 0, 0, null, null);
             }, brokerController.getSendCallbackExecutor());
 
         } catch (RopEncodeException e) {
@@ -404,6 +407,9 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
 
                 PutMessageResult result = new PutMessageResult(PutMessageStatus.PUT_OK, appendMessageResult);
                 callback.callback(result);
+
+                brokerController.getMessageArrivingListener()
+                        .arriving(batchMessage.getTopic(), batchMessage.getQueueId(), Long.MAX_VALUE, 0, 0, null, null);
             }, brokerController.getSendCallbackExecutor());
 
         } catch (RopEncodeException e) {
