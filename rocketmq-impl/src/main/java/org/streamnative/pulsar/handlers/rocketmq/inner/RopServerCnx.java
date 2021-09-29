@@ -39,10 +39,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.bookkeeper.mledger.Entry;
 import org.apache.bookkeeper.mledger.ManagedCursor;
 import org.apache.bookkeeper.mledger.ManagedLedgerException;
-import org.apache.bookkeeper.mledger.Position;
 import org.apache.bookkeeper.mledger.impl.ManagedLedgerImpl;
 import org.apache.bookkeeper.mledger.impl.PositionImpl;
-import org.apache.bookkeeper.mledger.util.Futures;
 import org.apache.commons.compress.utils.Lists;
 import org.apache.commons.lang.exception.ExceptionUtils;
 import org.apache.commons.lang3.math.NumberUtils;
@@ -118,6 +116,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             .build();
     private final Object pullRequestFilterValue = new Object();
     private State state;
+    private final String cursorName = "rop-cursor";
 
     public RopServerCnx(RocketMQBrokerController brokerController, ChannelHandlerContext ctx) {
         this.brokerController = brokerController;
@@ -149,9 +148,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         log.info("Closed connection from {}", remoteAddress);
         // Connection is gone, close the resources immediately
         producers.values().forEach(Producer::closeAsync);
-        cursors.values().forEach(v -> v.asyncClose(new Futures.CloseFuture(), null));
+        cursors.forEach((s, managedCursor) -> closeCursor(s));
         producers.clear();
-        cursors.clear();
         nextBeginOffsets.clear();
     }
 
@@ -175,7 +173,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
     }
 
     @Override
-    public void putMessage(int partitionId, MessageExtBrokerInner messageInner, String producerGroup, PutMessageCallback callback)
+    public void putMessage(int partitionId, MessageExtBrokerInner messageInner, String producerGroup,
+            PutMessageCallback callback)
             throws Exception {
         Preconditions.checkNotNull(messageInner);
         Preconditions.checkNotNull(producerGroup);
@@ -535,7 +534,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
     }
 
     @Override
-    public RopGetMessageResult getMessage(int partitionId, RemotingCommand request, PullMessageRequestHeader requestHeader,
+    public RopGetMessageResult getMessage(int partitionId, RemotingCommand request,
+            PullMessageRequestHeader requestHeader,
             RopMessageFilter messageFilter) {
         RopGetMessageResult getResult = new RopGetMessageResult();
 
@@ -553,7 +553,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             return getResult;
         }
 
-        if (requestFilterCache.getIfPresent(new PullRequestFilterKey(consumerGroupName, topicName, partitionId)) != null) {
+        if (requestFilterCache.getIfPresent(new PullRequestFilterKey(consumerGroupName, topicName, partitionId))
+                != null) {
             getResult.setStatus(GetMessageStatus.OFFSET_FOUND_NULL);
             requestHeader.setSysFlag(requestHeader.getSysFlag() | 2);
             return getResult;
@@ -597,56 +598,19 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
 
         List<ByteBuffer> messagesBufferList = Lists.newArrayList();
         final PositionImpl startPosition = MessageIdUtils.getPosition(MessageIdUtils.getOffset(startOffset));
-        ManagedCursor managedCursor = cursors.computeIfAbsent(pTopic, (Function<String, ManagedCursor>) s -> {
-            try {
-                PositionImpl cursorStartPosition = startPosition;
-                if (startPosition.getEntryId() > -1) {
-                    cursorStartPosition = new PositionImpl(startPosition.getLedgerId(), startPosition.getEntryId() - 1);
-                }
-
-                PersistentTopic persistentTopic = brokerController.getConsumerOffsetManager()
-                        .getPulsarPersistentTopic(new ClientTopicName(rmqTopic.getPulsarTopicName()), partitionId);
-                ManagedLedgerImpl managedLedger = (ManagedLedgerImpl) persistentTopic.getManagedLedger();
-                return managedLedger.newNonDurableCursor(cursorStartPosition, "Rop-cursor-" + readerId);
-            } catch (Exception e) {
-                log.warn("Topic [{}] create managedLedger failed", pTopic, e);
-            }
-            return null;
-        });
+        ManagedCursor managedCursor = getOrCreateCursor(pTopic, rmqTopic, partitionId, startPosition);
 
         if (managedCursor != null) {
-            Position position = startPosition;
-
             // seek offset if startOffset not equals lastNextBeginOffset
             MessageIdImpl lastNextBeginOffset = nextBeginOffsets.get(readerId);
             if (lastNextBeginOffset != null && !lastNextBeginOffset.equals(startOffset)) {
                 log.info("[{}] [{}] Seek offset to [{}]", consumerGroupName, pTopic, startOffset);
                 try {
-                    PersistentTopic persistentTopic = brokerController.getConsumerOffsetManager()
-                            .getPulsarPersistentTopic(new ClientTopicName(rmqTopic.getPulsarTopicName()), partitionId);
-                    persistentTopic.getManagedLedger().deleteCursor("Rop-cursor-" + readerId);
-                    cursors.remove(pTopic);
+                    closeCursor(pTopic);
+                    managedCursor = getOrCreateCursor(pTopic, rmqTopic, partitionId, startPosition);
                 } catch (Exception e) {
                     log.warn("Delete cursor error", e);
                 }
-
-                managedCursor = cursors.computeIfAbsent(pTopic, (Function<String, ManagedCursor>) s -> {
-                    try {
-                        PositionImpl cursorStartPosition = startPosition;
-                        if (startPosition.getEntryId() > -1) {
-                            cursorStartPosition = new PositionImpl(startPosition.getLedgerId(),
-                                    startPosition.getEntryId() - 1);
-                        }
-
-                        PersistentTopic persistentTopic = brokerController.getConsumerOffsetManager()
-                                .getPulsarPersistentTopic(new ClientTopicName(rmqTopic.getPulsarTopicName()), partitionId);
-                        ManagedLedgerImpl managedLedger = (ManagedLedgerImpl) persistentTopic.getManagedLedger();
-                        return managedLedger.newNonDurableCursor(cursorStartPosition, "Rop-cursor-" + readerId);
-                    } catch (Exception e) {
-                        log.warn("Topic [{}] create managedLedger failed", pTopic, e);
-                    }
-                    return null;
-                });
             }
 
             if (managedCursor != null) {
@@ -661,17 +625,16 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                             if (byteBuffer != null) {
                                 messagesBufferList.add(byteBuffer);
                             }
-                            position = entry.getPosition();
                         } finally {
                             entry.release();
                         }
                     }
                 } catch (ManagedLedgerException | InterruptedException e) {
                     log.warn("Fetch message failed, seek to startPosition [{}]", startPosition, e);
-                    managedCursor.seek(position);
+                    cursors.remove(pTopic);
                 } catch (Exception e) {
                     log.warn("Fetch message error, seek to startPosition [{}]", startPosition, e);
-                    managedCursor.seek(position);
+                    cursors.remove(pTopic);
                 }
             }
         }
@@ -688,6 +651,45 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         getResult.setNextBeginOffset(nextBeginOffset);
         nextBeginOffsets.put(readerId, MessageIdUtils.getMessageId(nextBeginOffset));
         return getResult;
+    }
+
+    private ManagedCursor getOrCreateCursor(String pTopic, RocketMQTopic rmqTopic, int partitionId,
+            PositionImpl startPosition) {
+        return cursors.computeIfAbsent(pTopic, (Function<String, ManagedCursor>) s -> {
+            try {
+                PersistentTopic persistentTopic = brokerController.getConsumerOffsetManager()
+                        .getPulsarPersistentTopic(new ClientTopicName(rmqTopic.getPulsarTopicName()),
+                                partitionId);
+                try {
+                    persistentTopic.getManagedLedger().deleteCursor(cursorName);
+                } catch (ManagedLedgerException.CursorNotFoundException e) {
+                    //
+                }
+
+                PositionImpl cursorStartPosition = startPosition;
+                if (startPosition.getEntryId() > -1) {
+                    cursorStartPosition = new PositionImpl(startPosition.getLedgerId(),
+                            startPosition.getEntryId() - 1);
+                }
+                ManagedLedgerImpl managedLedger = (ManagedLedgerImpl) persistentTopic.getManagedLedger();
+                return managedLedger.newNonDurableCursor(cursorStartPosition, cursorName);
+            } catch (Exception e) {
+                log.warn("Topic [{}] create nonDurableCursor failed", pTopic, e);
+            }
+            return null;
+        });
+    }
+
+    private void closeCursor(String pTopic) {
+        try {
+            cursors.remove(pTopic);
+            TopicName topicName = TopicName.get(pTopic);
+            PersistentTopic persistentTopic = brokerController.getConsumerOffsetManager()
+                    .getPulsarPersistentTopic(new ClientTopicName(topicName), topicName.getPartitionIndex());
+            persistentTopic.getManagedLedger().deleteCursor(cursorName);
+        } catch (Exception e) {
+            //
+        }
     }
 
     private long buildPulsarReaderId(String... tags) {
