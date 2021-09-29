@@ -110,6 +110,18 @@ advertisedListeners=INTERNAL:pulsar://127.0.0.1:6650,INTERNAL:pulsar+ssl://127.0
 rocketmqListenerPortMap=9876:INTERNAL_ROP
 ```
 
+3. Set offset management as below since offset management for RoP depends on Pulsar "Broker Entry Metadata". It’s required for KoP 2.8.0 or higher version.
+
+```text
+brokerEntryMetadataInterceptors=org.apache.pulsar.common.intercept.AppendIndexMetadataInterceptor
+```
+
+4. Set brokerDeleteInactiveTopicsEnabled to false.
+
+```text
+brokerDeleteInactiveTopicsEnabled=false
+```
+
 > Note: `advertisedListeners` and `advertisedAddress` cannot be configured at the same time.
 
 ### Run Pulsar broker
