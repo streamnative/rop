@@ -104,11 +104,13 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
         return buf;
     }
 
+
     private static MessageMetadata getDefaultMessageMetadata() {
-        return new MessageMetadata()
-                .setProducerName("")
-                .setSequenceId(0L)
-                .setPublishTime(System.currentTimeMillis());
+        final MessageMetadata messageMetadata = new MessageMetadata();
+        messageMetadata.setProducerName("");
+        messageMetadata.setSequenceId(0L);
+        messageMetadata.setPublishTime(System.currentTimeMillis());
+        return messageMetadata;
     }
 
     private boolean verifyChecksum(ByteBuf headersAndPayload, MessageIdData messageId) {

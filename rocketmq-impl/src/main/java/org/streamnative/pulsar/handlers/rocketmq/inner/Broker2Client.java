@@ -128,9 +128,7 @@ public class Broker2Client {
         Map<String, List<Integer>> topicBrokerAddr = null;
                 // TODO: topicManager.getTopicRoute(TopicName.get(lookupTopic), Strings.EMPTY);
 
-        List<Integer> queueList = topicBrokerAddr.get(brokerController.getBrokerHost());
-
-        for (int i = 0; i < queueList.size(); i++) {
+        for (int i = 0; i < topicConfig.getWriteQueueNums(); i++) {
             if (!brokerController.getTopicConfigManager().isPartitionTopicOwner(TopicName.get(lookupTopic), i)) {
                 continue;
             }
