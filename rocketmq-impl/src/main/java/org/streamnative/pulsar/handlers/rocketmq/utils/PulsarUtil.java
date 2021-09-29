@@ -33,13 +33,14 @@ import org.apache.pulsar.client.admin.Tenants;
 import org.apache.pulsar.client.api.MessageId;
 import org.apache.pulsar.client.api.SubscriptionInitialPosition;
 import org.apache.pulsar.client.api.SubscriptionType;
-import org.apache.pulsar.common.api.proto.PulsarApi.CommandSubscribe.InitialPosition;
-import org.apache.pulsar.common.api.proto.PulsarApi.CommandSubscribe.SubType;
-import org.apache.pulsar.common.api.proto.PulsarApi.KeyValue;
+import org.apache.pulsar.common.api.proto.CommandSubscribe.InitialPosition;
+import org.apache.pulsar.common.api.proto.CommandSubscribe.SubType;
+import org.apache.pulsar.common.api.proto.KeyValue;
 import org.apache.pulsar.common.naming.TopicName;
 import org.apache.pulsar.common.policies.data.ClusterData;
 import org.apache.pulsar.common.policies.data.RetentionPolicies;
 import org.apache.pulsar.common.policies.data.TenantInfo;
+import org.apache.pulsar.common.policies.data.TenantInfoImpl;
 import org.streamnative.pulsar.handlers.rocketmq.RocketMQServiceConfiguration;
 
 /**
@@ -78,12 +79,11 @@ public class PulsarUtil {
     public static List<KeyValue> convertFromStringMap(Map<String, String> stringMap) {
         List<KeyValue> keyValueList = new ArrayList<>();
         for (Map.Entry<String, String> entry : stringMap.entrySet()) {
-            KeyValue build = KeyValue.newBuilder()
+            KeyValue keyValue = new KeyValue()
                     .setKey(entry.getKey())
-                    .setValue(entry.getValue())
-                    .build();
+                    .setValue(entry.getValue());
 
-            keyValueList.add(build);
+            keyValueList.add(keyValue);
         }
 
         return keyValueList;
@@ -164,7 +164,7 @@ public class PulsarUtil {
             if (!tenants.getTenants().contains(ropMetadataTenant)) {
                 log.info("Tenant: {} does not exist, creating it ...", ropMetadataTenant);
                 tenants.createTenant(ropMetadataTenant,
-                        new TenantInfo(conf.getSuperUserRoles(), Collections.singleton(cluster)));
+                        new TenantInfoImpl(conf.getSuperUserRoles(), Collections.singleton(cluster)));
             } else {
                 TenantInfo ropMetadataTenantInfo = tenants.getTenantInfo(ropMetadataTenant);
                 Set<String> allowedClusters = ropMetadataTenantInfo.getAllowedClusters();

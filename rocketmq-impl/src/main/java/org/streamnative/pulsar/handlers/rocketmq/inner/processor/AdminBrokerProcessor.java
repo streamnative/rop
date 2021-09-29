@@ -724,7 +724,7 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
             try {
                 PartitionedTopicStats partitionedTopicStats = pulsarAdmin.topics()
                         .getPartitionedStats(topicName.toString(), false);
-                if (!partitionedTopicStats.subscriptions.containsKey(pulsarGroupName)) {
+                if (!partitionedTopicStats.getSubscriptions().containsKey(pulsarGroupName)) {
                     continue;
                 }
             } catch (PulsarAdminException e) {
@@ -782,8 +782,8 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
                 String pulsarTopicName = topicName.getPartition(i).toString();
                 try {
                     TopicStats topicStats = pulsarAdmin.topics().getStats(pulsarTopicName);
-                    if (topicStats.subscriptions.containsKey(pulsarGroupName)) {
-                        offsetWrapper.setMsgBacklog(topicStats.subscriptions.get(pulsarGroupName).msgBacklog);
+                    if (topicStats.getSubscriptions().containsKey(pulsarGroupName)) {
+                        offsetWrapper.setMsgBacklog(topicStats.getSubscriptions().get(pulsarGroupName).getMsgBacklog());
                     } else {
                         log.warn("getConsumeStats not found subscriptions, pulsarTopicName: {}, pulsarGroupName: {}",
                                 pulsarTopicName, pulsarGroupName);
@@ -974,7 +974,7 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
             try {
                 PartitionedTopicStats partitionedTopicStats =
                         pulsarAdmin.topics().getPartitionedStats(pulsarTopicName, false);
-                groupInOffset.removeIf(g -> !partitionedTopicStats.subscriptions
+                groupInOffset.removeIf(g -> !partitionedTopicStats.getSubscriptions()
                         .containsKey(new ClientGroupName(g).getPulsarGroupName()));
             } catch (PulsarAdminException e) {
                 log.warn("queryTopicConsumeByWho getPartitionedStats failed", e);

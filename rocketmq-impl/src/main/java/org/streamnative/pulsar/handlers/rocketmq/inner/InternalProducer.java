@@ -15,11 +15,13 @@
 package org.streamnative.pulsar.handlers.rocketmq.inner;
 
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.pulsar.broker.service.Producer;
 import org.apache.pulsar.broker.service.ServerCnx;
 import org.apache.pulsar.broker.service.Topic;
+import org.apache.pulsar.common.api.proto.ProducerAccessMode;
 
 /**
  * InternalProducer.
@@ -32,7 +34,7 @@ public class InternalProducer extends Producer {
     public InternalProducer(Topic topic, ServerCnx cnx, long producerId, String producerName,
             Map<String, String> metadata) {
         super(topic, cnx, producerId, producerName, null,
-                false, metadata, null, 0, false);
+                false, metadata, null, 0, false, ProducerAccessMode.Shared, Optional.empty());
         this.cnx = cnx;
     }
 

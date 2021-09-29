@@ -28,8 +28,10 @@ import org.apache.pulsar.broker.ServiceConfiguration;
 import org.apache.pulsar.broker.ServiceConfigurationUtils;
 import org.apache.pulsar.client.admin.PulsarAdmin;
 import org.apache.pulsar.client.admin.PulsarAdminBuilder;
+import org.apache.pulsar.functions.worker.PulsarWorkerService;
 import org.apache.pulsar.functions.worker.WorkerConfig;
 import org.apache.pulsar.functions.worker.WorkerService;
+import org.apache.pulsar.functions.worker.service.WorkerServiceWithClassLoader;
 import org.apache.pulsar.transaction.coordinator.TransactionCoordinatorID;
 import org.apache.pulsar.zookeeper.LocalBookkeeperEnsemble;
 import org.slf4j.Logger;
@@ -308,7 +310,8 @@ public class RocketMQStandalone implements AutoCloseable {
             // inherit super users
             workerConfig.setSuperUserRoles(config.getSuperUserRoles());
 
-            fnWorkerService = new WorkerService(workerConfig);
+            fnWorkerService = new PulsarWorkerService();
+            fnWorkerService.initAsStandalone(workerConfig);
         }
 
         // Start Broker

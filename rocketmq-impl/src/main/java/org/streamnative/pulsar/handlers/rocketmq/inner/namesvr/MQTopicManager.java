@@ -336,10 +336,13 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
             throws Exception {
         String fullNs = Joiner.on('/').join(tenant, ns);
         try {
-            ClusterData clusterData = new ClusterData(service.pulsar().getWebServiceAddress(),
-                    null /* serviceUrlTls */,
-                    service.pulsar().getBrokerServiceUrl(),
-                    null /* brokerServiceUrlTls */);
+
+            ClusterData clusterData = ClusterData.builder()
+                    .serviceUrl(service.getPulsar().getWebServiceAddress())
+                    .serviceUrlTls(null)
+                    .brokerServiceUrl(service.getPulsar().getBrokerServiceUrl())
+                    .brokerServiceUrlTls(null)
+                    .build();
             if (!adminClient.clusters().getClusters().contains(cluster)) {
                 adminClient.clusters().createCluster(cluster, clusterData);
             } else {
@@ -348,7 +351,10 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
 
             if (!adminClient.tenants().getTenants().contains(tenant)) {
                 adminClient.tenants().createTenant(tenant,
-                        new TenantInfo(Sets.newHashSet(this.config.getSuperUserRoles()), Sets.newHashSet(cluster)));
+                        TenantInfo.builder()
+                                .adminRoles(this.config.getSuperUserRoles())
+                                .allowedClusters(Sets.newHashSet(cluster))
+                                .build());
             }
             if (!adminClient.namespaces().getNamespaces(tenant).contains(fullNs)) {
                 Set<String> clusters = Sets.newHashSet(this.config.getClusterName());
@@ -537,7 +543,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
             String topicNodePath = String
                     .format(RopZkUtils.TOPIC_BASE_PATH_MATCH,
                             PulsarUtil.getNoDomainTopic(TopicName.get(fullTopicName)));
-           zkService.deleteFullPath(topicNodePath);
+            zkService.deleteFullPath(topicNodePath);
         } catch (Exception e) {
             log.warn("[DELETE] Topic {} create or update partition failed", fullTopicName, e);
         }
@@ -593,7 +599,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                 brokerService.generateUniqueProducerName(), Collections.singletonMap("Type", "ROP"));
 
         // this will register and add USAGE_COUNT_UPDATER.
-        persistentTopic.addProducer(producer);
+        persistentTopic.addProducer(producer, new CompletableFuture<>());
         return producer;
     }
 

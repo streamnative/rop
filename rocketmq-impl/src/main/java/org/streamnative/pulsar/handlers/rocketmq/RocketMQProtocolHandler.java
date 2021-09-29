@@ -32,6 +32,7 @@ import org.apache.pulsar.broker.service.BrokerService;
 import org.apache.pulsar.client.admin.PulsarAdmin;
 import org.apache.pulsar.client.admin.PulsarAdminException;
 import org.apache.pulsar.common.policies.data.ClusterData;
+import org.apache.pulsar.common.policies.data.ClusterDataImpl;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import org.streamnative.pulsar.handlers.rocketmq.utils.ConfigurationUtils;
 import org.streamnative.pulsar.handlers.rocketmq.utils.PulsarUtil;
@@ -112,9 +113,13 @@ public class RocketMQProtocolHandler implements ProtocolHandler {
 
         try {
             PulsarAdmin pulsarAdmin = brokerService.getPulsar().getAdminClient();
-            ClusterData clusterData = new ClusterData(brokerService.getPulsar().getWebServiceAddress()
-                    , brokerService.getPulsar().getWebServiceAddressTls(), brokerService.getPulsar()
-                    .getBrokerServiceUrl(), brokerService.getPulsar().getBrokerServiceUrlTls());
+
+            ClusterData clusterData = ClusterData.builder()
+                    .serviceUrl(brokerService.getPulsar().getWebServiceAddress())
+                    .serviceUrlTls(brokerService.getPulsar().getWebServiceAddressTls())
+                    .brokerServiceUrl(brokerService.getPulsar().getBrokerServiceUrl())
+                    .brokerServiceUrlTls(brokerService.getPulsar().getBrokerServiceUrlTls())
+                    .build();
             PulsarUtil.createOffsetMetadataIfMissing(pulsarAdmin, clusterData, rocketmqConfig);
             rocketmqBroker.start();
         } catch (PulsarAdminException | PulsarServerException e) {

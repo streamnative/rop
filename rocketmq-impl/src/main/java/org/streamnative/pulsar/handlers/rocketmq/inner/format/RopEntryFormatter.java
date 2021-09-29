@@ -32,8 +32,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.pulsar.client.api.Message;
 import org.apache.pulsar.client.impl.MessageIdImpl;
 import org.apache.pulsar.client.impl.TopicMessageImpl;
-import org.apache.pulsar.common.api.proto.PulsarApi;
-import org.apache.pulsar.common.api.proto.PulsarApi.MessageIdData;
+import org.apache.pulsar.common.api.proto.MessageIdData;
+import org.apache.pulsar.common.api.proto.MessageMetadata;
 import org.apache.pulsar.common.protocol.Commands;
 import org.apache.rocketmq.common.UtilAll;
 import org.apache.rocketmq.common.message.MessageConst;
@@ -104,12 +104,11 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
         return buf;
     }
 
-    private static PulsarApi.MessageMetadata getDefaultMessageMetadata() {
-        final PulsarApi.MessageMetadata.Builder builder = PulsarApi.MessageMetadata.newBuilder();
-        builder.setProducerName("");
-        builder.setSequenceId(0L);
-        builder.setPublishTime(System.currentTimeMillis());
-        return builder.build();
+    private static MessageMetadata getDefaultMessageMetadata() {
+        return new MessageMetadata()
+                .setProducerName("")
+                .setSequenceId(0L)
+                .setPublishTime(System.currentTimeMillis());
     }
 
     private boolean verifyChecksum(ByteBuf headersAndPayload, MessageIdData messageId) {
