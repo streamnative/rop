@@ -53,6 +53,7 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.ConsumerGroupInf
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.RopGetMessageResult;
 import org.streamnative.pulsar.handlers.rocketmq.inner.format.RopMessageFilter;
 import org.streamnative.pulsar.handlers.rocketmq.inner.pulsar.PulsarMessageStore;
+import org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils;
 
 /**
  * Pull message processor.
@@ -233,7 +234,7 @@ public class PullMessageProcessor implements NettyRequestProcessor {
         }
 
         final RopGetMessageResult ropGetMessageResult = serverCnxMsgStore
-                .getMessage(request, requestHeader, messageFilter);
+                .getMessage(CommonUtils.getPartitionIdFromRequest(request), request, requestHeader, messageFilter);
 
         if (ropGetMessageResult != null) {
             response.setRemark(ropGetMessageResult.getStatus().name());

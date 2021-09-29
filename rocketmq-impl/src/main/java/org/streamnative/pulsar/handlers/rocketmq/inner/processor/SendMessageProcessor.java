@@ -51,6 +51,7 @@ import org.apache.rocketmq.store.PutMessageStatus;
 import org.apache.rocketmq.store.stats.BrokerStatsManager;
 import org.streamnative.pulsar.handlers.rocketmq.inner.PutMessageCallback;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
+import org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils;
 import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 
 /**
@@ -235,7 +236,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
 
         try {
             this.getServerCnxMsgStore(ctx, requestHeader.getGroup())
-                    .putMessage(msgInner, requestHeader.getGroup(),
+                    .putMessage(CommonUtils.getPartitionIdFromRequest(request), msgInner, requestHeader.getGroup(),
                             new SendMessageBackCallback(response, request, ctx, requestHeader, msgExt));
             return null;
         } catch (Exception e) {
@@ -349,7 +350,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         } else {
             try {
                 this.getServerCnxMsgStore(ctx, requestHeader.getProducerGroup())
-                        .putMessage(msgInner, requestHeader.getProducerGroup(),
+                        .putMessage(CommonUtils.getPartitionIdFromRequest(request), msgInner, requestHeader.getProducerGroup(),
                                 new SendMessageCallback(response, request, msgInner, responseHeader,
                                         sendMessageContext,
                                         ctx, queueIdInt));

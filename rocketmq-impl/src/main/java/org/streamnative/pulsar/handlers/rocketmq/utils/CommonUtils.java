@@ -39,6 +39,7 @@ import org.apache.rocketmq.common.message.MessageConst;
 import org.apache.rocketmq.common.message.MessageDecoder;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.sysflag.MessageSysFlag;
+import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.store.MessageExtBrokerInner;
 
 /**
@@ -321,5 +322,13 @@ public class CommonUtils {
         wrap.putLong(ROP_PHYSICAL_OFFSET_INDEX, physicalOffset);
         wrap.getLong();
         return wrap.slice();
+    }
+
+    public static int getPartitionIdFromRequest(RemotingCommand request) {
+        String partitionId = request.getExtFields().get("pulsarPartition");
+        if (partitionId == null) {
+            throw new RuntimeException("Not found partitionId from RemotingCommand extFields.");
+        }
+        return Integer.parseInt(partitionId);
     }
 }
