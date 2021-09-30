@@ -120,7 +120,7 @@ public class RocketMQBrokerController {
     private AbstractTransactionalMessageCheckListener transactionalMessageCheckListener;
     private volatile BrokerService brokerService;
     private ScheduleMessageService delayedMessageService;
-    public static String stringToken = Strings.EMPTY;
+    private volatile boolean isRunning = false;
 
     public RocketMQBrokerController(final RocketMQServiceConfiguration serverConfig) throws PulsarServerException {
         this.serverConfig = serverConfig;
@@ -490,6 +490,9 @@ public class RocketMQBrokerController {
     }
 
     public void shutdown() {
+        if (!isRunning) {
+            return;
+        }
 
         if (this.subscriptionGroupManager != null) {
             this.subscriptionGroupManager.shutdown();
@@ -558,6 +561,7 @@ public class RocketMQBrokerController {
         if (this.endTransactionExecutor != null) {
             this.endTransactionExecutor.shutdown();
         }
+        isRunning = false;
     }
 
     public void start() throws Exception {
@@ -593,6 +597,7 @@ public class RocketMQBrokerController {
         if (this.subscriptionGroupManager != null) {
             this.subscriptionGroupManager.start();
         }
+        isRunning = true;
     }
 
     public RocketMQRemoteServer getRemotingServer() {

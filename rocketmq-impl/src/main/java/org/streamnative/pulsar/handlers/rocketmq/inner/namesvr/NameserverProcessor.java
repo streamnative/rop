@@ -20,6 +20,7 @@ import static org.apache.rocketmq.common.constant.PermName.PERM_WRITE;
 import static org.apache.rocketmq.common.protocol.RequestCode.GET_ROUTEINTO_BY_TOPIC;
 
 import com.google.common.base.Joiner;
+import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import io.netty.channel.ChannelHandlerContext;
@@ -95,6 +96,8 @@ public class NameserverProcessor implements NettyRequestProcessor {
                     RemotingHelper.parseChannelRemoteAddr(ctx.channel()),
                     request);
         }
+
+        Preconditions.checkArgument(this.brokerController.isRunning(), "RoP broker haven't been started.");
 
         switch (request.getCode()) {
             case RequestCode.PUT_KV_CONFIG:
@@ -184,10 +187,10 @@ public class NameserverProcessor implements NettyRequestProcessor {
         String requestTopic = requestHeader.getTopic();
         if (Strings.isNotBlank(requestTopic)) {
             RocketMQTopic mqTopic = RocketMQTopic.getRocketMQDefaultTopic(requestTopic);
-            Map<String, List<Integer>> topicBrokerAddr = null;
-                    /*TODO: mqTopicManager.getTopicRoute(mqTopic.getPulsarTopicName(), Strings.EMPTY);*/
+            Map<String, List<Integer>> topicBrokerAddr = mqTopicManager.getPulsarTopicRoute(mqTopic.getPulsarTopicName(), Strings.EMPTY);
             try {
                 if (!topicBrokerAddr.isEmpty()) {
+
                     topicBrokerAddr.forEach((brokerName, queueList) -> {
                         String advertiseAddress = getBrokerAddressByListenerName(brokerName, listenerName);
                         HashMap<Long, String> brokerAddrs = new HashMap<>(1);

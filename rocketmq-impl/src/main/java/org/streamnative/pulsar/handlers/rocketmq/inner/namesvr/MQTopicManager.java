@@ -19,7 +19,10 @@ import static org.apache.pulsar.broker.web.PulsarWebResource.joinPath;
 import com.google.common.base.Function;
 import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 import com.google.common.collect.Sets;
+import io.netty.channel.ChannelHandlerContext;
 import java.net.InetSocketAddress;
 import java.util.Collections;
 import java.util.List;
@@ -36,6 +39,7 @@ import javax.annotation.Nullable;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.tuple.Pair;
 import org.apache.logging.log4j.util.Strings;
 import org.apache.pulsar.broker.PulsarService;
 import org.apache.pulsar.broker.namespace.NamespaceBundleOwnershipListener;
@@ -57,8 +61,16 @@ import org.apache.pulsar.common.partition.PartitionedTopicMetadata;
 import org.apache.pulsar.common.policies.data.ClusterData;
 import org.apache.pulsar.common.policies.data.RetentionPolicies;
 import org.apache.pulsar.common.policies.data.TenantInfo;
+import org.apache.rocketmq.broker.topic.TopicValidator;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.TopicConfig;
+import org.apache.rocketmq.common.constant.PermName;
+import org.apache.rocketmq.common.help.FAQUrl;
+import org.apache.rocketmq.common.protocol.ResponseCode;
+import org.apache.rocketmq.common.protocol.header.SendMessageRequestHeader;
+import org.apache.rocketmq.common.sysflag.TopicSysFlag;
+import org.apache.rocketmq.remoting.common.RemotingHelper;
+import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.streamnative.pulsar.handlers.rocketmq.inner.InternalProducer;
 import org.streamnative.pulsar.handlers.rocketmq.inner.InternalServerCnx;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
@@ -79,8 +91,17 @@ import org.testng.collections.Maps;
 @Slf4j
 public class MQTopicManager extends TopicConfigManager implements NamespaceBundleOwnershipListener {
 
+    private final int TOPIC_OWNED_BROKER_CACHE_INIT_SZ = 1024;
+    private final int TOPIC_OWNED_BROKER_CACHE_SZ = 10240;
+    private final int TOPIC_OWNED_BROKER_EXPIRE_MS = 60 * 1000;
     private final AtomicBoolean shuttingDown = new AtomicBoolean(false);
     private final Map<String, PulsarClient> pulsarClientMap = Maps.newConcurrentMap();
+    private final Cache<TopicName, String> ownedBrokerAddrCache = CacheBuilder.newBuilder()
+            .initialCapacity(TOPIC_OWNED_BROKER_CACHE_INIT_SZ)
+            .maximumSize(TOPIC_OWNED_BROKER_CACHE_SZ)
+            .expireAfterWrite(TOPIC_OWNED_BROKER_EXPIRE_MS, TimeUnit.MILLISECONDS)
+            .build();
+
     private PulsarService pulsarService;
     private BrokerService brokerService;
     private PulsarAdmin adminClient;
@@ -97,7 +118,6 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
 
     public void start(RopZookeeperCacheService zkService) throws Exception {
         this.pulsarService = brokerController.getBrokerService().pulsar();
-        this.zkService = brokerController.getRopBrokerProxy().getZkService();
         this.brokerService = pulsarService.getBrokerService();
         this.adminClient = pulsarService.getAdminClient();
         this.zkService = zkService;
@@ -109,12 +129,18 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
     @Override
     public TopicConfig selectTopicConfig(String rmqTopicName) {
         TopicConfig topicConfig = super.selectTopicConfig(rmqTopicName);
-        if (topicConfig == null) {
-            //load from pulsar server
-            String lookupTopic = RocketMQTopic.getPulsarOrigNoDomainTopic(rmqTopicName);
-            getTopicBrokerAddr(TopicName.get(lookupTopic));
+        try {
+            if (topicConfig == null) {
+                RopTopicContent ropTopicContent = zkService.getTopicContent(TopicName.get(rmqTopicName));
+                if (ropTopicContent != null) {
+                    topicConfig = ropTopicContent.getConfig();
+                    this.topicConfigTable.put(rmqTopicName, topicConfig);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("zkService getTopicContent for topic[{}] error.", rmqTopicName, e);
         }
-        return super.selectTopicConfig(rmqTopicName);
+        return topicConfig;
     }
 
     public void shutdown() {
@@ -125,32 +151,25 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
         //TODO:getTopicRoute(topicName, Strings.EMPTY);
     }
 
-    public Map<String, List<Integer>> getTopicRoutexxx(TopicName topicName, String listenerName) {
-        if (isTBW12Topic(topicName)) {
-            if (brokerController.getServerConfig().isAutoCreateTopicEnable()) {
-                //
-
-                List<Integer> partitions = Lists.newArrayList();
-                for (int i = 0; i < brokerController.getServerConfig().getDefaultTopicQueueNums(); i++) {
-                    partitions.add(i);
-                }
-                return Collections.singletonMap(brokerController.getBrokerHost(), partitions);
-            } else {
-                return Maps.newHashMap();
-            }
-        }
-
+    public Map<String, List<Integer>> getPulsarTopicRoute(TopicName topicName, String listenerName) {
         try {
-            RopTopicContent ropTopicContent = zkService.getTopicContent(topicName);
-            Preconditions.checkNotNull(ropTopicContent, "RopTopicContent[" + topicName.toString() + "] can't be null.");
-
             String topicConfigKey = joinPath(topicName.getNamespace(), topicName.getLocalName());
-            this.topicConfigTable.put(topicConfigKey, ropTopicContent.getConfig());
-            return ropTopicContent.getRouteMap();
-        } catch (Exception e) {
-            log.error("[{}] Get topic route error.", topicName.toString(), e);
-        }
+            if (isTBW12Topic(topicName) && this.topicConfigTable.containsKey(topicConfigKey)) {
+                RopClusterContent clusterContent = zkService.getClusterContent();
+                TopicConfig topicConfig = topicConfigTable.get(topicConfigKey);
+                int writeQueueNums = topicConfig.getWriteQueueNums();
+                return clusterContent.createTopicRouteMap(writeQueueNums);
+            } else {
+                RopTopicContent ropTopicContent = zkService.getTopicContent(topicName);
+                Preconditions
+                        .checkNotNull(ropTopicContent, "RopTopicContent[" + topicName.toString() + "] can't be null.");
 
+                this.topicConfigTable.put(topicConfigKey, ropTopicContent.getConfig());
+                return ropTopicContent.getRouteMap();
+            }
+        } catch (Exception e) {
+            log.warn("[{}] Get topic route error.", topicName.toString(), e);
+        }
         return Maps.newHashMap();
     }
 
@@ -184,11 +203,11 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
      * If current broker is this partition topic owner return true else return false.
      *
      * @param topicName topic name
-     * @param queueId queue id
+     * @param partitionId queue id
      * @return if current broker is this partition topic owner return true else return false.
      */
-    public boolean isPartitionTopicOwner(TopicName topicName, int queueId) {
-        return this.brokerController.getBrokerService().isTopicNsOwnedByBroker(topicName.getPartition(queueId));
+    public boolean isPartitionTopicOwner(TopicName topicName, int partitionId) {
+        return this.brokerController.getBrokerService().isTopicNsOwnedByBroker(topicName.getPartition(partitionId));
     }
 
     /**
@@ -238,6 +257,18 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                     topicName, e);
             retFuture.complete(null);
         }
+    }
+
+    public String lookupBroker(TopicName topicName, String listenerName) throws Exception {
+        String addr = ownedBrokerAddrCache.getIfPresent(topicName);
+        if (Strings.isBlank(addr)) {
+            PulsarClient pulsarClient =
+                    StringUtils.isBlank(listenerName) ? pulsarService.getClient() : getClient(listenerName);
+            Pair<InetSocketAddress, InetSocketAddress> lookupResult = ((PulsarClientImpl) pulsarClient).getLookup()
+                    .getBroker(topicName).join();
+            ownedBrokerAddrCache.put(topicName, lookupResult.getLeft().getHostString());
+        }
+        return ownedBrokerAddrCache.getIfPresent(topicName);
     }
 
     @Override
@@ -615,8 +646,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
     }
 
     private boolean isTBW12Topic(TopicName topicName) {
-        return TopicName.get(RocketMQTopic.getPulsarMetaNoDomainTopic(MixAll.AUTO_CREATE_TOPIC_KEY_TOPIC))
-                .equals(topicName);
+        return MixAll.AUTO_CREATE_TOPIC_KEY_TOPIC.equals(topicName.getLocalName());
     }
 
     //create RoP cluster broker list
@@ -660,4 +690,66 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
         return future;
     }
 
+    protected void msgCheck(final ChannelHandlerContext ctx,
+            final SendMessageRequestHeader requestHeader, final RemotingCommand response) {
+        if (!PermName.isWriteable(this.brokerController.getServerConfig().getBrokerPermission())
+                && this.brokerController.getTopicConfigManager().isOrderTopic(requestHeader.getTopic())) {
+            response.setCode(ResponseCode.NO_PERMISSION);
+            response.setRemark("the broker[" //+ this.brokerController.getBrokerConfig().getBrokerIP1()
+                    + "] sending message is forbidden");
+            return;
+        }
+
+        if (!TopicValidator.validateTopic(requestHeader.getTopic(), response)) {
+            return;
+        }
+
+        TopicConfig topicConfig = selectTopicConfig(requestHeader.getTopic());
+        if (null == topicConfig) {
+            int topicSysFlag = 0;
+            if (requestHeader.isUnitMode()) {
+                if (requestHeader.getTopic().startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)) {
+                    topicSysFlag = TopicSysFlag.buildSysFlag(false, true);
+                } else {
+                    topicSysFlag = TopicSysFlag.buildSysFlag(true, false);
+                }
+            }
+
+            log.warn("the topic {} not exist, producer: {}", requestHeader.getTopic(), ctx.channel().remoteAddress());
+            topicConfig = createTopicInSendMessageMethod(
+                    requestHeader.getTopic(),
+                    requestHeader.getDefaultTopic(),
+                    RemotingHelper.parseChannelRemoteAddr(ctx.channel()),
+                    requestHeader.getDefaultTopicQueueNums(), topicSysFlag);
+
+            if (null == topicConfig) {
+                if (requestHeader.getTopic().startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)) {
+                    topicConfig = createTopicInSendMessageBackMethod(
+                            requestHeader.getTopic(), 1, PermName.PERM_WRITE | PermName.PERM_READ,
+                            topicSysFlag);
+                }
+            }
+
+            if (null == topicConfig) {
+                response.setCode(ResponseCode.TOPIC_NOT_EXIST);
+                response.setRemark("topic[" + requestHeader.getTopic() + "] not exist, apply first please!"
+                        + FAQUrl.suggestTodo(FAQUrl.APPLY_TOPIC_URL));
+                return;
+            }
+        }
+
+        int queueIdInt = requestHeader.getQueueId();
+        int idValid = Math.max(topicConfig.getWriteQueueNums(), topicConfig.getReadQueueNums());
+        if (queueIdInt >= idValid) {
+            String errorInfo = String.format("request queueId[%d] is illegal, %s Producer: %s",
+                    queueIdInt,
+                    topicConfig.toString(),
+                    RemotingHelper.parseChannelRemoteAddr(ctx.channel()));
+
+            log.warn(errorInfo);
+            response.setCode(ResponseCode.SYSTEM_ERROR);
+            response.setRemark(errorInfo);
+
+        }
+    }
 }

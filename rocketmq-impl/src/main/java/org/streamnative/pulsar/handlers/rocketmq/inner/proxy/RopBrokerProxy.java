@@ -23,21 +23,28 @@ import static org.apache.rocketmq.common.protocol.RequestCode.QUERY_MESSAGE;
 import static org.apache.rocketmq.common.protocol.RequestCode.SEND_BATCH_MESSAGE;
 import static org.apache.rocketmq.common.protocol.RequestCode.SEND_MESSAGE;
 import static org.apache.rocketmq.common.protocol.RequestCode.SEND_MESSAGE_V2;
+import static org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkUtils.BROKER_CLUSTER_PATH;
 
+import com.google.common.base.Preconditions;
 import io.netty.channel.ChannelHandlerContext;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
 import java.util.concurrent.ExecutorService;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bookkeeper.common.util.OrderedExecutor;
+import org.apache.logging.log4j.util.Strings;
 import org.apache.pulsar.broker.PulsarService;
 import org.apache.pulsar.broker.ServiceConfiguration;
 import org.apache.rocketmq.broker.mqtrace.ConsumeMessageHook;
 import org.apache.rocketmq.broker.mqtrace.SendMessageHook;
 import org.apache.rocketmq.common.protocol.RequestCode;
 import org.apache.rocketmq.common.protocol.header.PullMessageRequestHeader;
+import org.apache.rocketmq.common.protocol.header.SendMessageRequestHeader;
+import org.apache.rocketmq.common.protocol.header.SendMessageResponseHeader;
 import org.apache.rocketmq.remoting.ChannelEventListener;
 import org.apache.rocketmq.remoting.exception.RemotingCommandException;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
@@ -56,7 +63,9 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.processor.EndTransactionP
 import org.streamnative.pulsar.handlers.rocketmq.inner.processor.PullMessageProcessor;
 import org.streamnative.pulsar.handlers.rocketmq.inner.processor.QueryMessageProcessor;
 import org.streamnative.pulsar.handlers.rocketmq.inner.processor.SendMessageProcessor;
+import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopClusterContent;
 import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkUtils;
+import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 
 /**
  * Rop broker proxy is a rocketmq request simulator
@@ -77,8 +86,11 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
     private List<ProcessorProxyRegister> processorProxyRegisters = new ArrayList<>();
     private final BrokerNetworkAPI brokerNetworkClients = new BrokerNetworkAPI(this);
     private final String BROKER_PATH_ROOT = RopZkUtils.BROKERS_PATH;
+    private volatile String brokerTag = Strings.EMPTY;
     @Getter
     private final MQTopicManager mqTopicManager;
+    private final ThreadLocal<RemotingCommand> sendResponseThreadLocal = ThreadLocal
+            .withInitial(() -> RemotingCommand.createResponseCommand(SendMessageResponseHeader.class));
 
     public RopBrokerProxy(final RocketMQServiceConfiguration config, RocketMQBrokerController brokerController,
             final ChannelEventListener channelEventListener) {
@@ -89,26 +101,52 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
     }
 
     private boolean checkTopicOwnerBroker(String topic, int queueId) {
-        return true;
+        RocketMQTopic rmqTopic = new RocketMQTopic(topic);
+        Map<String, List<Integer>> pulsarTopicRoute = mqTopicManager
+                .getPulsarTopicRoute(rmqTopic.getPulsarTopicName(), Strings.EMPTY);
+        Preconditions.checkArgument(pulsarTopicRoute != null && !pulsarTopicRoute.isEmpty());
+        List<Integer> queueList = pulsarTopicRoute.get(this.brokerTag);
+        Preconditions.checkArgument(queueList != null && !queueList.isEmpty() && queueId < queueList.size());
+        return mqTopicManager.isPartitionTopicOwner(rmqTopic.getPulsarTopicName(), queueList.get(queueId));
     }
 
     @Override
     public void processRequestCommand(ChannelHandlerContext ctx, RemotingCommand cmd) throws RemotingCommandException {
         switch (cmd.getCode()) {
             case PULL_MESSAGE:
-                final PullMessageRequestHeader requestHeader =
+                PullMessageRequestHeader pullMsgHeader =
                         (PullMessageRequestHeader) cmd.decodeCommandCustomHeader(PullMessageRequestHeader.class);
+                boolean isOwnedBroker = checkTopicOwnerBroker(pullMsgHeader.getTopic(), pullMsgHeader.getQueueId());
+
             case SEND_MESSAGE:
             case SEND_MESSAGE_V2:
             case SEND_BATCH_MESSAGE:
+                RemotingCommand response = sendResponseThreadLocal.get();
+                SendMessageRequestHeader sendHeader = SendMessageProcessor.parseRequestHeader(cmd);
+                response.setCode(-1);
+                SendMessageProcessor
+                        .msgCheck(brokerController.getServerConfig(), mqTopicManager, ctx, sendHeader, response);
+                if (response.getCode() != -1) {
+                    //fail to msgCheck and flush error at once;
+                    ctx.writeAndFlush(response);
+                } else {
+                    boolean isOwnerBroker = checkTopicOwnerBroker(sendHeader.getTopic(), sendHeader.getQueueId());
+
+                    if (isOwnerBroker) {
+                        super.processRequestCommand(ctx, cmd);
+                    } else {
+
+                    }
+                }
+                break;
             case QUERY_MESSAGE:
             case CONSUMER_SEND_MSG_BACK: //TODO: CommitLogOffset 0
-
                 break;
             default:
+                super.processRequestCommand(ctx,cmd);
                 break;
         }
-        super.processRequestCommand(ctx, cmd);
+
     }
 
     @Override
@@ -126,20 +164,37 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
 
             this.zkService = new RopZookeeperCacheService(ropZkCache);
             registerBrokerZNode();
+            setBrokerTagListener();
 
             this.coordinator = new RopCoordinator(brokerController, zkService);
             this.coordinator.start();
-
-            try { //create default RoP cluster config
-                zkService.getClusterContent();
-            } catch (Exception e) {
-                throw new RuntimeException("cluster default config haven't been created.");
-            }
 
             this.mqTopicManager.start(zkService);
         } catch (Exception e) {
             log.error("RopBrokerProxy fail to start.", e);
         }
+    }
+
+    private String setBrokerTagListener() throws Exception {
+        String brokerHost = brokerController.getBrokerHost();
+        RopClusterContent clusterContent = zkService.getClusterContent();
+        for (Entry<String, List<String>> entry : clusterContent.getBrokerCluster().entrySet()) {
+            if (entry.getValue().contains(brokerHost)) {
+                this.brokerTag = entry.getKey();
+            }
+        }
+        zkService.getClusterDataCache().registerListener((path, data, stat) -> {
+            if (BROKER_CLUSTER_PATH.equals(path)) {
+                log.info("the cluster[{}] configure have changed, new configure: [{}].", data);
+                String host = brokerController.getBrokerHost();
+                for (Entry<String, List<String>> entry : data.getBrokerCluster().entrySet()) {
+                    if (entry.getValue().contains(host)) {
+                        brokerTag = entry.getKey();
+                    }
+                }
+            }
+        });
+        return brokerTag;
     }
 
     @Override
@@ -152,29 +207,29 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
 
     // such as: /rop/brokers/{xxx,}
     private void registerBrokerZNode() {
-        String brokerAddress = this.brokerController.getBrokerAddress();
-        String localAddressPath = joinPath(BROKER_PATH_ROOT, brokerAddress);
+        String hostName = this.brokerController.getBrokerHost();
+        String localAddressPath = joinPath(BROKER_PATH_ROOT, hostName);
         this.zkService.getBrokerCache()
                 .getAsync(localAddressPath)
                 .thenApply(brokerInfo -> {
                     try {
                         if (brokerInfo.isPresent()) {
                             log.info("broker[{}] is already exists, delete it first.",
-                                    brokerAddress);
+                                    hostName);
                             deleteFullPathOptimistic(zkService.getCache().getZooKeeper(), localAddressPath,
                                     -1);
                         }
 
                         createFullPathOptimistic(zkService.getCache().getZooKeeper(),
                                 localAddressPath,
-                                brokerAddress.getBytes(StandardCharsets.UTF_8),
+                                hostName.getBytes(StandardCharsets.UTF_8),
                                 Ids.OPEN_ACL_UNSAFE,
                                 CreateMode.EPHEMERAL);
                         zkService.getBrokerCache().reloadCache(localAddressPath);
                         log.info("broker address ===========>[{}].",
                                 zkService.getBrokerCache().getDataIfPresent(localAddressPath));
                     } catch (Exception e) {
-                        log.warn("broker[{}] is already exists.", brokerAddress);
+                        log.warn("broker[{}] is already exists.", hostName);
                     }
                     return null;
                 });

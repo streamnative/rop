@@ -14,9 +14,6 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.namesvr;
 
-import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.SLASH_CHAR;
-
-import com.google.common.base.Joiner;
 import com.google.common.base.Splitter;
 import java.util.HashSet;
 import java.util.Set;
@@ -26,7 +23,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.pulsar.common.naming.TopicName;
 import org.apache.rocketmq.common.DataVersion;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.TopicConfig;
@@ -140,19 +136,6 @@ public abstract class TopicConfigManager {
             topicConfig.setReadQueueNums(1);
             topicConfig.setWriteQueueNums(1);
             this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);
-        }
-    }
-
-    protected void putPulsarTopic2Config(TopicName pulsarTopic, int partitionNum) {
-        String pulsarTopicName = Joiner.on(SLASH_CHAR).join(pulsarTopic.getNamespace(), pulsarTopic.getLocalName());
-        if (!this.topicConfigTable.containsKey(pulsarTopicName)) {
-            TopicConfig topicConfig = new TopicConfig(pulsarTopicName);
-            if (partitionNum > 0) {
-                topicConfig.setReadQueueNums(partitionNum);
-                topicConfig.setWriteQueueNums(partitionNum);
-            }
-            topicConfig.setPerm(7);
-            this.topicConfigTable.put(pulsarTopicName, topicConfig);
         }
     }
 

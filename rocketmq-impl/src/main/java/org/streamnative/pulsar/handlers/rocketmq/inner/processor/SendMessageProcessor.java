@@ -306,7 +306,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
 
         log.debug("receive SendMessage request command, {}", request);
         response.setCode(-1);
-        super.msgCheck(ctx, requestHeader, response);
+        //super.msgCheck(ctx, requestHeader, response);
         if (response.getCode() != -1) {
             return response;
         }
@@ -479,7 +479,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
 
         response.setOpaque(request.getOpaque());
         response.setCode(-1);
-        super.msgCheck(ctx, requestHeader, response);
+        //super.msgCheck(ctx, requestHeader, response);
         if (response.getCode() != -1) {
             return response;
         }

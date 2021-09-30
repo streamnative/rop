@@ -31,7 +31,7 @@ import org.apache.rocketmq.common.TopicConfig;
 public class RopTopicContent {
 
     private TopicConfig config;
-    // key: brokerIP, value: partition list
+    // key: brokerTag, value: partition list
     private Map<String, List<Integer>> routeMap;
 
     public Map<String, List<Integer>> getRouteMap() {
