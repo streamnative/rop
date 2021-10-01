@@ -187,7 +187,8 @@ public class NameserverProcessor implements NettyRequestProcessor {
         String requestTopic = requestHeader.getTopic();
         if (Strings.isNotBlank(requestTopic)) {
             RocketMQTopic mqTopic = RocketMQTopic.getRocketMQDefaultTopic(requestTopic);
-            Map<String, List<Integer>> topicBrokerAddr = mqTopicManager.getPulsarTopicRoute(mqTopic.getPulsarTopicName(), Strings.EMPTY);
+            Map<String, List<Integer>> topicBrokerAddr = mqTopicManager.getPulsarTopicRoute(
+                    mqTopic.getPulsarTopicName(), Strings.EMPTY);
             try {
                 if (!topicBrokerAddr.isEmpty()) {
 

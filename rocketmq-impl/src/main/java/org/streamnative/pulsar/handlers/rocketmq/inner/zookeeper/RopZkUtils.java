@@ -35,15 +35,15 @@ public final class RopZkUtils {
 
     public static final String BROKER_CLUSTER_PATH = ROP_PATH + "/brokerCluster";
 
-    public static final String getTopicZNodePath(String topicName) {
+    public static String getTopicZNodePath(String topicName) {
         return String.format(TOPIC_BASE_PATH_MATCH, topicName);
     }
 
-    public static final String getGroupZNodePath(String groupName) {
+    public static String getGroupZNodePath(String groupName) {
         return String.format(GROUP_BASE_PATH_MATCH, groupName);
     }
 
-    public static final String getClusterZNodePath() {
+    public static String getClusterZNodePath() {
         return BROKER_CLUSTER_PATH;
     }
 }

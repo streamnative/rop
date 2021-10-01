@@ -133,7 +133,8 @@ public class SubscriptionGroupManager {
         }
 
         try {
-            String groupNodePath = String.format(RopZkUtils.GROUP_BASE_PATH_MATCH, clientGroupName.getPulsarGroupName());
+            String groupNodePath = String.format(RopZkUtils.GROUP_BASE_PATH_MATCH,
+                    clientGroupName.getPulsarGroupName());
             byte[] content = zkClient.getData(groupNodePath, null, null);
             RopGroupContent ropGroupContent = jsonMapper.readValue(content, RopGroupContent.class);
             subscriptionGroupTableCache.put(clientGroupName, ropGroupContent.getConfig());

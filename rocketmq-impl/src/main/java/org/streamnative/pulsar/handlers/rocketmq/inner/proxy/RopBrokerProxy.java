@@ -85,7 +85,7 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
     private final OrderedExecutor orderedExecutor;
     private List<ProcessorProxyRegister> processorProxyRegisters = new ArrayList<>();
     private final BrokerNetworkAPI brokerNetworkClients = new BrokerNetworkAPI(this);
-    private final String BROKER_PATH_ROOT = RopZkUtils.BROKERS_PATH;
+    private final String brokerPathRoot = RopZkUtils.BROKERS_PATH;
     private volatile String brokerTag = Strings.EMPTY;
     @Getter
     private final MQTopicManager mqTopicManager;
@@ -143,7 +143,7 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
             case CONSUMER_SEND_MSG_BACK: //TODO: CommitLogOffset 0
                 break;
             default:
-                super.processRequestCommand(ctx,cmd);
+                super.processRequestCommand(ctx, cmd);
                 break;
         }
 
@@ -208,7 +208,7 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
     // such as: /rop/brokers/{xxx,}
     private void registerBrokerZNode() {
         String hostName = this.brokerController.getBrokerHost();
-        String localAddressPath = joinPath(BROKER_PATH_ROOT, hostName);
+        String localAddressPath = joinPath(brokerPathRoot, hostName);
         this.zkService.getBrokerCache()
                 .getAsync(localAddressPath)
                 .thenApply(brokerInfo -> {

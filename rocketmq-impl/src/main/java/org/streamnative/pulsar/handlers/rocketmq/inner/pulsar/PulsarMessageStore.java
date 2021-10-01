@@ -28,8 +28,8 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.format.RopMessageFilter;
  */
 public interface PulsarMessageStore {
 
-    void putMessage(int partition, MessageExtBrokerInner messageExtBrokerInner, String producerGroup, PutMessageCallback callback)
-            throws Exception;
+    void putMessage(int partition, MessageExtBrokerInner messageExtBrokerInner, String producerGroup,
+            PutMessageCallback callback) throws Exception;
 
     RopGetMessageResult getMessage(int partition, RemotingCommand request, PullMessageRequestHeader requestHeader,
             RopMessageFilter messageFilter);

@@ -49,7 +49,6 @@ import org.apache.rocketmq.remoting.netty.NettyEventType;
 import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.streamnative.pulsar.handlers.rocketmq.RocketMQServiceConfiguration;
-import org.streamnative.pulsar.handlers.rocketmq.inner.proxy.RopBrokerProxy;
 
 /**
  * RocketMQ remote server.

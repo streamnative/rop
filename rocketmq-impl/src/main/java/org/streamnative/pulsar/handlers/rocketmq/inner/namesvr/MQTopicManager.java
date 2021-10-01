@@ -82,7 +82,6 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopTopicContent
 import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkUtils;
 import org.streamnative.pulsar.handlers.rocketmq.utils.PulsarUtil;
 import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
-import org.testng.collections.Lists;
 import org.testng.collections.Maps;
 
 /**
@@ -91,15 +90,15 @@ import org.testng.collections.Maps;
 @Slf4j
 public class MQTopicManager extends TopicConfigManager implements NamespaceBundleOwnershipListener {
 
-    private final int TOPIC_OWNED_BROKER_CACHE_INIT_SZ = 1024;
-    private final int TOPIC_OWNED_BROKER_CACHE_SZ = 10240;
-    private final int TOPIC_OWNED_BROKER_EXPIRE_MS = 60 * 1000;
+    private final int topicOwnedBrokerCacheInitSz = 1024;
+    private final int topicOwnedBrokerCacheSz = 10240;
+    private final int topicOwnedBrokerExpireMs = 60 * 1000;
     private final AtomicBoolean shuttingDown = new AtomicBoolean(false);
     private final Map<String, PulsarClient> pulsarClientMap = Maps.newConcurrentMap();
     private final Cache<TopicName, String> ownedBrokerAddrCache = CacheBuilder.newBuilder()
-            .initialCapacity(TOPIC_OWNED_BROKER_CACHE_INIT_SZ)
-            .maximumSize(TOPIC_OWNED_BROKER_CACHE_SZ)
-            .expireAfterWrite(TOPIC_OWNED_BROKER_EXPIRE_MS, TimeUnit.MILLISECONDS)
+            .initialCapacity(topicOwnedBrokerCacheInitSz)
+            .maximumSize(topicOwnedBrokerCacheSz)
+            .expireAfterWrite(topicOwnedBrokerExpireMs, TimeUnit.MILLISECONDS)
             .build();
 
     private PulsarService pulsarService;

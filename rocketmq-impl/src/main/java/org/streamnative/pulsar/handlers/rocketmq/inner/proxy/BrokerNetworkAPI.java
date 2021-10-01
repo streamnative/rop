@@ -21,7 +21,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.logging.log4j.util.Strings;
 import org.apache.rocketmq.remoting.InvokeCallback;
 import org.apache.rocketmq.remoting.RemotingClient;
-import org.apache.rocketmq.remoting.RemotingService;
 import org.apache.rocketmq.remoting.exception.RemotingConnectException;
 import org.apache.rocketmq.remoting.exception.RemotingSendRequestException;
 import org.apache.rocketmq.remoting.exception.RemotingTimeoutException;
@@ -54,12 +53,14 @@ public class BrokerNetworkAPI implements AutoCloseable {
     }
 
     public RemotingCommand invokeSync(String conn, RemotingCommand remotingCommand, long timeout)
-            throws InterruptedException, RemotingConnectException, RemotingSendRequestException, RemotingTimeoutException {
+            throws InterruptedException, RemotingConnectException,
+            RemotingSendRequestException, RemotingTimeoutException {
         return getRemoteClientByConn(conn).invokeSync(conn, remotingCommand, timeout);
     }
 
     public void invokeAsync(String conn, RemotingCommand remotingCommand, long timeout, InvokeCallback invokeCallback)
-            throws InterruptedException, RemotingConnectException, RemotingTooMuchRequestException, RemotingTimeoutException, RemotingSendRequestException {
+            throws InterruptedException, RemotingConnectException, RemotingTooMuchRequestException,
+            RemotingTimeoutException, RemotingSendRequestException {
         getRemoteClientByConn(conn).invokeAsync(conn, remotingCommand, timeout, invokeCallback);
     }
 
