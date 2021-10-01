@@ -176,7 +176,7 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                     int pulsarPartitionId = resultPair.getObject2();
                     cmd.addExtField(PULSAR_REAL_PARTITION_ID_TAG, String.valueOf(pulsarPartitionId));
                     boolean isOwnedBroker = resultPair.getObject1();
-                    if (!isOwnedBroker) {
+                    if (isOwnedBroker) {
                         super.processRequestCommand(ctx, cmd);
                     } else {
                         String address = lookupPulsarTopicBroker(pulsarTopicName.getPartition(pulsarPartitionId));
@@ -257,7 +257,8 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
         }
         zkService.getClusterDataCache().registerListener((path, data, stat) -> {
             if (BROKER_CLUSTER_PATH.equals(path)) {
-                log.info("the cluster[{}] configure have changed, new configure: [{}].", data);
+                log.info("the cluster[{}] configure have changed, new configure: [{}].",
+                        clusterContent.getClusterName(), data);
                 String host = brokerController.getBrokerHost();
                 for (Entry<String, List<String>> entry : data.getBrokerCluster().entrySet()) {
                     if (entry.getValue().contains(host)) {

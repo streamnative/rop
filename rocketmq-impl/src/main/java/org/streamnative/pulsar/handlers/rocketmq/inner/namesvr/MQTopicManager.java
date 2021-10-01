@@ -153,7 +153,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
      * If current broker is this partition topic owner return true else return false.
      *
      * @param topicName topic name
-     * @param partitionId queue id
+     * @param partitionId real partition ID
      * @return if current broker is this partition topic owner return true else return false.
      */
     public boolean isPartitionTopicOwner(TopicName topicName, int partitionId) {

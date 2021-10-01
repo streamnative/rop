@@ -182,6 +182,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         RocketMQTopic rmqTopic = new RocketMQTopic(messageInner.getTopic());
         String pTopic = rmqTopic.getPartitionName(partitionId);
         long deliverAtTime = getDeliverAtTime(messageInner);
+        int queueId = messageInner.getQueueId();
 
         if (deliverAtTime - System.currentTimeMillis() > brokerController.getServerConfig().getRopMaxDelayTime()) {
             throw new RuntimeException("DELAY TIME IS TOO LONG");
@@ -196,7 +197,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 }
 
                 int totalQueueNum = this.brokerController.getServerConfig().getRmqScheduleTopicPartitionNum();
-                partitionId = partitionId % totalQueueNum;
+                queueId = queueId % totalQueueNum;
                 pTopic = this.brokerController.getDelayedMessageService()
                         .getDelayedTopicName(messageInner.getDelayTimeLevel(), partitionId);
 
@@ -205,7 +206,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                         String.valueOf(messageInner.getQueueId()));
                 messageInner.setPropertiesString(MessageDecoder.messageProperties2String(messageInner.getProperties()));
                 messageInner.setTopic(pTopic);
-                messageInner.setQueueId(partitionId);
+                messageInner.setQueueId(queueId);
 
             }
         }
@@ -311,9 +312,12 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
     public void putMessages(int realPartitionID, MessageExtBatch batchMessage, String producerGroup,
             PutMessageCallback callback)
             throws Exception {
+
+        Preconditions.checkNotNull(batchMessage);
+        Preconditions.checkNotNull(producerGroup);
         RocketMQTopic rmqTopic = new RocketMQTopic(batchMessage.getTopic());
-        int queueId = batchMessage.getQueueId();
         String pTopic = rmqTopic.getPartitionName(realPartitionID);
+        int queueId = batchMessage.getQueueId();
 
         try {
             StringBuilder sb = new StringBuilder();
