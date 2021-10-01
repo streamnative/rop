@@ -25,6 +25,7 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import io.netty.channel.ChannelHandlerContext;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -53,6 +54,8 @@ import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.streamnative.pulsar.handlers.rocketmq.RocketMQProtocolHandler;
 import org.streamnative.pulsar.handlers.rocketmq.RocketMQServiceConfiguration;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
+import org.streamnative.pulsar.handlers.rocketmq.inner.proxy.RopBrokerProxy;
+import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopClusterContent;
 import org.streamnative.pulsar.handlers.rocketmq.utils.PulsarUtil;
 import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 import org.testng.collections.Sets;
@@ -72,12 +75,14 @@ public class NameserverProcessor implements NettyRequestProcessor {
     private final RocketMQServiceConfiguration config;
     private final MQTopicManager mqTopicManager;
     private final int servicePort;
+    private final RopBrokerProxy brokerProxy;
 
     public NameserverProcessor(RocketMQBrokerController brokerController) {
         this.brokerController = brokerController;
         this.config = brokerController.getServerConfig();
         this.mqTopicManager = brokerController.getTopicConfigManager();
         this.servicePort = RocketMQProtocolHandler.getListenerPort(config.getRocketmqListeners());
+        this.brokerProxy = brokerController.getRopBrokerProxy();
 
         String rocketmqListenerPortMap = config.getRocketmqListenerPortMap();
         String[] parts = rocketmqListenerPortMap.split(",");
@@ -159,8 +164,7 @@ public class NameserverProcessor implements NettyRequestProcessor {
         // Here to create a theme operation for compatibility with the client
         if (clusterName.equals(requestHeader.getTopic())) {
             try {
-                PulsarAdmin adminClient = brokerController.getBrokerService().pulsar().getAdminClient();
-                List<String> brokers = adminClient.brokers().getActiveBrokers(clusterName);
+                List<String> brokers = brokerProxy.getActiveBrokers();
                 String randomBroker = brokers.get(new Random().nextInt(brokers.size()));
                 String rmqBrokerAddress = parseBrokerAddress(randomBroker, servicePort);
                 BrokerData brokerData = new BrokerData();
@@ -187,33 +191,38 @@ public class NameserverProcessor implements NettyRequestProcessor {
         String requestTopic = requestHeader.getTopic();
         if (Strings.isNotBlank(requestTopic)) {
             RocketMQTopic mqTopic = RocketMQTopic.getRocketMQDefaultTopic(requestTopic);
-            Map<String, List<Integer>> topicBrokerAddr = mqTopicManager.getPulsarTopicRoute(
-                    mqTopic.getPulsarTopicName(), Strings.EMPTY);
+            Map<String, List<Integer>> topicBrokerAddr = mqTopicManager
+                    .getPulsarTopicRoute(mqTopic.getPulsarTopicName(), Strings.EMPTY);
             try {
-                if (!topicBrokerAddr.isEmpty()) {
+                Preconditions.checkArgument(topicBrokerAddr != null && !topicBrokerAddr.isEmpty(),
+                        "Topic route can't be found.");
+                topicBrokerAddr.forEach((brokerTag, queueList) -> {
+                    RopClusterContent ropClusterContent = brokerProxy.getRopClusterContent();
+                    Map<String, List<String>> brokerCluster = ropClusterContent.getBrokerCluster();
+                    List<String> brokerList = brokerCluster.get(brokerTag);
+                    Collections.shuffle(brokerList);
+                    String brokerHost = brokerList.get(0);
+                    String advertiseAddress = getBrokerAddressByListenerName(brokerHost, listenerName);
+                    HashMap<Long, String> brokerAddrs = new HashMap<>(1);
+                    brokerAddrs.put(0L, advertiseAddress);
+                    brokerDatas.add(new BrokerData(clusterName, brokerTag, brokerAddrs));
 
-                    topicBrokerAddr.forEach((brokerName, queueList) -> {
-                        String advertiseAddress = getBrokerAddressByListenerName(brokerName, listenerName);
-                        HashMap<Long, String> brokerAddrs = new HashMap<>(1);
-                        brokerAddrs.put(0L, advertiseAddress);
-                        brokerDatas.add(new BrokerData(clusterName, brokerName, brokerAddrs));
+                    QueueData queueData = new QueueData();
+                    queueData.setBrokerName(brokerTag);
+                    queueData.setReadQueueNums(queueList.size());
+                    queueData.setWriteQueueNums(queueList.size());
+                    queueData.setPerm(PERM_WRITE | PERM_READ);
+                    queueDatas.add(queueData);
 
-                        QueueData queueData = new QueueData();
-                        queueData.setBrokerName(brokerName);
-                        queueData.setReadQueueNums(queueList.size());
-                        queueData.setWriteQueueNums(queueList.size());
-                        queueData.setPerm(PERM_WRITE | PERM_READ);
-                        queueDatas.add(queueData);
-                    });
+                });
 
-                    byte[] content = topicRouteData.encode();
-                    response.setBody(content);
-                    response.setCode(ResponseCode.SUCCESS);
-                    response.setRemark(null);
-                    return response;
-                }
+                byte[] content = topicRouteData.encode();
+                response.setBody(content);
+                response.setCode(ResponseCode.SUCCESS);
+                response.setRemark(null);
+                return response;
             } catch (Exception ex) {
-                log.warn("fetch topic address of topic[{}] error.", requestTopic, ex);
+                log.info("fetch topic address of topic[{}] error.", requestTopic, ex);
             }
         }
 

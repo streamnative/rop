@@ -52,6 +52,7 @@ public class CommonUtils {
     public static final String PERCENTAGE_CHAR = "%";
     public static final String VERTICAL_LINE_CHAR = "|";
     public static final String SLASH_CHAR = "/";
+    public static final String COLO_CHAR = ":";
     private static final int ROP_QUEUE_OFFSET_INDEX = 8 + 4 + 4 + 4 + 4 + 4;
     private static final int ROP_PHYSICAL_OFFSET_INDEX = 8 + 4 + 4 + 4 + 4 + 4 + 8;
     public static final String PULSAR_REAL_PARTITION_ID_TAG = "pulsar_real_partition_id";

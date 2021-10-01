@@ -162,7 +162,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                 RopTopicContent ropTopicContent = zkService.getTopicContent(topicName);
                 Preconditions
                         .checkNotNull(ropTopicContent, "RopTopicContent[" + topicName.toString() + "] can't be null.");
-
+                ((PulsarClientImpl)getClient(listenerName)).getLookup().getBroker(topicName);
                 this.topicConfigTable.put(topicConfigKey, ropTopicContent.getConfig());
                 return ropTopicContent.getRouteMap();
             }
@@ -410,8 +410,14 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
         try {
             log.info("Create or update inner topic config: [{}].", tc);
             String fullTopicName = tc.getTopicName();
-            PartitionedTopicMetadata topicMetadata = adminClient.topics().getPartitionedTopicMetadata(fullTopicName);
-            if (tc.getWriteQueueNums() > topicMetadata.partitions) {
+
+            PartitionedTopicMetadata topicMetadata = null;
+            try {
+                topicMetadata = adminClient.topics().getPartitionedTopicMetadata(fullTopicName);
+            } catch (PulsarAdminException e) {
+            }
+
+            if (topicMetadata == null || tc.getWriteQueueNums() > topicMetadata.partitions) {
                 adminClient.topics().createPartitionedTopic(fullTopicName, tc.getWriteQueueNums());
             }
 
@@ -447,15 +453,13 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
             throw new RuntimeException("Create topic error.");
         }
 
-        PartitionedTopicMetadata topicMetadata;
+        PartitionedTopicMetadata topicMetadata = null;
         try {
             topicMetadata = adminClient.topics().getPartitionedTopicMetadata(fullTopicName);
         } catch (PulsarAdminException e) {
-            log.warn("get partitioned topic metadata error", e);
-            throw new NullPointerException(String.format("Get partitioned topic[%s] metadata error.", fullTopicName));
         }
 
-        int currentPartitionNum = topicMetadata.partitions;
+        int currentPartitionNum = topicMetadata != null ? topicMetadata.partitions : 0;
 
         // get cluster brokers list
         RopClusterContent clusterBrokers;
@@ -472,6 +476,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
             log.info("RocketMQ topic {} doesn't exist. Creating it ...", fullTopicName);
             try {
                 adminClient.topics().createPartitionedTopic(fullTopicName, tc.getWriteQueueNums());
+                adminClient.lookups().lookupPartitionedTopic(fullTopicName);
                 currentPartitionNum = tc.getWriteQueueNums();
             } catch (PulsarAdminException e) {
                 log.warn("create or get partitioned topic metadata [{}] error: ", fullTopicName, e);
@@ -687,68 +692,5 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
             return null;
         });
         return future;
-    }
-
-    protected void msgCheck(final ChannelHandlerContext ctx,
-            final SendMessageRequestHeader requestHeader, final RemotingCommand response) {
-        if (!PermName.isWriteable(this.brokerController.getServerConfig().getBrokerPermission())
-                && this.brokerController.getTopicConfigManager().isOrderTopic(requestHeader.getTopic())) {
-            response.setCode(ResponseCode.NO_PERMISSION);
-            response.setRemark("the broker[" //+ this.brokerController.getBrokerConfig().getBrokerIP1()
-                    + "] sending message is forbidden");
-            return;
-        }
-
-        if (!TopicValidator.validateTopic(requestHeader.getTopic(), response)) {
-            return;
-        }
-
-        TopicConfig topicConfig = selectTopicConfig(requestHeader.getTopic());
-        if (null == topicConfig) {
-            int topicSysFlag = 0;
-            if (requestHeader.isUnitMode()) {
-                if (requestHeader.getTopic().startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)) {
-                    topicSysFlag = TopicSysFlag.buildSysFlag(false, true);
-                } else {
-                    topicSysFlag = TopicSysFlag.buildSysFlag(true, false);
-                }
-            }
-
-            log.warn("the topic {} not exist, producer: {}", requestHeader.getTopic(), ctx.channel().remoteAddress());
-            topicConfig = createTopicInSendMessageMethod(
-                    requestHeader.getTopic(),
-                    requestHeader.getDefaultTopic(),
-                    RemotingHelper.parseChannelRemoteAddr(ctx.channel()),
-                    requestHeader.getDefaultTopicQueueNums(), topicSysFlag);
-
-            if (null == topicConfig) {
-                if (requestHeader.getTopic().startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)) {
-                    topicConfig = createTopicInSendMessageBackMethod(
-                            requestHeader.getTopic(), 1, PermName.PERM_WRITE | PermName.PERM_READ,
-                            topicSysFlag);
-                }
-            }
-
-            if (null == topicConfig) {
-                response.setCode(ResponseCode.TOPIC_NOT_EXIST);
-                response.setRemark("topic[" + requestHeader.getTopic() + "] not exist, apply first please!"
-                        + FAQUrl.suggestTodo(FAQUrl.APPLY_TOPIC_URL));
-                return;
-            }
-        }
-
-        int queueIdInt = requestHeader.getQueueId();
-        int idValid = Math.max(topicConfig.getWriteQueueNums(), topicConfig.getReadQueueNums());
-        if (queueIdInt >= idValid) {
-            String errorInfo = String.format("request queueId[%d] is illegal, %s Producer: %s",
-                    queueIdInt,
-                    topicConfig.toString(),
-                    RemotingHelper.parseChannelRemoteAddr(ctx.channel()));
-
-            log.warn(errorInfo);
-            response.setCode(ResponseCode.SYSTEM_ERROR);
-            response.setRemark(errorInfo);
-
-        }
     }
 }

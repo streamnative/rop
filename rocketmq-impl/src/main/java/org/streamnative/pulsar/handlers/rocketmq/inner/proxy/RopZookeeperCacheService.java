@@ -54,14 +54,13 @@ import org.streamnative.pulsar.handlers.rocketmq.utils.PulsarUtil;
 @Data
 public class RopZookeeperCacheService implements AutoCloseable {
 
-    private final ZooKeeperCache cache;
+    private final RopZookeeperCache cache;
     private ZooKeeperDataCache<RopTopicContent> topicDataCache;
     private ZooKeeperDataCache<RopClusterContent> clusterDataCache;
     private ZooKeeperDataCache<String> brokerCache;
 
-    public RopZookeeperCacheService(ZooKeeperCache cache) throws RopServerException {
+    public RopZookeeperCacheService(RopZookeeperCache cache) throws RopServerException {
         this.cache = cache;
-        initZK();
         this.topicDataCache = new ZooKeeperDataCache<RopTopicContent>(cache) {
             @Override
             public RopTopicContent deserialize(String key, byte[] content) throws Exception {
@@ -103,6 +102,11 @@ public class RopZookeeperCacheService implements AutoCloseable {
             throw new RopServerException(e);
         }
 
+    }
+
+    public void start() throws RopServerException {
+        cache.start();
+        initZK();
     }
 
     @Override
@@ -155,47 +159,13 @@ public class RopZookeeperCacheService implements AutoCloseable {
         }
     }
 
-    public RopClusterContent getClusterContent() throws Exception {
+    public RopClusterContent getClusterContent() {
         try {
             return clusterDataCache.get(BROKER_CLUSTER_PATH).get();
         } catch (Exception e) {
-            log.warn("RoP cluster configuration is missing, please reset it after RoP cluster initialized.");
-            RopClusterContent defaultClusterContent = new RopClusterContent();
-            defaultClusterContent.setClusterName("DefaultCluster");
-            List<String> allBrokers = getAllBrokers();
-            log.info("RoP cluster[{}] broker list: {}.", defaultClusterContent.getClusterName(), allBrokers.toString());
-            defaultClusterContent.setBrokerCluster(genBrokerGroupData(allBrokers, 2));
-            setJsonObjectForPath(BROKER_CLUSTER_PATH, defaultClusterContent);
-            clusterDataCache.reloadCache(BROKER_CLUSTER_PATH);
-            return clusterDataCache.getDataIfPresent(BROKER_CLUSTER_PATH);
+            log.info("RoP cluster configuration is missing, please reset it after RoP cluster initialized.");
+            return null;
         }
-    }
-
-    public List<String> getAllBrokers() {
-        try {
-            return cache.getChildren(BROKERS_PATH).stream().collect(Collectors.toList());
-        } catch (Exception e) {
-            log.warn("RopZookeeperCacheService getAllBrokers error, caused by:", e);
-        }
-        return Collections.emptyList();
-    }
-
-    private Map<String, List<String>> genBrokerGroupData(List<String> brokers, int repFactor) {
-        Preconditions.checkArgument(brokers != null && !brokers.isEmpty());
-        Preconditions.checkArgument(repFactor > 0);
-        final String brokerTagPrefix = "broker-";
-        Collections.sort(brokers);
-        int allBrokerNum = brokers.size();
-        int groupNum = (allBrokerNum - 1) / repFactor;
-        Map<String, List<String>> result = new HashMap<>();
-        for (int i = 0; i <= groupNum; i++) {
-            String brokerTag = brokerTagPrefix + i;
-            for (int j = 0; j < repFactor && (j + i * repFactor) < allBrokerNum; j++) {
-                List<String> brokerList = result.computeIfAbsent(brokerTag, k -> new ArrayList<>(repFactor));
-                brokerList.add(brokers.get(j + i * repFactor));
-            }
-        }
-        return result;
     }
 
 }

@@ -57,7 +57,7 @@ public class SimpleProducer {
                 /*
                  * Create a message instance, specifying topic, tag and message body.
                  */
-                Message msg = new Message("topicTest" /* Topic */,
+                Message msg = new Message("topicTest2" /* Topic */,
                         "TagA" /* Tag */,
                         ("Hello RocketMQ " + i).getBytes(RemotingHelper.DEFAULT_CHARSET) /* Message body */
                 );

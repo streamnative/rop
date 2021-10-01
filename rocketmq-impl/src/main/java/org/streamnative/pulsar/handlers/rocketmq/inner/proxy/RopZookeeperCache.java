@@ -19,10 +19,8 @@ import static com.google.common.base.Preconditions.checkNotNull;
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bookkeeper.common.util.OrderedExecutor;
 import org.apache.pulsar.zookeeper.ZooKeeperCache;
@@ -45,6 +43,7 @@ public class RopZookeeperCache extends ZooKeeperCache implements Closeable {
     private final String ropZkConnect;
     private final ScheduledExecutorService scheduledExecutor;
     private final OrderedExecutor orderedExecutor;
+    private volatile boolean isRunning = false;
 
     public RopZookeeperCache(ZooKeeperClientFactory zkClientFactory, int zkSessionTimeoutMillis,
             int zkOperationTimeoutSeconds, String ropZkConnect, OrderedExecutor orderedExecutor,
@@ -58,31 +57,37 @@ public class RopZookeeperCache extends ZooKeeperCache implements Closeable {
     }
 
     public void start() throws RopServerException {
-        CompletableFuture<ZooKeeper> zkFuture = zlClientFactory.create(ropZkConnect, SessionType.ReadWrite,
-                zkSessionTimeoutMillis);
-        try {
-            ZooKeeper newSession = zkFuture.get(zkSessionTimeoutMillis, TimeUnit.MILLISECONDS);
-            // Register self as a watcher to receive notification when session expires and trigger a new session to be
-            // created
-            newSession.register(this);
-            zkSession.set(newSession);
-        } catch (InterruptedException | ExecutionException | TimeoutException e) {
-            log.error("Failed to establish rop zookeeper session: {}", e.getMessage(), e);
-            throw new RopServerException(e);
+        if (!isRunning) {
+            try {
+                CompletableFuture<ZooKeeper> zkFuture = zlClientFactory.create(ropZkConnect, SessionType.ReadWrite,
+                        zkSessionTimeoutMillis);
+                ZooKeeper newSession = zkFuture.get(zkSessionTimeoutMillis, TimeUnit.MILLISECONDS);
+                // Register self as a watcher to receive notification when session expires and trigger a new session to be
+                // created
+                newSession.register(this);
+                zkSession.set(newSession);
+                isRunning = true;
+            } catch (Exception e) {
+                log.error("Failed to establish rop zookeeper session: {}", e.getMessage(), e);
+                throw new RopServerException(e);
+            }
+
         }
     }
 
     public void close() throws IOException {
-        ZooKeeper currentSession = zkSession.getAndSet(null);
-        if (currentSession != null) {
-            try {
-                currentSession.close();
-            } catch (InterruptedException e) {
-                throw new IOException(e);
+        if (isRunning) {
+            ZooKeeper currentSession = zkSession.getAndSet(null);
+            if (currentSession != null) {
+                try {
+                    currentSession.close();
+                } catch (InterruptedException e) {
+                    throw new IOException(e);
+                }
             }
+            super.stop();
+            isRunning = false;
         }
-
-        super.stop();
     }
 
     @Override
@@ -124,19 +129,19 @@ public class RopZookeeperCache extends ZooKeeperCache implements Closeable {
 
     protected void asyncRestartZooKeeperSession() {
         // schedule a re-connect event using this as the watch
-        log.info("Re-starting rop ZK session in the background...");
+        log.info("Re-starting RoP ZK session in the background...");
 
         CompletableFuture<ZooKeeper> zkFuture = zlClientFactory.create(ropZkConnect, SessionType.AllowReadOnly,
                 zkSessionTimeoutMillis);
         zkFuture.thenAccept(zk -> {
             if (zkSession.compareAndSet(null, zk)) {
-                log.info("Successfully re-created rop ZK session: {}", zk);
+                log.info("Successfully re-created RoP ZK session: {}", zk);
             } else {
                 // Other reconnection happened, we can close the session
                 safeCloseZkSession(zk);
             }
         }).exceptionally(ex -> {
-            log.warn("Failed to re-create rop ZK session: {}", ex.getMessage());
+            log.warn("Failed to re-create RoP ZK session: {}", ex.getMessage());
 
             // Schedule another attempt for later
             scheduledExecutor.schedule(() -> {
@@ -149,12 +154,12 @@ public class RopZookeeperCache extends ZooKeeperCache implements Closeable {
     private void safeCloseZkSession(ZooKeeper zkSession) {
         if (zkSession != null) {
             if (log.isDebugEnabled()) {
-                log.debug("Closing rop zkSession:{}", zkSession.getSessionId());
+                log.debug("Closing RoP zkSession:{}", zkSession.getSessionId());
             }
             try {
                 zkSession.close();
             } catch (Exception e) {
-                log.info("Closing rop ZK Session encountered an exception: {}. Disposed anyway.", e.getMessage());
+                log.info("Closing RoP ZK Session encountered an exception: {}. Disposed anyway.", e.getMessage());
             }
         }
     }

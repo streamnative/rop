@@ -14,9 +14,11 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.utils;
 
+import com.google.common.base.Preconditions;
 import com.google.common.collect.Sets;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -51,6 +53,7 @@ public class PulsarUtil {
 
     public static final int MAX_COMPACTION_THRESHOLD = 100 * 1024 * 1024;
     public static final Pattern BROKER_ADDER_PAT = Pattern.compile("([^/:]+):(\\d+)");
+    private static final String BROKER_TAG_PREFIX = "broker-";
 
     public static String getBrokerHost(String brokerAddress) {
         // eg: pulsar://127.0.0.1:6650
@@ -231,5 +234,22 @@ public class PulsarUtil {
 
     public static String getNoDomainTopic(TopicName topicName) {
         return topicName.getPartitionedTopicName().replace(topicName.getDomain().value() + "://", "");
+    }
+
+    public static Map<String, List<String>> genBrokerGroupData(List<String> brokers, int repFactor) {
+        Preconditions.checkArgument(brokers != null && !brokers.isEmpty());
+        Preconditions.checkArgument(repFactor > 0);
+        Collections.sort(brokers);
+        int allBrokerNum = brokers.size();
+        int groupNum = (allBrokerNum - 1) / repFactor;
+        Map<String, List<String>> result = new HashMap<>();
+        for (int i = 0; i <= groupNum; i++) {
+            String brokerTag = BROKER_TAG_PREFIX + i;
+            for (int j = 0; j < repFactor && (j + i * repFactor) < allBrokerNum; j++) {
+                List<String> brokerList = result.computeIfAbsent(brokerTag, k -> new ArrayList<>(repFactor));
+                brokerList.add(brokers.get(j + i * repFactor));
+            }
+        }
+        return result;
     }
 }

@@ -425,11 +425,19 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
             doc = "Offsets retention check interval in millicseconds. default is 600000 ms.\n"
     )
     private long offsetsRetentionCheckIntervalMs = DefaultOffsetsRetentionCheckIntervalMs;
+
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
             required = true,
             doc = "Rop delay message max delay time."
     )
     private long ropMaxDelayTime = 1000 * 60 * 60 * 24 * 40L;
+
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
+            required = true,
+            doc = "Rop broker replication num."
+    )
+    private int ropBrokerReplicationNum = 2;
 
 }

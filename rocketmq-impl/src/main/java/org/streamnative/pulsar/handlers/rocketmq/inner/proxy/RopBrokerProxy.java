@@ -24,21 +24,29 @@ import static org.apache.rocketmq.common.protocol.RequestCode.SEND_BATCH_MESSAGE
 import static org.apache.rocketmq.common.protocol.RequestCode.SEND_MESSAGE;
 import static org.apache.rocketmq.common.protocol.RequestCode.SEND_MESSAGE_V2;
 import static org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkUtils.BROKER_CLUSTER_PATH;
+import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.COLO_CHAR;
+import static org.streamnative.pulsar.handlers.rocketmq.utils.PulsarUtil.genBrokerGroupData;
 
 import com.google.common.base.Preconditions;
+import com.google.common.base.Splitter;
+import com.google.common.collect.Lists;
 import io.netty.channel.ChannelHandlerContext;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.ExecutorService;
+import java.util.stream.Collectors;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bookkeeper.common.util.OrderedExecutor;
 import org.apache.logging.log4j.util.Strings;
 import org.apache.pulsar.broker.PulsarService;
 import org.apache.pulsar.broker.ServiceConfiguration;
+import org.apache.pulsar.broker.loadbalance.impl.ModularLoadManagerImpl;
+import org.apache.pulsar.broker.loadbalance.impl.ModularLoadManagerWrapper;
 import org.apache.rocketmq.broker.mqtrace.ConsumeMessageHook;
 import org.apache.rocketmq.broker.mqtrace.SendMessageHook;
 import org.apache.rocketmq.common.protocol.RequestCode;
@@ -87,6 +95,8 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
     private final BrokerNetworkAPI brokerNetworkClients = new BrokerNetworkAPI(this);
     private final String brokerPathRoot = RopZkUtils.BROKERS_PATH;
     private volatile String brokerTag = Strings.EMPTY;
+    private volatile List<String> activityBrokers;
+    private final String clusterName;
     @Getter
     private final MQTopicManager mqTopicManager;
     private final ThreadLocal<RemotingCommand> sendResponseThreadLocal = ThreadLocal
@@ -95,6 +105,7 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
     public RopBrokerProxy(final RocketMQServiceConfiguration config, RocketMQBrokerController brokerController,
             final ChannelEventListener channelEventListener) {
         super(config, channelEventListener);
+        this.clusterName = config.getClusterName();
         this.brokerController = brokerController;
         this.orderedExecutor = OrderedExecutor.newBuilder().numThreads(4).name("rop-ordered-executor").build();
         this.mqTopicManager = new MQTopicManager(brokerController);
@@ -112,6 +123,7 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
 
     @Override
     public void processRequestCommand(ChannelHandlerContext ctx, RemotingCommand cmd) throws RemotingCommandException {
+
         switch (cmd.getCode()) {
             case PULL_MESSAGE:
                 PullMessageRequestHeader pullMsgHeader =
@@ -131,7 +143,6 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                     ctx.writeAndFlush(response);
                 } else {
                     boolean isOwnerBroker = checkTopicOwnerBroker(sendHeader.getTopic(), sendHeader.getQueueId());
-
                     if (isOwnerBroker) {
                         super.processRequestCommand(ctx, cmd);
                     } else {
@@ -155,15 +166,14 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
         try {
             this.pulsarService = brokerController.getBrokerService().pulsar();
             ServiceConfiguration config = this.pulsarService.getConfig();
-
             RopZookeeperCache ropZkCache = new RopZookeeperCache(pulsarService.getZkClientFactory(),
                     (int) config.getZooKeeperSessionTimeoutMillis(),
                     config.getZooKeeperOperationTimeoutSeconds(), config.getZookeeperServers(), orderedExecutor,
                     brokerController.getScheduledExecutorService(), config.getZooKeeperCacheExpirySeconds());
-            ropZkCache.start();
-
             this.zkService = new RopZookeeperCacheService(ropZkCache);
-            registerBrokerZNode();
+            this.zkService.start();
+
+            initClusterMeta();
             setBrokerTagListener();
 
             this.coordinator = new RopCoordinator(brokerController, zkService);
@@ -172,10 +182,37 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
             this.mqTopicManager.start(zkService);
         } catch (Exception e) {
             log.error("RopBrokerProxy fail to start.", e);
+            throw new RuntimeException("RopBrokerProxy not running.");
         }
     }
 
-    private String setBrokerTagListener() throws Exception {
+    private void initClusterMeta() throws Exception {
+        RopClusterContent clusterContent = zkService.getClusterContent();
+        List<String> activeBrokers = getActiveBrokers();
+        if (clusterContent == null) {
+            //initialize RoP cluster metadata
+            RopClusterContent defaultClusterContent = new RopClusterContent();
+            defaultClusterContent.setClusterName(clusterName);
+            log.info("RoP cluster[{}] broker list: {}.", defaultClusterContent.getClusterName(),
+                    activeBrokers.toString());
+            defaultClusterContent
+                    .setBrokerCluster(genBrokerGroupData(activeBrokers, getConfig().getRopBrokerReplicationNum()));
+            zkService.setJsonObjectForPath(BROKER_CLUSTER_PATH, defaultClusterContent);
+            zkService.getClusterDataCache().reloadCache(BROKER_CLUSTER_PATH);
+        }
+        log.info("RoP cluster metadata is: [{}].", zkService.getClusterContent());
+    }
+
+    public RopClusterContent getRopClusterContent() {
+        try {
+            return zkService.getClusterContent();
+        } catch (Exception e) {
+            log.error("RoP cluster metadata is missing, service can't run correctly.");
+            return null;
+        }
+    }
+
+    private String setBrokerTagListener() {
         String brokerHost = brokerController.getBrokerHost();
         RopClusterContent clusterContent = zkService.getClusterContent();
         for (Entry<String, List<String>> entry : clusterContent.getBrokerCluster().entrySet()) {
@@ -194,6 +231,9 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                 }
             }
         });
+        if (this.brokerTag.equals(Strings.EMPTY)) {
+            log.warn("host[{}] isn't belong to current cluster[{}].", brokerHost, getConfig().getClusterName());
+        }
         return brokerTag;
     }
 
@@ -481,8 +521,15 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
         }
     }
 
-    public List<String> getAllBrokers() {
-        return zkService.getAllBrokers();
+    public List<String> getActiveBrokers() {
+        try {
+            ModularLoadManagerImpl loadManager = (ModularLoadManagerImpl) ((ModularLoadManagerWrapper) pulsarService
+                    .getLoadManager().get()).getLoadManager();
+            activityBrokers = loadManager.getAvailableBrokers().stream().map(broker -> Splitter.on(COLO_CHAR).splitToList(broker).get(0)).collect(
+                    Collectors.toList());
+        } catch (Exception e) {
+        }
+        return activityBrokers != null ? activityBrokers : Collections.emptyList();
     }
 
 }
