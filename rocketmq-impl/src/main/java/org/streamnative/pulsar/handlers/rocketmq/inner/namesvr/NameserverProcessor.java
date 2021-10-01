@@ -192,7 +192,7 @@ public class NameserverProcessor implements NettyRequestProcessor {
         if (Strings.isNotBlank(requestTopic)) {
             RocketMQTopic mqTopic = RocketMQTopic.getRocketMQDefaultTopic(requestTopic);
             Map<String, List<Integer>> topicBrokerAddr = mqTopicManager
-                    .getPulsarTopicRoute(mqTopic.getPulsarTopicName(), Strings.EMPTY);
+                    .getPulsarTopicRoute(mqTopic.getPulsarTopicName(), listenerName);
             try {
                 Preconditions.checkArgument(topicBrokerAddr != null && !topicBrokerAddr.isEmpty(),
                         "Topic route can't be found.");
@@ -329,7 +329,6 @@ public class NameserverProcessor implements NettyRequestProcessor {
     }
 
     private ModularLoadManagerImpl getModularLoadManagerImpl() {
-
         return (ModularLoadManagerImpl) ((ModularLoadManagerWrapper) this.brokerController.getBrokerService()
                 .getPulsar().getLoadManager().get()).getLoadManager();
     }

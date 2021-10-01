@@ -25,12 +25,16 @@ import static org.apache.rocketmq.common.protocol.RequestCode.SEND_MESSAGE;
 import static org.apache.rocketmq.common.protocol.RequestCode.SEND_MESSAGE_V2;
 import static org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkUtils.BROKER_CLUSTER_PATH;
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.COLO_CHAR;
+import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.PULSAR_REAL_PARTITION_ID_TAG;
 import static org.streamnative.pulsar.handlers.rocketmq.utils.PulsarUtil.genBrokerGroupData;
 
+import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Splitter;
-import com.google.common.collect.Lists;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 import io.netty.channel.ChannelHandlerContext;
+import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -38,17 +42,24 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bookkeeper.common.util.OrderedExecutor;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.util.Strings;
 import org.apache.pulsar.broker.PulsarService;
 import org.apache.pulsar.broker.ServiceConfiguration;
 import org.apache.pulsar.broker.loadbalance.impl.ModularLoadManagerImpl;
 import org.apache.pulsar.broker.loadbalance.impl.ModularLoadManagerWrapper;
+import org.apache.pulsar.client.api.ClientBuilder;
+import org.apache.pulsar.client.api.PulsarClient;
+import org.apache.pulsar.client.impl.PulsarClientImpl;
+import org.apache.pulsar.common.naming.TopicName;
 import org.apache.rocketmq.broker.mqtrace.ConsumeMessageHook;
 import org.apache.rocketmq.broker.mqtrace.SendMessageHook;
+import org.apache.rocketmq.common.Pair;
 import org.apache.rocketmq.common.protocol.RequestCode;
 import org.apache.rocketmq.common.protocol.header.PullMessageRequestHeader;
 import org.apache.rocketmq.common.protocol.header.SendMessageRequestHeader;
@@ -83,6 +94,11 @@ import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 @Slf4j
 public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseable {
 
+    private final static int CACHE_INITIAL_SIZE = 1024;
+    private final static int CACHE_MAX_SIZE = 1024 << 8;
+    private final static int CACHE_EXPIRE_TIME_MS = 120 * 1000;
+    private final static int ROP_SERVICE_PORT = 9876;
+
     private final RocketMQBrokerController brokerController;
     private final List<SendMessageHook> sendMessageHookList = new ArrayList<>();
     private final List<ConsumeMessageHook> consumeMessageHookList = new ArrayList<>();
@@ -101,6 +117,10 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
     private final MQTopicManager mqTopicManager;
     private final ThreadLocal<RemotingCommand> sendResponseThreadLocal = ThreadLocal
             .withInitial(() -> RemotingCommand.createResponseCommand(SendMessageResponseHeader.class));
+    private final ThreadLocal<PulsarClientImpl> pulsarClientThreadLocal = new ThreadLocal<>();
+    private final Cache<TopicName, String> ownedBrokerCache = CacheBuilder.newBuilder()
+            .initialCapacity(CACHE_INITIAL_SIZE).maximumSize(CACHE_MAX_SIZE)
+            .expireAfterAccess(CACHE_EXPIRE_TIME_MS, TimeUnit.MILLISECONDS).build();
 
     public RopBrokerProxy(final RocketMQServiceConfiguration config, RocketMQBrokerController brokerController,
             final ChannelEventListener channelEventListener) {
@@ -111,25 +131,32 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
         this.mqTopicManager = new MQTopicManager(brokerController);
     }
 
-    private boolean checkTopicOwnerBroker(String topic, int queueId) {
-        RocketMQTopic rmqTopic = new RocketMQTopic(topic);
+    private Pair<Boolean, Integer> checkTopicOwnerBroker(TopicName pulsarTopicName, int queueId) {
+        int pulsarTopicPartitionId = getPulsarTopicPartitionId(pulsarTopicName, queueId);
+        boolean isOwner = mqTopicManager.isPartitionTopicOwner(pulsarTopicName, pulsarTopicPartitionId);
+        return new Pair<>(isOwner, pulsarTopicPartitionId);
+    }
+
+    private int getPulsarTopicPartitionId(TopicName pulsarTopicName, int rocketmqQueueId) {
         Map<String, List<Integer>> pulsarTopicRoute = mqTopicManager
-                .getPulsarTopicRoute(rmqTopic.getPulsarTopicName(), Strings.EMPTY);
+                .getPulsarTopicRoute(pulsarTopicName, Strings.EMPTY);
         Preconditions.checkArgument(pulsarTopicRoute != null && !pulsarTopicRoute.isEmpty());
         List<Integer> queueList = pulsarTopicRoute.get(this.brokerTag);
-        Preconditions.checkArgument(queueList != null && !queueList.isEmpty() && queueId < queueList.size());
-        return mqTopicManager.isPartitionTopicOwner(rmqTopic.getPulsarTopicName(), queueList.get(queueId));
+        Preconditions.checkArgument(queueList != null && !queueList.isEmpty() && rocketmqQueueId < queueList.size());
+        return queueList.get(rocketmqQueueId);
     }
 
     @Override
     public void processRequestCommand(ChannelHandlerContext ctx, RemotingCommand cmd) throws RemotingCommandException {
-
+        RocketMQTopic rmqTopic;
         switch (cmd.getCode()) {
             case PULL_MESSAGE:
                 PullMessageRequestHeader pullMsgHeader =
                         (PullMessageRequestHeader) cmd.decodeCommandCustomHeader(PullMessageRequestHeader.class);
-                boolean isOwnedBroker = checkTopicOwnerBroker(pullMsgHeader.getTopic(), pullMsgHeader.getQueueId());
-
+                rmqTopic = new RocketMQTopic(pullMsgHeader.getTopic());
+                Pair<Boolean, Integer> booleanIntegerPair = checkTopicOwnerBroker(rmqTopic.getPulsarTopicName(),
+                        pullMsgHeader.getQueueId());
+                break;
             case SEND_MESSAGE:
             case SEND_MESSAGE_V2:
             case SEND_BATCH_MESSAGE:
@@ -138,15 +165,23 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                 response.setCode(-1);
                 SendMessageProcessor
                         .msgCheck(brokerController.getServerConfig(), mqTopicManager, ctx, sendHeader, response);
+                rmqTopic = new RocketMQTopic(sendHeader.getTopic());
+                TopicName pulsarTopicName = rmqTopic.getPulsarTopicName();
                 if (response.getCode() != -1) {
                     //fail to msgCheck and flush error at once;
                     ctx.writeAndFlush(response);
                 } else {
-                    boolean isOwnerBroker = checkTopicOwnerBroker(sendHeader.getTopic(), sendHeader.getQueueId());
-                    if (isOwnerBroker) {
+                    Pair<Boolean, Integer> resultPair = checkTopicOwnerBroker(pulsarTopicName,
+                            sendHeader.getQueueId());
+                    int pulsarPartitionId = resultPair.getObject2();
+                    cmd.addExtField(PULSAR_REAL_PARTITION_ID_TAG, String.valueOf(pulsarPartitionId));
+                    boolean isOwnedBroker = resultPair.getObject1();
+                    if (!isOwnedBroker) {
                         super.processRequestCommand(ctx, cmd);
                     } else {
-
+                        String address = lookupPulsarTopicBroker(pulsarTopicName.getPartition(pulsarPartitionId));
+                        System.out.println(address);
+                        //brokerNetworkClients.invokeAsync();
                     }
                 }
                 break;
@@ -525,11 +560,60 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
         try {
             ModularLoadManagerImpl loadManager = (ModularLoadManagerImpl) ((ModularLoadManagerWrapper) pulsarService
                     .getLoadManager().get()).getLoadManager();
-            activityBrokers = loadManager.getAvailableBrokers().stream().map(broker -> Splitter.on(COLO_CHAR).splitToList(broker).get(0)).collect(
-                    Collectors.toList());
+            activityBrokers = loadManager.getAvailableBrokers().stream()
+                    .map(broker -> Splitter.on(COLO_CHAR).splitToList(broker).get(0)).collect(
+                            Collectors.toList());
         } catch (Exception e) {
         }
         return activityBrokers != null ? activityBrokers : Collections.emptyList();
+    }
+
+    private PulsarClientImpl initPulsarClient(String listenerName) {
+        try {
+            ClientBuilder builder =
+                    PulsarClient.builder().serviceUrl(pulsarService.getBrokerServiceUrl());
+            if (StringUtils.isNotBlank(getConfig().getBrokerClientAuthenticationPlugin())) {
+                builder.authentication(
+                        getConfig().getBrokerClientAuthenticationPlugin(),
+                        getConfig().getBrokerClientAuthenticationParameters()
+                );
+            }
+            if (StringUtils.isNotBlank(listenerName)) {
+                builder.listenerName(listenerName);
+            }
+            return (PulsarClientImpl) builder.build();
+        } catch (Exception e) {
+            log.error("listenerName [{}] getClient error", listenerName, e);
+            return null;
+        }
+    }
+
+    public PulsarClientImpl getPulsarClient() {
+        PulsarClientImpl pulsarClient = pulsarClientThreadLocal.get();
+        if (pulsarClient == null || pulsarClient.isClosed()) {
+            pulsarClientThreadLocal.remove();
+            pulsarClient = initPulsarClient(null);
+            pulsarClientThreadLocal.set(pulsarClient);
+        }
+        return pulsarClient;
+    }
+
+    public String lookupPulsarTopicBroker(TopicName pulsarTopicName) {
+        try {
+            String ropBrokerAddr = ownedBrokerCache.getIfPresent(pulsarTopicName);
+            if (Strings.isBlank(ropBrokerAddr)) {
+                InetSocketAddress pulsarBrokerAddr = getPulsarClient().getLookup()
+                        .getBroker(pulsarTopicName)
+                        .get()
+                        .getLeft();
+                ropBrokerAddr = Joiner.on(COLO_CHAR).join(pulsarBrokerAddr.getHostName(), ROP_SERVICE_PORT);
+                ownedBrokerCache.put(pulsarTopicName, ropBrokerAddr);
+            }
+            return ropBrokerAddr;
+        } catch (Exception e) {
+            log.error("LookupTopics pulsar topic=[{}] error.", pulsarTopicName, e);
+        }
+        return null;
     }
 
 }
