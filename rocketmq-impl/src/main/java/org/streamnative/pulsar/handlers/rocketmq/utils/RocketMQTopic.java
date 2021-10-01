@@ -45,7 +45,7 @@ public class RocketMQTopic {
     @Getter
     private static String defaultTenant = "rocketmq";
     @Getter
-    private static String defaultNamespace = "public";
+    private static String defaultNamespace = "default";
     @Getter
     private static String metaTenant = "rocketmq";
     @Getter

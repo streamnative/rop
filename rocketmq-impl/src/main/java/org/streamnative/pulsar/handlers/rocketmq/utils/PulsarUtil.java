@@ -52,43 +52,6 @@ public class PulsarUtil {
     public static final int MAX_COMPACTION_THRESHOLD = 100 * 1024 * 1024;
     public static final Pattern BROKER_ADDER_PAT = Pattern.compile("([^/:]+):(\\d+)");
 
-    public static InitialPosition parseSubPosition(SubscriptionInitialPosition subPosition) {
-        switch (subPosition) {
-            case Earliest:
-                return InitialPosition.Earliest;
-            case Latest:
-            default:
-                return InitialPosition.Latest;
-        }
-    }
-
-    public static SubType parseSubType(SubscriptionType subType) {
-        switch (subType) {
-            case Shared:
-                return SubType.Shared;
-            case Failover:
-                return SubType.Failover;
-            case Key_Shared:
-                return SubType.Key_Shared;
-            case Exclusive:
-            default:
-                return SubType.Exclusive;
-        }
-    }
-
-    public static List<KeyValue> convertFromStringMap(Map<String, String> stringMap) {
-        List<KeyValue> keyValueList = new ArrayList<>();
-        for (Map.Entry<String, String> entry : stringMap.entrySet()) {
-            KeyValue keyValue = new KeyValue()
-                    .setKey(entry.getKey())
-                    .setValue(entry.getValue());
-
-            keyValueList.add(keyValue);
-        }
-
-        return keyValueList;
-    }
-
     public static String getBrokerHost(String brokerAddress) {
         // eg: pulsar://127.0.0.1:6650
         if (Strings.isBlank(brokerAddress)) {
@@ -132,8 +95,8 @@ public class PulsarUtil {
             int partitionNum)
             throws PulsarAdminException {
         String cluster = conf.getClusterName();
-        String ropMetadataTenant = RocketMQTopic.getMetaTenant();
-        String ropMetadataNamespace = RocketMQTopic.getMetaTenant() + "/" + RocketMQTopic.getMetaNamespace();
+        String ropMetadataTenant = conf.getRocketmqMetadataTenant();
+        String ropMetadataNamespace = conf.getRocketmqMetadataTenant() + "/" + conf.getRocketmqMetadataNamespace();
 
         boolean clusterExists = false;
         boolean tenantExists = false;

@@ -148,7 +148,6 @@ public class GroupMetaManager {
                 .create();
 
         offsetReaderExecutor.execute(this::loadOffsets);
-//        Thread.sleep(10 * 1000);
 
         persistOffsetExecutor.scheduleAtFixedRate(() -> {
             try {
@@ -485,9 +484,12 @@ public class GroupMetaManager {
     }
 
     public boolean isSystemGroup(String groupName) {
-        return groupName.startsWith(RocketMQTopic.getMetaTenant() + SLASH_CHAR + RocketMQTopic.getMetaNamespace())
-                || groupName
-                .startsWith(RocketMQTopic.getDefaultTenant() + SLASH_CHAR + RocketMQTopic.getDefaultNamespace());
+        return groupName.startsWith(brokerController.getServerConfig().getRocketmqMetadataTenant()
+                + SLASH_CHAR
+                + brokerController.getServerConfig().getRocketmqMetadataNamespace())
+                || groupName.startsWith(brokerController.getServerConfig().getRocketmqTenant()
+                + SLASH_CHAR
+                + brokerController.getServerConfig().getRocketmqNamespace());
     }
 
     private boolean isPulsarTopicCached(ClientTopicName topicName, int partitionId) {
