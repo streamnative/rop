@@ -529,7 +529,9 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
 
         try {
             this.getServerCnxMsgStore(ctx, requestHeader.getProducerGroup())
-                    .putMessages(messageExtBatch, requestHeader.getProducerGroup(),
+                    .putMessages(CommonUtils.getPartitionIdFromRequest(request),
+                            messageExtBatch,
+                            requestHeader.getProducerGroup(),
                             new SendMessageCallback(response, request, messageExtBatch, responseHeader,
                                     sendMessageContext,
                                     ctx, queueIdInt));

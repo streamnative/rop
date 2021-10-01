@@ -140,26 +140,26 @@ public class ConsumerOffsetManager {
         }
     }
 
-    public long getMinOffsetInQueue(ClientTopicName clientTopicName, int partitionId)
+    public long getMinOffsetInQueue(ClientTopicName clientTopicName, int realPartitionId)
             throws RopPersistentTopicException {
-        PersistentTopic persistentTopic = getPulsarPersistentTopic(clientTopicName, partitionId);
+        PersistentTopic persistentTopic = getPulsarPersistentTopic(clientTopicName, realPartitionId);
         if (persistentTopic != null) {
             try {
                 PositionImpl firstPosition = persistentTopic.getFirstPosition();
-                return MessageIdUtils.getOffset(firstPosition.getLedgerId(), firstPosition.getEntryId(), partitionId);
+                return MessageIdUtils.getOffset(firstPosition.getLedgerId(), firstPosition.getEntryId(), realPartitionId);
             } catch (ManagedLedgerException e) {
                 log.warn("getMinOffsetInQueue error, ClientGroupAndTopicName=[{}], partitionId=[{}].", clientTopicName,
-                        partitionId);
+                        realPartitionId);
             }
         }
         return 0L;
     }
 
-    public long getMaxOffsetInQueue(ClientTopicName topicName, int partitionId) throws RopPersistentTopicException {
-        PersistentTopic persistentTopic = getPulsarPersistentTopic(topicName, partitionId);
+    public long getMaxOffsetInQueue(ClientTopicName topicName, int realPartitionId) throws RopPersistentTopicException {
+        PersistentTopic persistentTopic = getPulsarPersistentTopic(topicName, realPartitionId);
         if (persistentTopic != null) {
             PositionImpl lastPosition = (PositionImpl) persistentTopic.getLastPosition();
-            return MessageIdUtils.getOffset(lastPosition.getLedgerId(), lastPosition.getEntryId(), partitionId);
+            return MessageIdUtils.getOffset(lastPosition.getLedgerId(), lastPosition.getEntryId(), realPartitionId);
         }
         return 0L;
     }

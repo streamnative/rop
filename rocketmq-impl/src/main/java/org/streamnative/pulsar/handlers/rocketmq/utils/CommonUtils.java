@@ -327,7 +327,7 @@ public class CommonUtils {
     }
 
     public static int getPartitionIdFromRequest(RemotingCommand request) {
-        String partitionId = request.getExtFields().get("pulsarPartition");
+        String partitionId = request.getExtFields().get(PULSAR_REAL_PARTITION_ID_TAG);
         if (partitionId == null) {
             throw new RuntimeException("Not found partitionId from RemotingCommand extFields.");
         }
