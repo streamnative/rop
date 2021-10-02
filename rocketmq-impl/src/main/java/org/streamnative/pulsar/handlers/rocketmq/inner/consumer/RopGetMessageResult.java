@@ -14,6 +14,7 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.consumer;
 
+import io.netty.buffer.ByteBuf;
 import java.nio.ByteBuffer;
 import java.util.List;
 import lombok.Data;
@@ -25,7 +26,7 @@ import org.apache.rocketmq.store.GetMessageStatus;
 @Data
 public class RopGetMessageResult {
 
-    private List<ByteBuffer> messageBufferList;
+    private List<ByteBuf> messageBufferList;
     private GetMessageStatus status;
     private long nextBeginOffset;
     private long minOffset;
@@ -43,7 +44,7 @@ public class RopGetMessageResult {
     public int getBufferTotalSize() {
         if (messageBufferList != null) {
             return messageBufferList.stream().reduce(0, (r, item) ->
-                            r += item.limit()
+                            r += item.readableBytes()
                     , Integer::sum);
         }
         return 0;

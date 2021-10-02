@@ -56,7 +56,7 @@ public class SimpleConsumer {
         /*
          * Subscribe one more more topics to consume.
          */
-        consumer.subscribe("Jodie_topic_1023", "*");
+        consumer.subscribe("topicTest2", "*");
 
         /*
          *  Register callback to execute on arrival of messages fetched from brokers.

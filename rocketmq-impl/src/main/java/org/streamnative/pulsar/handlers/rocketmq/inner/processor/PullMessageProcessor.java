@@ -14,6 +14,8 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.processor;
 
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.PooledByteBufAllocator;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
@@ -421,14 +423,14 @@ public class PullMessageProcessor implements NettyRequestProcessor {
     private byte[] readGetMessageResult(final RopGetMessageResult getMessageResult, final String group,
             final String topic,
             final int queueId) {
-        final ByteBuffer byteBuffer = ByteBuffer.allocate(getMessageResult.getBufferTotalSize());
+        final ByteBuf byteBuffer = PooledByteBufAllocator.DEFAULT.directBuffer(getMessageResult.getBufferTotalSize());
 
         long storeTimestamp = 0;
         try {
-            List<ByteBuffer> messageBufferList = getMessageResult.getMessageBufferList();
-            for (ByteBuffer bb : messageBufferList) {
+            List<ByteBuf> messageBufferList = getMessageResult.getMessageBufferList();
+            for (ByteBuf bb : messageBufferList) {
 
-                byteBuffer.put(bb);
+                byteBuffer.writeBytes(bb);
                 int sysFlag = bb.getInt(MessageDecoder.SYSFLAG_POSITION);
 //                bornhost has the IPv4 ip if the MessageSysFlag.BORNHOST_V6_FLAG bit of sysFlag is 0
 //                IPv4 host = ip(4 byte) + port(4 byte); IPv6 host = ip(16 byte) + port(4 byte)

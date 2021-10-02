@@ -610,7 +610,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         String pTopic = rmqTopic.getPartitionName(realPartitionId);
         long readerId = buildPulsarReaderId(consumerGroupName, pTopic, this.ctx.channel().id().asLongText());
 
-        List<ByteBuffer> messagesBufferList = Lists.newArrayList();
+        List<ByteBuf> messagesBufferList = Lists.newArrayList();
         final PositionImpl startPosition = MessageIdUtils.getPosition(MessageIdUtils.getOffset(startOffset));
         ManagedCursor managedCursor = getOrCreateCursor(pTopic, rmqTopic, realPartitionId, startPosition);
 
@@ -655,7 +655,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                         try {
                             nextBeginOffset = MessageIdUtils
                                     .getOffset(entry.getLedgerId(), entry.getEntryId(), queueId);
-                            ByteBuffer byteBuffer = this.entryFormatter
+                            ByteBuf byteBuffer = this.entryFormatter
                                     .decodePulsarMessage(entry.getDataBuffer(), nextBeginOffset, messageFilter);
                             if (byteBuffer != null) {
                                 messagesBufferList.add(byteBuffer);
