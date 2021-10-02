@@ -429,7 +429,7 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
             required = true,
-            doc = "Rop delay message max delay time."
+            doc = "Rop delay message max delay time, Default: 40d."
     )
     private long ropMaxDelayTime = 1000 * 60 * 60 * 24 * 40L;
 
@@ -439,5 +439,12 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
             doc = "Rop broker replication num."
     )
     private int ropBrokerReplicationNum = 2;
+
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
+            required = true,
+            doc = "broker entry metadata interceptors."
+    )
+    private String brokerEntryMetadataInterceptors = "org.apache.pulsar.common.intercept.AppendIndexMetadataInterceptor";
 
 }

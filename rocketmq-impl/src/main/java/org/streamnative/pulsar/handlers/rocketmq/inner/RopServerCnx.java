@@ -25,7 +25,6 @@ import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import java.net.SocketAddress;
-import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -180,6 +179,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         Preconditions.checkNotNull(messageInner);
         Preconditions.checkNotNull(producerGroup);
         RocketMQTopic rmqTopic = new RocketMQTopic(messageInner.getTopic());
+        // pTopic = persistent://rocketmq/default/topicTest2-partition-1
         String pTopic = rmqTopic.getPartitionName(partitionId);
         long deliverAtTime = getDeliverAtTime(messageInner);
         int queueId = messageInner.getQueueId();
@@ -213,7 +213,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
 
         try {
             List<byte[]> body = this.entryFormatter.encode(messageInner, 1);
-            CompletableFuture<MessageId> messageIdFuture = null;
+            CompletableFuture<Long> offsetFuture = null;
 
             /*
              * Optimize the production performance of publish messages.
@@ -224,48 +224,48 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                     .isPartitionTopicOwner(rmqTopic.getPulsarTopicName(), partitionId)) {
                 PersistentTopic persistentTopic = this.brokerController.getTopicConfigManager()
                         .getPulsarPersistentTopic(pTopic);
-                // if persistentTopic is null, use pulsar producer to send message.
+                // if persistentTopic is null, throw SYSTEM_ERROR to rop proxy and retry send request.
                 if (persistentTopic != null) {
-                    messageIdFuture = publishMessage(body.get(0), persistentTopic, pTopic, partitionId);
+                    offsetFuture = publishMessage(body.get(0), persistentTopic, pTopic);
+                } else {
+                    AppendMessageResult temp = new AppendMessageResult(AppendMessageStatus.UNKNOWN_ERROR);
+                    PutMessageResult putMessageResult = new PutMessageResult(PutMessageStatus.UNKNOWN_ERROR, temp);
+                    callback.callback(putMessageResult);
                 }
             }
 
             /*
-             * Use pulsar producer send message.
+             * Use pulsar producer send delay message.
              */
-            if (messageIdFuture == null) {
-                long producerId = buildPulsarProducerId(producerGroup, pTopic,
-                        ctx.channel().remoteAddress().toString());
-                Producer<byte[]> producer = this.producers.get(producerId);
-                if (producer == null) {
-                    synchronized (this.producers) {
-                        log.info("[{}] PutMessage creating producer[id={}] and channel=[{}].",
-                                rmqTopic.getPulsarFullName(), producerId, ctx.channel());
-                        if (this.producers.get(producerId) == null) {
-                            producer = createNewProducer(pTopic, producerGroup, producerId);
-                            Producer<byte[]> oldProducer = this.producers.put(producerId, producer);
-                            if (oldProducer != null) {
-                                oldProducer.closeAsync();
-                            }
+            long producerId = buildPulsarProducerId(producerGroup, pTopic,
+                    ctx.channel().remoteAddress().toString());
+            Producer<byte[]> producer = this.producers.get(producerId);
+            if (producer == null) {
+                synchronized (this.producers) {
+                    log.info("[{}] PutMessage creating producer[id={}] and channel=[{}].",
+                            rmqTopic.getPulsarFullName(), producerId, ctx.channel());
+                    if (this.producers.get(producerId) == null) {
+                        producer = createNewProducer(pTopic, producerGroup, producerId);
+                        Producer<byte[]> oldProducer = this.producers.put(producerId, producer);
+                        if (oldProducer != null) {
+                            oldProducer.closeAsync();
                         }
                     }
                 }
-
-                if (isNotDelayMessage(deliverAtTime)) {
-                    messageIdFuture = this.producers.get(producerId).sendAsync(body.get(0));
-                } else {
-                    messageIdFuture = this.producers.get(producerId).newMessage()
-                            .value((body.get(0)))
-                            .deliverAt(deliverAtTime)
-                            .sendAsync();
-                }
             }
+            // TODO: handle delay message
+//            if (!isNotDelayMessage(deliverAtTime)) {
+//                messageIdFuture = this.producers.get(producerId).newMessage()
+//                        .value((body.get(0)))
+//                        .deliverAt(deliverAtTime)
+//                        .sendAsync();
+//            }
 
             /*
              * Handle future async by brokerController.getSendCallbackExecutor().
              */
-            final long finalPartitionId = partitionId;
-            messageIdFuture.whenCompleteAsync((msgId, t) -> {
+            Preconditions.checkNotNull(offsetFuture);
+            offsetFuture.whenCompleteAsync((offset, t) -> {
                 if (t != null) {
                     log.warn("[{}] PutMessage error.", rmqTopic.getPulsarFullName(), t);
 
@@ -275,10 +275,6 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                     callback.callback(putMessageResult);
                     return;
                 }
-
-                MessageIdImpl messageId = (MessageIdImpl) msgId;
-                long offset = MessageIdUtils
-                        .getOffset(messageId.getLedgerId(), messageId.getEntryId(), finalPartitionId);
 
                 AppendMessageResult appendMessageResult = new AppendMessageResult(AppendMessageStatus.PUT_OK);
                 appendMessageResult.setMsgNum(1);
@@ -298,9 +294,6 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
 
         } catch (RopEncodeException e) {
             log.warn("PutMessage encode error.", e);
-            throw e;
-        } catch (PulsarClientException e) {
-            log.warn("PutMessage send error.", e);
             throw e;
         } catch (Exception e) {
             log.warn("PutMessage error.", e);
@@ -324,7 +317,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             int totalBytesSize = 0;
             int messageNum = 0;
 
-            List<CompletableFuture<MessageId>> batchMessageFutures = new ArrayList<>();
+            List<CompletableFuture<Long>> batchMessageFutures = new ArrayList<>();
             List<byte[]> bodies = this.entryFormatter.encode(batchMessage, 1);
 
             /*
@@ -338,8 +331,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                         .getPulsarPersistentTopic(pTopic);
                 if (persistentTopic != null) {
                     for (byte[] body : bodies) {
-                        CompletableFuture<MessageId> offsetFuture = publishMessage(body, persistentTopic, pTopic,
-                                realPartitionID);
+                        CompletableFuture<Long> offsetFuture = publishMessage(body, persistentTopic, pTopic);
                         batchMessageFutures.add(offsetFuture);
                         messageNum++;
                         totalBytesSize += body.length;
@@ -368,11 +360,6 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 }
 
                 log.info("The producer [{}] putMessages begin to send message.", producerId);
-                for (byte[] body : bodies) {
-                    batchMessageFutures.add(this.producers.get(producerId).sendAsync(body));
-                    messageNum++;
-                    totalBytesSize += body.length;
-                }
             }
 
             /*
@@ -389,19 +376,16 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                     return;
                 }
 
-                for (CompletableFuture<MessageId> f : batchMessageFutures) {
-                    MessageIdImpl messageId = (MessageIdImpl) f.getNow(null);
-                    if (messageId == null) {
+                for (CompletableFuture<Long> f : batchMessageFutures) {
+                    Long offset = f.getNow(null);
+                    if (offset == null) {
                         PutMessageStatus status = PutMessageStatus.FLUSH_DISK_TIMEOUT;
                         AppendMessageResult temp = new AppendMessageResult(AppendMessageStatus.UNKNOWN_ERROR);
                         PutMessageResult result = new PutMessageResult(status, temp);
                         callback.callback(result);
                         return;
                     }
-                    long ledgerId = messageId.getLedgerId();
-                    long entryId = messageId.getEntryId();
-                    String msgId = CommonUtils.createMessageId(ctx.channel().localAddress(), localListenPort,
-                            MessageIdUtils.getOffset(ledgerId, entryId, realPartitionID));
+                    String msgId = CommonUtils.createMessageId(ctx.channel().localAddress(), localListenPort, offset);
                     sb.append(msgId).append(",");
                 }
 
@@ -442,24 +426,25 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 .create();
     }
 
-    private CompletableFuture<MessageId> publishMessage(byte[] body, PersistentTopic persistentTopic, String pTopic,
-            long partitionId) {
+    private CompletableFuture<Long> publishMessage(byte[] body, PersistentTopic persistentTopic, String pTopic) {
         ByteBuf headersAndPayload = null;
         try {
             headersAndPayload = this.entryFormatter.encode(body);
 
+            // collect metrics
             org.apache.pulsar.broker.service.Producer producer = this.brokerController.getTopicConfigManager()
                     .getReferenceProducer(pTopic, persistentTopic, this);
             if (producer != null) {
                 producer.updateRates(1, headersAndPayload.readableBytes());
+                producer.getTopic().incrementPublishCount(1, headersAndPayload.readableBytes());
             }
-            persistentTopic.incrementPublishCount(1, headersAndPayload.readableBytes());
 
-            CompletableFuture<MessageId> messageIdFuture = new CompletableFuture<>();
+            // publish message
+            CompletableFuture<Long> offsetFuture = new CompletableFuture<>();
             persistentTopic.publishMessage(headersAndPayload, RopMessagePublishContext
-                    .get(messageIdFuture, persistentTopic, System.nanoTime(), partitionId));
+                    .get(offsetFuture, persistentTopic, System.nanoTime()));
 
-            return messageIdFuture;
+            return offsetFuture;
         } finally {
             if (headersAndPayload != null) {
                 headersAndPayload.release();
