@@ -24,6 +24,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.logging.log4j.util.Strings;
 import org.apache.pulsar.client.admin.Clusters;
@@ -33,17 +34,13 @@ import org.apache.pulsar.client.admin.PulsarAdminException;
 import org.apache.pulsar.client.admin.PulsarAdminException.ConflictException;
 import org.apache.pulsar.client.admin.Tenants;
 import org.apache.pulsar.client.api.MessageId;
-import org.apache.pulsar.client.api.SubscriptionInitialPosition;
-import org.apache.pulsar.client.api.SubscriptionType;
-import org.apache.pulsar.common.api.proto.CommandSubscribe.InitialPosition;
-import org.apache.pulsar.common.api.proto.CommandSubscribe.SubType;
-import org.apache.pulsar.common.api.proto.KeyValue;
 import org.apache.pulsar.common.naming.TopicName;
 import org.apache.pulsar.common.policies.data.ClusterData;
 import org.apache.pulsar.common.policies.data.RetentionPolicies;
 import org.apache.pulsar.common.policies.data.TenantInfo;
 import org.apache.pulsar.common.policies.data.TenantInfoImpl;
 import org.streamnative.pulsar.handlers.rocketmq.RocketMQServiceConfiguration;
+import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopClusterContent;
 
 /**
  * Pulsar utils class.
@@ -239,17 +236,38 @@ public class PulsarUtil {
     public static Map<String, List<String>> genBrokerGroupData(List<String> brokers, int repFactor) {
         Preconditions.checkArgument(brokers != null && !brokers.isEmpty());
         Preconditions.checkArgument(repFactor > 0);
-        Collections.sort(brokers);
-        int allBrokerNum = brokers.size();
-        int groupNum = (allBrokerNum - 1) / repFactor;
+        int uniqBrokersNum = brokers.size();
+        int groupNum = (uniqBrokersNum - 1) / repFactor;
         Map<String, List<String>> result = new HashMap<>();
         for (int i = 0; i <= groupNum; i++) {
             String brokerTag = BROKER_TAG_PREFIX + i;
-            for (int j = 0; j < repFactor && (j + i * repFactor) < allBrokerNum; j++) {
+            for (int j = 0; j < repFactor && (j + i * repFactor) < uniqBrokersNum; j++) {
                 List<String> brokerList = result.computeIfAbsent(brokerTag, k -> new ArrayList<>(repFactor));
                 brokerList.add(brokers.get(j + i * repFactor));
             }
         }
         return result;
+    }
+
+    public static boolean autoExpanseBrokerGroupData(RopClusterContent clusterContent,
+            List<String> activeBrokers, int repFactor) {
+        Preconditions.checkNotNull(clusterContent);
+        Preconditions.checkArgument(activeBrokers != null && !activeBrokers.isEmpty());
+        Preconditions.checkArgument(repFactor > 0);
+        Map<String, List<String>> brokerCluster = clusterContent.getBrokerCluster();
+        List<String> brokerTags = brokerCluster.keySet().stream().collect(Collectors.toList());
+        Collections.sort(brokerTags);
+        List<String> allBrokers = new ArrayList<>();
+        for (String brokerTag : brokerTags) {
+            allBrokers.addAll(brokerCluster.get(brokerTag));
+        }
+
+        if (!allBrokers.containsAll(activeBrokers)) {
+            activeBrokers.remove(allBrokers);
+            allBrokers.addAll(activeBrokers);
+            clusterContent.setBrokerCluster(genBrokerGroupData(allBrokers, repFactor));
+            return true;
+        }
+        return false;
     }
 }

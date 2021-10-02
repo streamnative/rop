@@ -26,6 +26,7 @@ import static org.apache.rocketmq.common.protocol.RequestCode.SEND_MESSAGE_V2;
 import static org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkUtils.BROKER_CLUSTER_PATH;
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.COLO_CHAR;
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.PULSAR_REAL_PARTITION_ID_TAG;
+import static org.streamnative.pulsar.handlers.rocketmq.utils.PulsarUtil.autoExpanseBrokerGroupData;
 import static org.streamnative.pulsar.handlers.rocketmq.utils.PulsarUtil.genBrokerGroupData;
 
 import com.google.common.base.Joiner;
@@ -37,7 +38,6 @@ import io.netty.channel.ChannelHandlerContext;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -112,7 +112,6 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
     private final BrokerNetworkAPI brokerNetworkClients = new BrokerNetworkAPI(this);
     private final String brokerPathRoot = RopZkUtils.BROKERS_PATH;
     private volatile String brokerTag = Strings.EMPTY;
-    private volatile List<String> activityBrokers;
     private final String clusterName;
     @Getter
     private final MQTopicManager mqTopicManager;
@@ -273,6 +272,8 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
     private void initClusterMeta() throws Exception {
         RopClusterContent clusterContent = zkService.getClusterContent();
         List<String> activeBrokers = getActiveBrokers();
+        int ropBrokerReplicationNum = getConfig().getRopBrokerReplicationNum();
+        Preconditions.checkArgument(ropBrokerReplicationNum > 0);
         if (clusterContent == null) {
             //initialize RoP cluster metadata
             RopClusterContent defaultClusterContent = new RopClusterContent();
@@ -281,9 +282,14 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                     activeBrokers.toString());
             defaultClusterContent
                     .setBrokerCluster(
-                            genBrokerGroupData(activeBrokers, getConfig().getRopBrokerReplicationNum()));
+                            genBrokerGroupData(activeBrokers, ropBrokerReplicationNum));
             zkService.setJsonObjectForPath(BROKER_CLUSTER_PATH, defaultClusterContent);
             zkService.getClusterDataCache().reloadCache(BROKER_CLUSTER_PATH);
+        } else if (getConfig().isAutoCreateRopClusterMeta()) {
+            if(autoExpanseBrokerGroupData(clusterContent, activeBrokers, ropBrokerReplicationNum)){
+                zkService.setJsonObjectForPath(BROKER_CLUSTER_PATH, clusterContent);
+                zkService.getClusterDataCache().reloadCache(BROKER_CLUSTER_PATH);
+            }
         }
         log.info("RoP cluster metadata is: [{}].", zkService.getClusterContent());
     }
@@ -616,15 +622,11 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
     }
 
     public List<String> getActiveBrokers() {
-        try {
-            ModularLoadManagerImpl loadManager = (ModularLoadManagerImpl) ((ModularLoadManagerWrapper) pulsarService
-                    .getLoadManager().get()).getLoadManager();
-            activityBrokers = loadManager.getAvailableBrokers().stream()
-                    .map(broker -> Splitter.on(COLO_CHAR).splitToList(broker).get(0)).collect(
-                            Collectors.toList());
-        } catch (Exception e) {
-        }
-        return activityBrokers != null ? activityBrokers : Collections.emptyList();
+        ModularLoadManagerImpl loadManager = (ModularLoadManagerImpl) ((ModularLoadManagerWrapper) pulsarService
+                .getLoadManager().get()).getLoadManager();
+        return loadManager.getAvailableBrokers().stream()
+                .map(broker -> Splitter.on(COLO_CHAR).splitToList(broker).get(0)).collect(
+                        Collectors.toList());
     }
 
     private PulsarClientImpl initPulsarClient(String listenerName) {

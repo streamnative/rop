@@ -439,4 +439,10 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
             doc = "Rop broker replication num."
     )
     private int ropBrokerReplicationNum = 2;
+
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
+            doc = "create Rop cluster metadata automatically, and backup broker num is ropBrokerReplicationNum."
+    )
+    private boolean autoCreateRopClusterMeta = true;
 }
