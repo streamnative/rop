@@ -231,6 +231,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                     AppendMessageResult temp = new AppendMessageResult(AppendMessageStatus.UNKNOWN_ERROR);
                     PutMessageResult putMessageResult = new PutMessageResult(PutMessageStatus.UNKNOWN_ERROR, temp);
                     callback.callback(putMessageResult);
+                    return;
                 }
             }
 
