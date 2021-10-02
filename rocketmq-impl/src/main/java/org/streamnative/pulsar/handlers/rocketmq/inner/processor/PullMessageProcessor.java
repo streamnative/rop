@@ -423,29 +423,32 @@ public class PullMessageProcessor implements NettyRequestProcessor {
     private byte[] readGetMessageResult(final RopGetMessageResult getMessageResult, final String group,
             final String topic,
             final int queueId) {
-        final ByteBuf byteBuffer = PooledByteBufAllocator.DEFAULT.directBuffer(getMessageResult.getBufferTotalSize());
+        final ByteBuf byteBuffer = PooledByteBufAllocator.DEFAULT.heapBuffer(getMessageResult.getBufferTotalSize());
 
         long storeTimestamp = 0;
         try {
             List<ByteBuf> messageBufferList = getMessageResult.getMessageBufferList();
             for (ByteBuf bb : messageBufferList) {
-
-                byteBuffer.writeBytes(bb);
-                int sysFlag = bb.getInt(MessageDecoder.SYSFLAG_POSITION);
+                try {
+                    byteBuffer.writeBytes(bb);
+                    int sysFlag = bb.getInt(MessageDecoder.SYSFLAG_POSITION);
 //                bornhost has the IPv4 ip if the MessageSysFlag.BORNHOST_V6_FLAG bit of sysFlag is 0
 //                IPv4 host = ip(4 byte) + port(4 byte); IPv6 host = ip(16 byte) + port(4 byte)
-                int bornhostLength = (sysFlag & MessageSysFlag.BORNHOST_V6_FLAG) == 0 ? 8 : 20;
-                int msgStoreTimePos = 4 // 1 TOTALSIZE
-                        + 4 // 2 MAGICCODE
-                        + 4 // 3 BODYCRC
-                        + 4 // 4 QUEUEID
-                        + 4 // 5 FLAG
-                        + 8 // 6 QUEUEOFFSET
-                        + 8 // 7 PHYSICALOFFSET
-                        + 4 // 8 SYSFLAG
-                        + 8 // 9 BORNTIMESTAMP
-                        + bornhostLength; // 10 BORNHOST
-                storeTimestamp = bb.getLong(msgStoreTimePos);
+                    int bornhostLength = (sysFlag & MessageSysFlag.BORNHOST_V6_FLAG) == 0 ? 8 : 20;
+                    int msgStoreTimePos = 4 // 1 TOTALSIZE
+                            + 4 // 2 MAGICCODE
+                            + 4 // 3 BODYCRC
+                            + 4 // 4 QUEUEID
+                            + 4 // 5 FLAG
+                            + 8 // 6 QUEUEOFFSET
+                            + 8 // 7 PHYSICALOFFSET
+                            + 4 // 8 SYSFLAG
+                            + 8 // 9 BORNTIMESTAMP
+                            + bornhostLength; // 10 BORNHOST
+                    storeTimestamp = bb.getLong(msgStoreTimePos);
+                } finally {
+                    bb.release();
+                }
             }
         } finally {
         }

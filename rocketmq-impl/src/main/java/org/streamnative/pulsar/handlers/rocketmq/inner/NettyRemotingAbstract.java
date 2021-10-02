@@ -220,8 +220,7 @@ public abstract class NettyRemotingAbstract {
                             }
                         }
                     } catch (Throwable e) {
-                        log.error("process request exception", e);
-                        log.error(cmd.toString());
+                        log.error("process request[{}] exception",cmd, e);
 
                         if (!cmd.isOnewayRPC()) {
                             final RemotingCommand response = RemotingCommand.createResponseCommand(

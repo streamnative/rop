@@ -59,7 +59,6 @@ import org.apache.pulsar.client.impl.PulsarClientImpl;
 import org.apache.pulsar.common.naming.TopicName;
 import org.apache.rocketmq.broker.mqtrace.ConsumeMessageHook;
 import org.apache.rocketmq.broker.mqtrace.SendMessageHook;
-import org.apache.rocketmq.common.Pair;
 import org.apache.rocketmq.common.protocol.RequestCode;
 import org.apache.rocketmq.common.protocol.ResponseCode;
 import org.apache.rocketmq.common.protocol.header.PullMessageRequestHeader;
@@ -133,10 +132,11 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
         this.mqTopicManager = new MQTopicManager(brokerController);
     }
 
-    private Pair<Boolean, Integer> checkTopicOwnerBroker(TopicName pulsarTopicName, int queueId) {
+    private boolean checkTopicOwnerBroker(RemotingCommand cmd, TopicName pulsarTopicName, int queueId) {
         int pulsarTopicPartitionId = getPulsarTopicPartitionId(pulsarTopicName, queueId);
         boolean isOwner = mqTopicManager.isPartitionTopicOwner(pulsarTopicName, pulsarTopicPartitionId);
-        return new Pair<>(isOwner, pulsarTopicPartitionId);
+        cmd.addExtField(PULSAR_REAL_PARTITION_ID_TAG, String.valueOf(pulsarTopicPartitionId));
+        return isOwner;
     }
 
     private int getPulsarTopicPartitionId(TopicName pulsarTopicName, int rocketmqQueueId) {
@@ -150,14 +150,18 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
 
     @Override
     public void processRequestCommand(ChannelHandlerContext ctx, RemotingCommand cmd) throws RemotingCommandException {
-        RocketMQTopic rmqTopic;
         switch (cmd.getCode()) {
             case PULL_MESSAGE:
                 PullMessageRequestHeader pullMsgHeader =
                         (PullMessageRequestHeader) cmd.decodeCommandCustomHeader(PullMessageRequestHeader.class);
-                rmqTopic = new RocketMQTopic(pullMsgHeader.getTopic());
-                Pair<Boolean, Integer> booleanIntegerPair = checkTopicOwnerBroker(rmqTopic.getPulsarTopicName(),
+                RocketMQTopic rmqTopic = new RocketMQTopic(pullMsgHeader.getTopic());
+                boolean isOwnedBroker = checkTopicOwnerBroker(cmd, rmqTopic.getPulsarTopicName(),
                         pullMsgHeader.getQueueId());
+                if (isOwnedBroker || cmd.getExtFields().containsKey("test")) {
+                    super.processRequestCommand(ctx, cmd);
+                } else {
+
+                }
                 break;
             case SEND_MESSAGE:
             case SEND_MESSAGE_V2:
@@ -173,16 +177,13 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                     //fail to msgCheck and flush error at once;
                     ctx.writeAndFlush(response);
                 } else {
-                    Pair<Boolean, Integer> resultPair = checkTopicOwnerBroker(pulsarTopicName,
+                    isOwnedBroker = checkTopicOwnerBroker(cmd, pulsarTopicName,
                             sendHeader.getQueueId());
-                    int pulsarPartitionId = resultPair.getObject2();
-                    cmd.addExtField(PULSAR_REAL_PARTITION_ID_TAG, String.valueOf(pulsarPartitionId));
-                    boolean isOwnedBroker = resultPair.getObject1();
                     if (!isOwnedBroker || cmd.getExtFields().containsKey("test")) {
                         super.processRequestCommand(ctx, cmd);
                     } else {
-                        cmd.addExtField("test","0");
-                        processNonOwnedBrokerSendRequest(ctx, cmd, pulsarTopicName, pulsarPartitionId,
+                        cmd.addExtField("test", "0");
+                        processNonOwnedBrokerSendRequest(ctx, cmd, pulsarTopicName,
                                 INTERNAL_SEND_TIMEOUT_MS);
                     }
                 }
@@ -198,7 +199,8 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
     }
 
     private void processNonOwnedBrokerSendRequest(ChannelHandlerContext ctx, RemotingCommand cmd,
-            TopicName pulsarTopicName, int pulsarPartitionId, long timeout) {
+            TopicName pulsarTopicName, long timeout) {
+        int pulsarPartitionId = Integer.parseInt(cmd.getExtFields().get(PULSAR_REAL_PARTITION_ID_TAG));
         TopicName partitionedTopicName = pulsarTopicName.getPartition(pulsarPartitionId);
         String address = lookupPulsarTopicBroker(partitionedTopicName);
         try {
@@ -218,7 +220,7 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                                     sendResponse.getRemark());
                             long curTime = System.currentTimeMillis();
                             if (curTime < timeoutTime) {
-                                processNonOwnedBrokerSendRequest(ctx, cmd, pulsarTopicName, pulsarPartitionId,
+                                processNonOwnedBrokerSendRequest(ctx, cmd, pulsarTopicName,
                                         timeoutTime - curTime);
                             } else {
                                 ctx.writeAndFlush(sendResponse);

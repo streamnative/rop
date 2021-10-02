@@ -141,13 +141,14 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
     }
 
     public ByteBuf decodePulsarMessage(ByteBuf headersAndPayload, long offset, Predicate<ByteBuf> predicate) {
+        BrokerEntryMetadata brokerEntryMetadata = Commands.peekBrokerEntryMetadataIfExist(headersAndPayload);
         Commands.skipMessageMetadata(headersAndPayload);
         if (predicate != null && !predicate.test(headersAndPayload)) {
             return null;
         }
         // skip tag hash code
         headersAndPayload.readLong();
-        ByteBuf slice = headersAndPayload.slice();
+        ByteBuf slice = headersAndPayload.retainedSlice();
         // set offset
         slice.setLong(20, offset);
         slice.setLong(28, offset);

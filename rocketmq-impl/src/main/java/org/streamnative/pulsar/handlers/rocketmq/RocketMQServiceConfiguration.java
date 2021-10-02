@@ -439,12 +439,4 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
             doc = "Rop broker replication num."
     )
     private int ropBrokerReplicationNum = 2;
-
-    @FieldContext(
-            category = CATEGORY_ROCKETMQ,
-            required = true,
-            doc = "broker entry metadata interceptors."
-    )
-    private String brokerEntryMetadataInterceptors = "org.apache.pulsar.common.intercept.AppendIndexMetadataInterceptor";
-
 }
