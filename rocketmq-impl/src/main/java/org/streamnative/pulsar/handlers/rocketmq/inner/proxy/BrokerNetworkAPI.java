@@ -48,6 +48,7 @@ public class BrokerNetworkAPI implements AutoCloseable {
             NettyClientConfig clientConfig = new NettyClientConfig();
             NettyRemotingClient remotingClient = new NettyRemotingClient(clientConfig);
             remotingClient.start();
+            log.info("BrokerNetworkAPI internal client[{}] started.", conn);
             return remotingClient;
         });
     }

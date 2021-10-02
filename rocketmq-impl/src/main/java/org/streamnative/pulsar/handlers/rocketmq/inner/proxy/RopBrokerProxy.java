@@ -61,6 +61,7 @@ import org.apache.rocketmq.broker.mqtrace.ConsumeMessageHook;
 import org.apache.rocketmq.broker.mqtrace.SendMessageHook;
 import org.apache.rocketmq.common.Pair;
 import org.apache.rocketmq.common.protocol.RequestCode;
+import org.apache.rocketmq.common.protocol.ResponseCode;
 import org.apache.rocketmq.common.protocol.header.PullMessageRequestHeader;
 import org.apache.rocketmq.common.protocol.header.SendMessageRequestHeader;
 import org.apache.rocketmq.common.protocol.header.SendMessageResponseHeader;
@@ -98,6 +99,7 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
     private final static int CACHE_MAX_SIZE = 1024 << 8;
     private final static int CACHE_EXPIRE_TIME_MS = 120 * 1000;
     private final static int ROP_SERVICE_PORT = 9876;
+    private final static int INTERNAL_SEND_TIMEOUT_MS = 3000;
 
     private final RocketMQBrokerController brokerController;
     private final List<SendMessageHook> sendMessageHookList = new ArrayList<>();
@@ -176,12 +178,12 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                     int pulsarPartitionId = resultPair.getObject2();
                     cmd.addExtField(PULSAR_REAL_PARTITION_ID_TAG, String.valueOf(pulsarPartitionId));
                     boolean isOwnedBroker = resultPair.getObject1();
-                    if (isOwnedBroker) {
+                    if (!isOwnedBroker || cmd.getExtFields().containsKey("test")) {
                         super.processRequestCommand(ctx, cmd);
                     } else {
-                        String address = lookupPulsarTopicBroker(pulsarTopicName.getPartition(pulsarPartitionId));
-                        System.out.println(address);
-                        //brokerNetworkClients.invokeAsync();
+                        cmd.addExtField("test","0");
+                        processNonOwnedBrokerSendRequest(ctx, cmd, pulsarTopicName, pulsarPartitionId,
+                                INTERNAL_SEND_TIMEOUT_MS);
                     }
                 }
                 break;
@@ -193,6 +195,51 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                 break;
         }
 
+    }
+
+    private void processNonOwnedBrokerSendRequest(ChannelHandlerContext ctx, RemotingCommand cmd,
+            TopicName pulsarTopicName, int pulsarPartitionId, long timeout) {
+        TopicName partitionedTopicName = pulsarTopicName.getPartition(pulsarPartitionId);
+        String address = lookupPulsarTopicBroker(partitionedTopicName);
+        try {
+            long timeoutTime = System.currentTimeMillis() + timeout;
+            brokerNetworkClients.invokeAsync(address, cmd, timeout, (responseFuture) -> {
+                RemotingCommand sendResponse = responseFuture.getResponseCommand();
+                if (sendResponse != null) {
+                    switch (sendResponse.getCode()) {
+                        case ResponseCode.SUCCESS: {
+                            ctx.writeAndFlush(sendResponse);
+                            break;
+                        }
+                        default:
+                            //mybe partitioned topic have transfer to other broker, invalidate cache at once.
+                            ownedBrokerCache.invalidate(partitionedTopicName);
+                            log.info("processNonOwnedBrokerSendRequest failed and retry, {} {}", sendResponse.getCode(),
+                                    sendResponse.getRemark());
+                            long curTime = System.currentTimeMillis();
+                            if (curTime < timeoutTime) {
+                                processNonOwnedBrokerSendRequest(ctx, cmd, pulsarTopicName, pulsarPartitionId,
+                                        timeoutTime - curTime);
+                            } else {
+                                ctx.writeAndFlush(sendResponse);
+                            }
+                            break;
+                    }
+                } else {
+                    log.warn("getResponseCommand return null");
+                    sendResponse = sendResponseThreadLocal.get();
+                    sendResponse.setCode(ResponseCode.SYSTEM_ERROR);
+                    sendResponse.setRemark("getResponseCommand return null");
+                    ctx.writeAndFlush(sendResponse);
+                }
+            });
+        } catch (Exception e) {
+            log.warn("BrokerNetworkAPI invokeAsync error.", e);
+            RemotingCommand sendResponse = sendResponseThreadLocal.get();
+            sendResponse.setCode(ResponseCode.SYSTEM_ERROR);
+            sendResponse.setRemark("BrokerNetworkAPI invokeAsync error");
+            ctx.writeAndFlush(sendResponse);
+        }
     }
 
     @Override
@@ -231,7 +278,8 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
             log.info("RoP cluster[{}] broker list: {}.", defaultClusterContent.getClusterName(),
                     activeBrokers.toString());
             defaultClusterContent
-                    .setBrokerCluster(genBrokerGroupData(activeBrokers, getConfig().getRopBrokerReplicationNum()));
+                    .setBrokerCluster(
+                            genBrokerGroupData(activeBrokers, getConfig().getRopBrokerReplicationNum()));
             zkService.setJsonObjectForPath(BROKER_CLUSTER_PATH, defaultClusterContent);
             zkService.getClusterDataCache().reloadCache(BROKER_CLUSTER_PATH);
         }
@@ -325,10 +373,12 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
         processorProxyRegisters.add(new ClientManageProcessorProxy(brokerController.getHeartbeatExecutor()));
 
         // ConsumerManageProcessor
-        processorProxyRegisters.add(new ConsumerManageProcessorProxy(brokerController.getConsumerManageExecutor()));
+        processorProxyRegisters
+                .add(new ConsumerManageProcessorProxy(brokerController.getConsumerManageExecutor()));
 
         // EndTransactionProcessor
-        processorProxyRegisters.add(new EndTransactionProcessorProxy(brokerController.getEndTransactionExecutor()));
+        processorProxyRegisters
+                .add(new EndTransactionProcessorProxy(brokerController.getEndTransactionExecutor()));
 
         // NameserverProcessor
         processorProxyRegisters.add(new NameserverProcessorProxy(brokerController.getAdminBrokerExecutor()));
@@ -404,15 +454,18 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
             RopBrokerProxy.this.registerProcessor(RequestCode.UNREGISTER_BROKER, this, processorExecutor);
             RopBrokerProxy.this.registerProcessor(RequestCode.GET_ROUTEINTO_BY_TOPIC, this, processorExecutor);
             RopBrokerProxy.this.registerProcessor(RequestCode.GET_BROKER_CLUSTER_INFO, this, processorExecutor);
-            RopBrokerProxy.this.registerProcessor(RequestCode.WIPE_WRITE_PERM_OF_BROKER, this, processorExecutor);
+            RopBrokerProxy.this
+                    .registerProcessor(RequestCode.WIPE_WRITE_PERM_OF_BROKER, this, processorExecutor);
             RopBrokerProxy.this
                     .registerProcessor(RequestCode.GET_ALL_TOPIC_LIST_FROM_NAMESERVER, this, processorExecutor);
             RopBrokerProxy.this.registerProcessor(RequestCode.DELETE_TOPIC_IN_NAMESRV, this, processorExecutor);
             RopBrokerProxy.this.registerProcessor(RequestCode.GET_KVLIST_BY_NAMESPACE, this, processorExecutor);
             RopBrokerProxy.this.registerProcessor(RequestCode.GET_TOPICS_BY_CLUSTER, this, processorExecutor);
-            RopBrokerProxy.this.registerProcessor(RequestCode.GET_SYSTEM_TOPIC_LIST_FROM_NS, this, processorExecutor);
+            RopBrokerProxy.this
+                    .registerProcessor(RequestCode.GET_SYSTEM_TOPIC_LIST_FROM_NS, this, processorExecutor);
             RopBrokerProxy.this.registerProcessor(RequestCode.GET_UNIT_TOPIC_LIST, this, processorExecutor);
-            RopBrokerProxy.this.registerProcessor(RequestCode.GET_HAS_UNIT_SUB_TOPIC_LIST, this, processorExecutor);
+            RopBrokerProxy.this
+                    .registerProcessor(RequestCode.GET_HAS_UNIT_SUB_TOPIC_LIST, this, processorExecutor);
             RopBrokerProxy.this
                     .registerProcessor(RequestCode.GET_HAS_UNIT_SUB_UNUNIT_TOPIC_LIST, this, processorExecutor);
             RopBrokerProxy.this.registerProcessor(RequestCode.UPDATE_NAMESRV_CONFIG, this, processorExecutor);
@@ -424,7 +477,8 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
     /**
      * Consumer Manage Processor Proxy.
      */
-    protected class ConsumerManageProcessorProxy extends ConsumerManageProcessor implements ProcessorProxyRegister {
+    protected class ConsumerManageProcessorProxy extends ConsumerManageProcessor implements
+            ProcessorProxyRegister {
 
         private final ExecutorService processorExecutor;
 
@@ -435,7 +489,8 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
 
         @Override
         public boolean registerProxyProcessor() {
-            RopBrokerProxy.this.registerProcessor(RequestCode.GET_CONSUMER_LIST_BY_GROUP, this, processorExecutor);
+            RopBrokerProxy.this
+                    .registerProcessor(RequestCode.GET_CONSUMER_LIST_BY_GROUP, this, processorExecutor);
             RopBrokerProxy.this.registerProcessor(RequestCode.UPDATE_CONSUMER_OFFSET, this, processorExecutor);
             RopBrokerProxy.this.registerProcessor(RequestCode.QUERY_CONSUMER_OFFSET, this, processorExecutor);
             return true;
@@ -541,7 +596,8 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
     /**
      * End Transaction Processor Proxy.
      */
-    protected class EndTransactionProcessorProxy extends EndTransactionProcessor implements ProcessorProxyRegister {
+    protected class EndTransactionProcessorProxy extends EndTransactionProcessor implements
+            ProcessorProxyRegister {
 
         private final ExecutorService processorExecutor;
 
