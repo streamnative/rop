@@ -34,7 +34,7 @@ public interface EntryFormatter<T> {
      */
     List<byte[]> encode(final T record, final int numMessages) throws RopEncodeException;
 
-    List<MessageExt> decodePulsarMessage(final List<Message<byte[]>> entries, Predicate predicate);
+    List<MessageExt> decodePulsarMessage(final List<Message<byte[]>> entries, Predicate<Message> predicate);
 
     default int parseNumMessages(final T record) {
         return 1;

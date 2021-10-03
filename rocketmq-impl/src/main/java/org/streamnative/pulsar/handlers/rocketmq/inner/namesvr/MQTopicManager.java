@@ -312,18 +312,11 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
         try {
             log.info("Create or update inner topic config: [{}].", tc);
             String fullTopicName = tc.getTopicName();
-
-            PartitionedTopicMetadata topicMetadata = null;
-            try {
-                topicMetadata = adminClient.topics().getPartitionedTopicMetadata(fullTopicName);
-            } catch (PulsarAdminException e) {
-            }
-
+            PartitionedTopicMetadata topicMetadata = adminClient.topics().getPartitionedTopicMetadata(fullTopicName);
             if (topicMetadata == null || tc.getWriteQueueNums() > topicMetadata.partitions) {
                 adminClient.topics().createPartitionedTopic(fullTopicName, tc.getWriteQueueNums());
             }
-
-        } catch (Exception e) {
+        } catch (PulsarAdminException e) {
             log.warn("createOrUpdateInnerTopic error", e);
             throw e;
         }
@@ -355,17 +348,13 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
             throw new RuntimeException("Create topic error.");
         }
 
-        PartitionedTopicMetadata topicMetadata = null;
-        try {
-            topicMetadata = adminClient.topics().getPartitionedTopicMetadata(fullTopicName);
-        } catch (PulsarAdminException e) {
-        }
-
-        int currentPartitionNum = topicMetadata != null ? topicMetadata.partitions : 0;
-
-        // get cluster brokers list
         RopClusterContent clusterBrokers;
+        int currentPartitionNum;
         try {
+            PartitionedTopicMetadata topicMetadata = adminClient.topics().getPartitionedTopicMetadata(fullTopicName);
+            currentPartitionNum = topicMetadata != null ? topicMetadata.partitions : 0;
+
+            // get cluster brokers list
             clusterBrokers = zkService.getClusterContent();
         } catch (Exception e) {
             log.warn("clusterBrokers haven't been created, error: ", e);

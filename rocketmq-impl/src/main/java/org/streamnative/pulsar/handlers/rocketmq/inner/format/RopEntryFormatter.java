@@ -131,9 +131,9 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
     }
 
     @Override
-    public List<MessageExt> decodePulsarMessage(List<Message<byte[]>> messages, Predicate predicate) {
+    public List<MessageExt> decodePulsarMessage(List<Message<byte[]>> messages, Predicate<Message> predicate) {
         if (predicate != null) {
-            return messages.stream().filter((Predicate<Message>) predicate).map(RopEntryFormatter::decodePulsarMessage)
+            return messages.stream().filter(predicate).map(RopEntryFormatter::decodePulsarMessage)
                     .collect(Collectors.toList());
         } else {
             return messages.stream().map(RopEntryFormatter::decodePulsarMessage).collect(Collectors.toList());

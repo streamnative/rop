@@ -166,7 +166,7 @@ public class NameserverProcessor implements NettyRequestProcessor {
             try {
                 List<String> brokers = brokerProxy.getActiveBrokers();
                 String randomBroker = brokers.get(new Random().nextInt(brokers.size()));
-                String rmqBrokerAddress = parseBrokerAddress(randomBroker, servicePort);
+                String rmqBrokerAddress = parseBrokerAddress(randomBroker);
                 BrokerData brokerData = new BrokerData();
                 HashMap<Long, String> brokerAddrs = Maps.newHashMap();
                 brokerAddrs.put(0L, rmqBrokerAddress);
@@ -232,7 +232,7 @@ public class NameserverProcessor implements NettyRequestProcessor {
         return response;
     }
 
-    public String parseBrokerAddress(String brokerAddress, int port) {
+    public String parseBrokerAddress(String brokerAddress) {
         // pulsar://localhost:6650
         if (null == brokerAddress) {
             log.error("The brokerAddress is null, please check.");
@@ -260,7 +260,7 @@ public class NameserverProcessor implements NettyRequestProcessor {
             HashMap<String, BrokerData> brokerAddrTable = Maps.newHashMap();
             Set<String> brokerNames = Sets.newHashSet();
             for (String broker : brokers) {
-                String rmqBrokerAddress = parseBrokerAddress(broker, servicePort);
+                String rmqBrokerAddress = parseBrokerAddress(broker);
                 String brokerName = PulsarUtil.getBrokerHost(broker);
 
                 HashMap<Long, String> brokerAddrs = Maps.newHashMap();

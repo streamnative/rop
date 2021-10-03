@@ -258,8 +258,7 @@ public class Broker2Client {
                 RemotingCommand.createRequestCommand(RequestCode.GET_CONSUMER_STATUS_FROM_CLIENT,
                         requestHeader);
 
-        Map<String, Map<MessageQueue, Long>> consumerStatusTable =
-                new HashMap<String, Map<MessageQueue, Long>>();
+        Map<String, Map<MessageQueue, Long>> consumerStatusTable = new HashMap<>();
         ConcurrentMap<Channel, ClientChannelInfo> channelInfoTable =
                 this.brokerController.getConsumerManager().getConsumerGroupInfo(group).getChannelInfoTable();
         if (null == channelInfoTable || channelInfoTable.isEmpty()) {
