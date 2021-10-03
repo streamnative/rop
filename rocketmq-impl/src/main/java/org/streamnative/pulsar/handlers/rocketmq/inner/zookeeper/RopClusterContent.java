@@ -53,8 +53,7 @@ public class RopClusterContent {
         Map<String, List<Integer>> result = new HashMap<>(brokerGroupNum);
 
         int total = 0;
-        List<Entry<String, Integer>> shuffledAssignedEntries = assignedMap.entrySet().stream()
-                .collect(Collectors.toList());
+        List<Entry<String, Integer>> shuffledAssignedEntries = new ArrayList<>(assignedMap.entrySet());
         Collections.shuffle(shuffledAssignedEntries);
         for (Entry<String, Integer> entry : shuffledAssignedEntries) {
             for (int i = 0; i < entry.getValue(); i++) {

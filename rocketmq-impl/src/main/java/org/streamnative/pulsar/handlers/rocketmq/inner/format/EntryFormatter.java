@@ -14,7 +14,6 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.format;
 
-import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.function.Predicate;
 import org.apache.pulsar.client.api.Message;

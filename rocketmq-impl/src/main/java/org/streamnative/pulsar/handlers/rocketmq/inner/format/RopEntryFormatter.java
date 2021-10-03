@@ -141,7 +141,7 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
     }
 
     public ByteBuf decodePulsarMessage(ByteBuf headersAndPayload, long offset, Predicate<ByteBuf> predicate) {
-        BrokerEntryMetadata brokerEntryMetadata = Commands.peekBrokerEntryMetadataIfExist(headersAndPayload);
+//        BrokerEntryMetadata brokerEntryMetadata = Commands.peekBrokerEntryMetadataIfExist(headersAndPayload);
         Commands.skipMessageMetadata(headersAndPayload);
         if (predicate != null && !predicate.test(headersAndPayload)) {
             return null;
@@ -159,9 +159,10 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
             Predicate<ByteBuf> predicate) {
         BrokerEntryMetadata brokerEntryMetadata = Commands.parseBrokerEntryMetadataIfExist(headersAndPayload);
         long index = (brokerEntryMetadata != null) ? brokerEntryMetadata.getIndex() : -1L;
-        long brokerTimestamp = (brokerEntryMetadata != null) ? brokerEntryMetadata.getBrokerTimestamp() : -1L;
+//        long brokerTimestamp = (brokerEntryMetadata != null) ? brokerEntryMetadata.getBrokerTimestamp() : -1L;
         Preconditions.checkArgument(index > 0, "the version of broker must be > 2.8.0");
-        long msgTag = headersAndPayload.readLong();
+        // read long tag
+        headersAndPayload.readLong();
         ByteBuf slice = headersAndPayload.slice();
         // set offset
         slice.setLong(20, index);

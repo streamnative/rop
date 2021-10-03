@@ -62,8 +62,8 @@ public class RopZookeeperCache extends ZooKeeperCache implements Closeable {
                 CompletableFuture<ZooKeeper> zkFuture = zlClientFactory.create(ropZkConnect, SessionType.ReadWrite,
                         zkSessionTimeoutMillis);
                 ZooKeeper newSession = zkFuture.get(zkSessionTimeoutMillis, TimeUnit.MILLISECONDS);
-                // Register self as a watcher to receive notification when session expires and trigger a new session to be
-                // created
+                // Register self as a watcher to receive notification when session expires and
+                // trigger a new session to be created
                 newSession.register(this);
                 zkSession.set(newSession);
                 isRunning = true;

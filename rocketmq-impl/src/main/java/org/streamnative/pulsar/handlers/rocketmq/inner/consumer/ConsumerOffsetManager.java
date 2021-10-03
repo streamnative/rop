@@ -144,13 +144,7 @@ public class ConsumerOffsetManager {
             throws RopPersistentTopicException {
         PersistentTopic persistentTopic = getPulsarPersistentTopic(clientTopicName, realPartitionId);
         if (persistentTopic != null) {
-            try {
-                PositionImpl firstPosition = persistentTopic.getFirstPosition();
-                return MessageIdUtils.getOffset(firstPosition.getLedgerId(), firstPosition.getEntryId(), realPartitionId);
-            } catch (ManagedLedgerException e) {
-                log.warn("getMinOffsetInQueue error, ClientGroupAndTopicName=[{}], partitionId=[{}].", clientTopicName,
-                        realPartitionId);
-            }
+            return MessageIdUtils.getCurrentOffset(persistentTopic.getManagedLedger());
         }
         return 0L;
     }
@@ -158,8 +152,7 @@ public class ConsumerOffsetManager {
     public long getMaxOffsetInQueue(ClientTopicName topicName, int realPartitionId) throws RopPersistentTopicException {
         PersistentTopic persistentTopic = getPulsarPersistentTopic(topicName, realPartitionId);
         if (persistentTopic != null) {
-            PositionImpl lastPosition = (PositionImpl) persistentTopic.getLastPosition();
-            return MessageIdUtils.getOffset(lastPosition.getLedgerId(), lastPosition.getEntryId(), realPartitionId);
+            return MessageIdUtils.getLogEndOffset(persistentTopic.getManagedLedger());
         }
         return 0L;
     }

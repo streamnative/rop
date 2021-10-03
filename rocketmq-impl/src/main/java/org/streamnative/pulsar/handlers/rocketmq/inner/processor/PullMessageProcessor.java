@@ -20,7 +20,6 @@ import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
-import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.concurrent.ConcurrentMap;
 import lombok.extern.slf4j.Slf4j;
@@ -70,8 +69,7 @@ public class PullMessageProcessor implements NettyRequestProcessor {
         this.brokerController = brokerController;
     }
 
-    protected PulsarMessageStore getServerCnxMsgStore(Channel channel, RemotingCommand request,
-            String groupName) {
+    protected PulsarMessageStore getServerCnxMsgStore(Channel channel, String groupName) {
         try {
             ConsumerGroupInfo consumerGroupInfo = this.brokerController.getConsumerManager()
                     .getConsumerGroupInfo(groupName);
@@ -220,12 +218,12 @@ public class PullMessageProcessor implements NettyRequestProcessor {
 
         RopMessageFilter messageFilter = new RopMessageFilter(subscriptionData);
         // Obtain and process the received message data from the message store.
-        PulsarMessageStore serverCnxMsgStore = this
-                .getServerCnxMsgStore(channel, request, requestHeader.getConsumerGroup());
+        PulsarMessageStore pulsarMessageStore = this
+                .getServerCnxMsgStore(channel, requestHeader.getConsumerGroup());
 
         // If obtaining the serverCnxMsgStore object fails, enter the retry phase
         // and wait for the heartbeat request to register.
-        if (null == serverCnxMsgStore) {
+        if (null == pulsarMessageStore) {
             response.setCode(ResponseCode.PULL_RETRY_IMMEDIATELY);
             responseHeader.setMaxOffset(requestHeader.getQueueOffset());
             responseHeader.setNextBeginOffset(requestHeader.getQueueOffset());
@@ -235,7 +233,7 @@ public class PullMessageProcessor implements NettyRequestProcessor {
             return response;
         }
 
-        final RopGetMessageResult ropGetMessageResult = serverCnxMsgStore
+        final RopGetMessageResult ropGetMessageResult = pulsarMessageStore
                 .getMessage(CommonUtils.getPartitionIdFromRequest(request), request, requestHeader, messageFilter);
 
         if (ropGetMessageResult != null) {
@@ -432,8 +430,8 @@ public class PullMessageProcessor implements NettyRequestProcessor {
                 try {
                     byteBuffer.writeBytes(bb);
                     int sysFlag = bb.getInt(MessageDecoder.SYSFLAG_POSITION);
-//                bornhost has the IPv4 ip if the MessageSysFlag.BORNHOST_V6_FLAG bit of sysFlag is 0
-//                IPv4 host = ip(4 byte) + port(4 byte); IPv6 host = ip(16 byte) + port(4 byte)
+                    // bornhost has the IPv4 ip if the MessageSysFlag.BORNHOST_V6_FLAG bit of sysFlag is 0
+                    // IPv4 host = ip(4 byte) + port(4 byte); IPv6 host = ip(16 byte) + port(4 byte)
                     int bornhostLength = (sysFlag & MessageSysFlag.BORNHOST_V6_FLAG) == 0 ? 8 : 20;
                     int msgStoreTimePos = 4 // 1 TOTALSIZE
                             + 4 // 2 MAGICCODE
@@ -453,33 +451,6 @@ public class PullMessageProcessor implements NettyRequestProcessor {
         } finally {
         }
         return byteBuffer.array();
-    }
-
-    private void generateOffsetMovedEvent(final OffsetMovedEvent event) {
- /*       try {
-            MessageExtBrokerInner msgInner = new MessageExtBrokerInner();
-            msgInner.setTopic(MixAll.OFFSET_MOVED_EVENT);
-            msgInner.setTags(event.getConsumerGroup());
-            msgInner.setDelayTimeLevel(0);
-            msgInner.setKeys(event.getConsumerGroup());
-            msgInner.setBody(event.encode());
-            msgInner.setFlag(0);
-            msgInner.setPropertiesString(MessageDecoder.messageProperties2String(msgInner.getProperties()));
-            msgInner.setTagsCode(
-                    MessageExtBrokerInner.tagsString2tagsCode(TopicFilterType.SINGLE_TAG, msgInner.getTags()));
-
-            msgInner.setQueueId(0);
-            msgInner.setSysFlag(0);
-            msgInner.setBornTimestamp(System.currentTimeMillis());
-            msgInner.setBornHost(RemotingUtil.string2SocketAddress(this.brokerController.getBrokerAddr()));
-            msgInner.setStoreHost(msgInner.getBornHost());
-
-            msgInner.setReconsumeTimes(0);
-
-            PutMessageResult putMessageResult = this.brokerController.getMessageStore().putMessage(msgInner);
-        } catch (Exception e) {
-            log.warn(String.format("generateOffsetMovedEvent Exception, %s", event.toString()), e);
-        }*/
     }
 
     public void executeRequestWhenWakeup(final Channel channel,
