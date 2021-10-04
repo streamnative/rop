@@ -495,7 +495,7 @@ public class RocketMQBrokerController {
         }
 
         if (this.subscriptionGroupManager != null) {
-            this.subscriptionGroupManager.shutdown();
+            this.subscriptionGroupManager.close();
         }
 
         if (this.groupMetaManager != null) {

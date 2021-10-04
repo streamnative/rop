@@ -19,30 +19,26 @@ import static org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkUti
 import static org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkUtils.GROUP_BASE_PATH;
 import static org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkUtils.TOPIC_BASE_PATH;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bookkeeper.util.ZkUtils;
 import org.apache.pulsar.common.naming.TopicName;
 import org.apache.pulsar.common.util.ObjectMapperFactory;
-import org.apache.pulsar.zookeeper.ZooKeeperCache;
 import org.apache.pulsar.zookeeper.ZooKeeperDataCache;
+import org.apache.rocketmq.common.subscription.SubscriptionGroupConfig;
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.ZooDefs;
 import org.apache.zookeeper.ZooDefs.Ids;
 import org.apache.zookeeper.ZooKeeper;
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopServerException;
+import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupName;
 import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopClusterContent;
+import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopGroupContent;
 import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopTopicContent;
 import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkUtils;
 import org.streamnative.pulsar.handlers.rocketmq.utils.PulsarUtil;
@@ -55,9 +51,10 @@ import org.streamnative.pulsar.handlers.rocketmq.utils.PulsarUtil;
 public class RopZookeeperCacheService implements AutoCloseable {
 
     private final RopZookeeperCache cache;
-    private ZooKeeperDataCache<RopTopicContent> topicDataCache;
-    private ZooKeeperDataCache<RopClusterContent> clusterDataCache;
-    private ZooKeeperDataCache<String> brokerCache;
+    private final ZooKeeperDataCache<RopTopicContent> topicDataCache;
+    private final ZooKeeperDataCache<RopClusterContent> clusterDataCache;
+    private final ZooKeeperDataCache<String> brokerCache;
+    private final ZooKeeperDataCache<RopGroupContent> subscribeGroupConfigCache;
 
     public RopZookeeperCacheService(RopZookeeperCache cache) throws RopServerException {
         this.cache = cache;
@@ -75,8 +72,14 @@ public class RopZookeeperCacheService implements AutoCloseable {
         };
         this.brokerCache = new ZooKeeperDataCache<String>(cache) {
             @Override
-            public String deserialize(String key, byte[] content) throws Exception {
+            public String deserialize(String key, byte[] content) {
                 return new String(content, StandardCharsets.UTF_8);
+            }
+        };
+        this.subscribeGroupConfigCache = new ZooKeeperDataCache<RopGroupContent>(cache) {
+            @Override
+            public RopGroupContent deserialize(String key, byte[] content) throws Exception {
+                return ObjectMapperFactory.getThreadLocal().readValue(content, RopGroupContent.class);
             }
         };
     }
@@ -139,21 +142,21 @@ public class RopZookeeperCacheService implements AutoCloseable {
     }
 
     public void setJsonObjectForPath(String zNodePath, Object jsonObj)
-            throws JsonProcessingException, KeeperException, InterruptedException {
+            throws Exception {
         Preconditions.checkNotNull(jsonObj, "json object can't be null.");
         String strContent = ObjectMapperFactory.getThreadLocal().writeValueAsString(jsonObj);
         cache.getZooKeeper().setData(zNodePath, strContent.getBytes(StandardCharsets.UTF_8), -1);
     }
 
     public void createFullPathWithJsonObject(String zNodePath, Object jsonObj)
-            throws JsonProcessingException, KeeperException, InterruptedException {
+            throws Exception {
         Preconditions.checkNotNull(jsonObj, "json object can't be null.");
         String strContent = ObjectMapperFactory.getThreadLocal().writeValueAsString(jsonObj);
         ZkUtils.createFullPathOptimistic(cache.getZooKeeper(), zNodePath, strContent.getBytes(StandardCharsets.UTF_8),
                 ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
     }
 
-    public void deleteFullPath(String zNodePath) throws KeeperException, InterruptedException {
+    public void deleteFullPath(String zNodePath) throws Exception {
         if (!Strings.isNullOrEmpty(zNodePath)) {
             ZkUtils.deleteFullPathOptimistic(cache.getZooKeeper(), zNodePath, -1);
         }
@@ -168,4 +171,44 @@ public class RopZookeeperCacheService implements AutoCloseable {
         }
     }
 
+    public RopGroupContent getGroupConfig(String group) {
+        ClientGroupName clientGroupName = new ClientGroupName(group);
+        String groupNodePath = String.format(RopZkUtils.GROUP_BASE_PATH_MATCH, clientGroupName.getPulsarGroupName());
+        RopGroupContent groupContent = subscribeGroupConfigCache.getDataIfPresent(groupNodePath);
+        try {
+            groupContent = (groupContent == null) ? subscribeGroupConfigCache.get(groupNodePath).get() : groupContent;
+        } catch (Exception e) {
+        }
+        return groupContent;
+    }
+
+    public RopGroupContent getGroupConfig(SubscriptionGroupConfig groupConfig) {
+        return getGroupConfig(groupConfig.getGroupName());
+    }
+
+    public RopGroupContent updateOrCreateGroupConfig(SubscriptionGroupConfig groupConfig) throws Exception {
+        ClientGroupName clientGroupName = new ClientGroupName(groupConfig.getGroupName());
+        String groupNodePath = String.format(RopZkUtils.GROUP_BASE_PATH_MATCH, clientGroupName.getPulsarGroupName());
+        RopGroupContent tmpGroupContent = getGroupConfig(groupConfig);
+        if (tmpGroupContent == null) {
+            //create
+            tmpGroupContent = new RopGroupContent();
+            tmpGroupContent.setConfig(groupConfig);
+            setJsonObjectForPath(groupNodePath, tmpGroupContent);
+        } else {
+            //update
+            tmpGroupContent.setConfig(groupConfig);
+            createFullPathWithJsonObject(groupNodePath, tmpGroupContent);
+        }
+        return tmpGroupContent;
+    }
+
+    public void deleteGroupConfig(String group){
+        String groupNodePath = String.format(RopZkUtils.GROUP_BASE_PATH_MATCH, group);
+        try {
+            deleteFullPath(groupNodePath);
+        } catch (Exception e) {
+            log.warn("RopZookeeperCacheService deleteGroupConfig for group[{}] error.", group, e);
+        }
+    }
 }
