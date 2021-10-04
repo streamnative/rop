@@ -29,13 +29,10 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.stream.IntStream;
 import javax.annotation.Nullable;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.util.Strings;
 import org.apache.pulsar.broker.PulsarService;
 import org.apache.pulsar.broker.namespace.NamespaceBundleOwnershipListener;
@@ -46,8 +43,6 @@ import org.apache.pulsar.broker.service.persistent.PersistentTopic;
 import org.apache.pulsar.client.admin.PulsarAdmin;
 import org.apache.pulsar.client.admin.PulsarAdminException;
 import org.apache.pulsar.client.admin.PulsarAdminException.ConflictException;
-import org.apache.pulsar.client.api.PulsarClient;
-import org.apache.pulsar.client.impl.Backoff;
 import org.apache.pulsar.client.impl.PulsarClientImpl;
 import org.apache.pulsar.common.naming.NamespaceBundle;
 import org.apache.pulsar.common.naming.NamespaceName;
@@ -317,18 +312,11 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
         try {
             log.info("Create or update inner topic config: [{}].", tc);
             String fullTopicName = tc.getTopicName();
-
-            PartitionedTopicMetadata topicMetadata = null;
-            try {
-                topicMetadata = adminClient.topics().getPartitionedTopicMetadata(fullTopicName);
-            } catch (PulsarAdminException e) {
-            }
-
+            PartitionedTopicMetadata topicMetadata = adminClient.topics().getPartitionedTopicMetadata(fullTopicName);
             if (topicMetadata == null || tc.getWriteQueueNums() > topicMetadata.partitions) {
                 adminClient.topics().createPartitionedTopic(fullTopicName, tc.getWriteQueueNums());
             }
-
-        } catch (Exception e) {
+        } catch (PulsarAdminException e) {
             log.warn("createOrUpdateInnerTopic error", e);
             throw e;
         }
@@ -360,17 +348,13 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
             throw new RuntimeException("Create topic error.");
         }
 
-        PartitionedTopicMetadata topicMetadata = null;
-        try {
-            topicMetadata = adminClient.topics().getPartitionedTopicMetadata(fullTopicName);
-        } catch (PulsarAdminException e) {
-        }
-
-        int currentPartitionNum = topicMetadata != null ? topicMetadata.partitions : 0;
-
-        // get cluster brokers list
         RopClusterContent clusterBrokers;
+        int currentPartitionNum;
         try {
+            PartitionedTopicMetadata topicMetadata = adminClient.topics().getPartitionedTopicMetadata(fullTopicName);
+            currentPartitionNum = topicMetadata != null ? topicMetadata.partitions : 0;
+
+            // get cluster brokers list
             clusterBrokers = zkService.getClusterContent();
         } catch (Exception e) {
             log.warn("clusterBrokers haven't been created, error: ", e);

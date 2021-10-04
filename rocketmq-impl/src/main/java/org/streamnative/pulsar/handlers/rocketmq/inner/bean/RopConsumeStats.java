@@ -29,9 +29,7 @@ public class RopConsumeStats extends RemotingSerializable {
     public long computeTotalDiff() {
         long diffTotal = 0L;
 
-        Iterator<Entry<MessageQueue, RopOffsetWrapper>> it = this.offsetTable.entrySet().iterator();
-        while (it.hasNext()) {
-            Entry<MessageQueue, RopOffsetWrapper> next = it.next();
+        for (Entry<MessageQueue, RopOffsetWrapper> next : this.offsetTable.entrySet()) {
             long diff = next.getValue().getBrokerOffset() - next.getValue().getConsumerOffset();
             diffTotal += diff;
         }

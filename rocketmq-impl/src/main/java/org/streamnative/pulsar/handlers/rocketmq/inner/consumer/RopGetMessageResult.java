@@ -15,7 +15,6 @@
 package org.streamnative.pulsar.handlers.rocketmq.inner.consumer;
 
 import io.netty.buffer.ByteBuf;
-import java.nio.ByteBuffer;
 import java.util.List;
 import lombok.Data;
 import org.apache.rocketmq.store.GetMessageStatus;

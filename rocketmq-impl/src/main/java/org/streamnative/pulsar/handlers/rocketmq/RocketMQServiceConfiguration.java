@@ -14,6 +14,8 @@
 
 package org.streamnative.pulsar.handlers.rocketmq;
 
+import java.util.HashSet;
+import java.util.Set;
 import lombok.Data;
 import org.apache.pulsar.broker.ServiceConfiguration;
 import org.apache.pulsar.common.configuration.Category;
@@ -445,4 +447,11 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
             doc = "create Rop cluster metadata automatically, and backup broker num is ropBrokerReplicationNum."
     )
     private boolean autoCreateRopClusterMeta = true;
+
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
+            required = true,
+            doc = "broker entry metadata interceptors."
+    )
+    private Set<String> brokerEntryMetadataInterceptors = new HashSet<>();
 }

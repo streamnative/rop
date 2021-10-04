@@ -42,7 +42,6 @@ public class RopZookeeperCache extends ZooKeeperCache implements Closeable {
     private final int zkSessionTimeoutMillis;
     private final String ropZkConnect;
     private final ScheduledExecutorService scheduledExecutor;
-    private final OrderedExecutor orderedExecutor;
     private volatile boolean isRunning = false;
 
     public RopZookeeperCache(ZooKeeperClientFactory zkClientFactory, int zkSessionTimeoutMillis,
@@ -52,7 +51,6 @@ public class RopZookeeperCache extends ZooKeeperCache implements Closeable {
         this.zlClientFactory = zkClientFactory;
         this.zkSessionTimeoutMillis = zkSessionTimeoutMillis;
         this.ropZkConnect = ropZkConnect;
-        this.orderedExecutor = orderedExecutor;
         this.scheduledExecutor = scheduledExecutor;
     }
 
@@ -62,8 +60,8 @@ public class RopZookeeperCache extends ZooKeeperCache implements Closeable {
                 CompletableFuture<ZooKeeper> zkFuture = zlClientFactory.create(ropZkConnect, SessionType.ReadWrite,
                         zkSessionTimeoutMillis);
                 ZooKeeper newSession = zkFuture.get(zkSessionTimeoutMillis, TimeUnit.MILLISECONDS);
-                // Register self as a watcher to receive notification when session expires and trigger a new session to be
-                // created
+                // Register self as a watcher to receive notification when session expires and
+                // trigger a new session to be created
                 newSession.register(this);
                 zkSession.set(newSession);
                 isRunning = true;
@@ -144,9 +142,7 @@ public class RopZookeeperCache extends ZooKeeperCache implements Closeable {
             log.warn("Failed to re-create RoP ZK session: {}", ex.getMessage());
 
             // Schedule another attempt for later
-            scheduledExecutor.schedule(() -> {
-                asyncRestartZooKeeperSession();
-            }, 10, TimeUnit.SECONDS);
+            scheduledExecutor.schedule(this::asyncRestartZooKeeperSession, 10, TimeUnit.SECONDS);
             return null;
         });
     }

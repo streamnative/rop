@@ -308,11 +308,15 @@ public class GroupMetaManager {
                         assert subscription != null;
                         ManagedCursor cursor = subscription.getCursor();
                         PositionImpl markDeletedPosition = (PositionImpl) cursor.getMarkDeletedPosition();
-                        PositionImpl commitPosition = MessageIdUtils.getPosition(offset);
+
+                        // get position by manage ledger and offset
+                        PositionImpl commitPosition = MessageIdUtils
+                                .getPositionForOffset(persistentTopic.getManagedLedger(), offset);
                         PositionImpl lastPosition = (PositionImpl) persistentTopic.getLastPosition();
 
                         if (commitPosition.getEntryId() > 0) {
-                            commitPosition = MessageIdUtils.getPosition(offset - 1);
+                            commitPosition = MessageIdUtils
+                                    .getPositionForOffset(persistentTopic.getManagedLedger(), offset - 1);
                         }
 
                         if (commitPosition.compareTo(lastPosition) > 0) {

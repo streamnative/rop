@@ -311,8 +311,7 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
         log.info("updateBrokerConfig called by {}", RemotingHelper.parseChannelRemoteAddr(ctx.channel()));
 
-        MQTopicManager topicConfigManager = brokerController.getTopicConfigManager();
-        //topicConfigManager.
+//        MQTopicManager topicConfigManager = brokerController.getTopicConfigManager();
 
         byte[] body = request.getBody();
         if (body != null) {
@@ -752,6 +751,7 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
                 }
             }
 
+            // TODO: please set topicBrokerAddr
             Map<String, List<Integer>> topicBrokerAddr = null;
                     /*brokerController.getTopicConfigManager()
                     .getTopicRoute(topicName, Strings.EMPTY);*/

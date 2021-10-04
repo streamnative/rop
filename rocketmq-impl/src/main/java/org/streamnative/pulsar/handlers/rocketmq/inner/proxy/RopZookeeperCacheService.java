@@ -22,7 +22,6 @@ import static org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkUti
 import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
 import java.nio.charset.StandardCharsets;
-import java.util.List;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bookkeeper.util.ZkUtils;

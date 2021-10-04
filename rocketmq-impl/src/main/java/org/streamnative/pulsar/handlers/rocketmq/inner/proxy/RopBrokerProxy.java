@@ -68,6 +68,7 @@ import org.apache.rocketmq.remoting.ChannelEventListener;
 import org.apache.rocketmq.remoting.exception.RemotingCommandException;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.zookeeper.CreateMode;
+import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.ZooDefs.Ids;
 import org.streamnative.pulsar.handlers.rocketmq.RocketMQServiceConfiguration;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
@@ -94,11 +95,11 @@ import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 @Slf4j
 public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseable {
 
-    private final static int CACHE_INITIAL_SIZE = 1024;
-    private final static int CACHE_MAX_SIZE = 1024 << 8;
-    private final static int CACHE_EXPIRE_TIME_MS = 120 * 1000;
-    private final static int ROP_SERVICE_PORT = 9876;
-    private final static int INTERNAL_SEND_TIMEOUT_MS = 3000;
+    private static final int CACHE_INITIAL_SIZE = 1024;
+    private static final int CACHE_MAX_SIZE = 1024 << 8;
+    private static final int CACHE_EXPIRE_TIME_MS = 120 * 1000;
+    private static final int ROP_SERVICE_PORT = 9876;
+    private static final int INTERNAL_SEND_TIMEOUT_MS = 3000;
 
     private final RocketMQBrokerController brokerController;
     private final List<SendMessageHook> sendMessageHookList = new ArrayList<>();
@@ -108,9 +109,8 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
     private RopCoordinator coordinator;
     private PulsarService pulsarService;
     private final OrderedExecutor orderedExecutor;
-    private List<ProcessorProxyRegister> processorProxyRegisters = new ArrayList<>();
+    private final List<ProcessorProxyRegister> processorProxyRegisters = new ArrayList<>();
     private final BrokerNetworkAPI brokerNetworkClients = new BrokerNetworkAPI(this);
-    private final String brokerPathRoot = RopZkUtils.BROKERS_PATH;
     private volatile String brokerTag = Strings.EMPTY;
     private final String clusterName;
     @Getter
@@ -286,7 +286,7 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
             zkService.setJsonObjectForPath(BROKER_CLUSTER_PATH, defaultClusterContent);
             zkService.getClusterDataCache().reloadCache(BROKER_CLUSTER_PATH);
         } else if (getConfig().isAutoCreateRopClusterMeta()) {
-            if(autoExpanseBrokerGroupData(clusterContent, activeBrokers, ropBrokerReplicationNum)){
+            if (autoExpanseBrokerGroupData(clusterContent, activeBrokers, ropBrokerReplicationNum)) {
                 zkService.setJsonObjectForPath(BROKER_CLUSTER_PATH, clusterContent);
                 zkService.getClusterDataCache().reloadCache(BROKER_CLUSTER_PATH);
             }
@@ -340,6 +340,7 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
     // such as: /rop/brokers/{xxx,}
     private void registerBrokerZNode() {
         String hostName = this.brokerController.getBrokerHost();
+        String brokerPathRoot = RopZkUtils.BROKERS_PATH;
         String localAddressPath = joinPath(brokerPathRoot, hostName);
         this.zkService.getBrokerCache()
                 .getAsync(localAddressPath)
@@ -360,8 +361,8 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                         zkService.getBrokerCache().reloadCache(localAddressPath);
                         log.info("broker address ===========>[{}].",
                                 zkService.getBrokerCache().getDataIfPresent(localAddressPath));
-                    } catch (Exception e) {
-                        log.warn("broker[{}] is already exists.", hostName);
+                    } catch (KeeperException | InterruptedException e) {
+                        log.warn("broker[{}] is already exists.", hostName, e);
                     }
                     return null;
                 });

@@ -27,7 +27,7 @@ import org.testng.util.Strings;
  * Group offset key.
  */
 @Data
-@EqualsAndHashCode
+@EqualsAndHashCode(callSuper = false)
 public class GroupOffsetKey extends GroupMetaKey<GroupOffsetKey> {
 
     private int partition;
