@@ -222,7 +222,7 @@ public class NameserverProcessor implements NettyRequestProcessor {
                 response.setRemark(null);
                 return response;
             } catch (Exception ex) {
-                log.info("fetch topic address of topic[{}] error.", requestTopic, ex);
+                log.info("Fetch topic route info of topic: [{}] error.", requestTopic, ex);
             }
         }
 

@@ -328,7 +328,7 @@ public class ScheduleMessageService {
                         .newConsumer()
                         .receiverQueueSize(MAX_FETCH_MESSAGE_NUM)
                         .subscriptionMode(SubscriptionMode.Durable)
-                        .subscriptionType(SubscriptionType.Failover)
+                        .subscriptionType(SubscriptionType.Shared)
                         .subscriptionName(getDelayedTopicConsumerName(delayLevel))
                         .topic(getDelayedTopicName(delayLevel))
                         .subscriptionInitialPosition(SubscriptionInitialPosition.Earliest)

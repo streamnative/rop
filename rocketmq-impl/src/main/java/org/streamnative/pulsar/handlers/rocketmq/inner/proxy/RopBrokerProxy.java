@@ -138,13 +138,13 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
         return isOwner;
     }
 
-    private int getPulsarTopicPartitionId(TopicName pulsarTopicName, int rocketmqQueueId) {
+    private int getPulsarTopicPartitionId(TopicName pulsarTopicName, int queueId) {
         Map<String, List<Integer>> pulsarTopicRoute = mqTopicManager
                 .getPulsarTopicRoute(pulsarTopicName, Strings.EMPTY);
         Preconditions.checkArgument(pulsarTopicRoute != null && !pulsarTopicRoute.isEmpty());
-        List<Integer> queueList = pulsarTopicRoute.get(this.brokerTag);
-        Preconditions.checkArgument(queueList != null && !queueList.isEmpty() && rocketmqQueueId < queueList.size());
-        return queueList.get(rocketmqQueueId);
+        List<Integer> pulsarPartitionIdList = pulsarTopicRoute.get(this.brokerTag);
+        Preconditions.checkArgument(pulsarPartitionIdList != null && !pulsarPartitionIdList.isEmpty() && queueId < pulsarPartitionIdList.size());
+        return pulsarPartitionIdList.get(queueId);
     }
 
     @Override

@@ -15,11 +15,12 @@
 package org.streamnative.pulsar.handlers.rocketmq.inner.processor;
 
 import io.netty.buffer.ByteBuf;
-import io.netty.buffer.PooledByteBufAllocator;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.FileRegion;
+import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.concurrent.ConcurrentMap;
 import lombok.extern.slf4j.Slf4j;
@@ -38,7 +39,6 @@ import org.apache.rocketmq.common.protocol.header.PullMessageRequestHeader;
 import org.apache.rocketmq.common.protocol.header.PullMessageResponseHeader;
 import org.apache.rocketmq.common.protocol.heartbeat.MessageModel;
 import org.apache.rocketmq.common.protocol.heartbeat.SubscriptionData;
-import org.apache.rocketmq.common.protocol.topic.OffsetMovedEvent;
 import org.apache.rocketmq.common.subscription.SubscriptionGroupConfig;
 import org.apache.rocketmq.common.sysflag.MessageSysFlag;
 import org.apache.rocketmq.common.sysflag.PullSysFlag;
@@ -50,6 +50,7 @@ import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.store.stats.BrokerStatsManager;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RopClientChannelCnx;
+import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.BatchMessageTransfer;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.ConsumerGroupInfo;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.RopGetMessageResult;
 import org.streamnative.pulsar.handlers.rocketmq.inner.format.RopMessageFilter;
@@ -349,13 +350,39 @@ public class PullMessageProcessor implements NettyRequestProcessor {
                     this.brokerController.getBrokerStatsManager()
                             .incBrokerGetNums(ropGetMessageResult.getMessageCount());
 
-                    final long beginTimeMills = System.currentTimeMillis();
-                    final byte[] r = this.readGetMessageResult(ropGetMessageResult, requestHeader.getConsumerGroup(),
-                            requestHeader.getTopic(), requestHeader.getQueueId());
-                    this.brokerController.getBrokerStatsManager().incGroupGetLatency(requestHeader.getConsumerGroup(),
-                            requestHeader.getTopic(), requestHeader.getQueueId(),
-                            (int) (System.currentTimeMillis() - beginTimeMills));
-                    response.setBody(r);
+                    if (this.brokerController.getServerConfig().isTransferMsgByHeap()) {
+                        try {
+                            final long beginTimeMills = System.currentTimeMillis();
+                            final byte[] r = this
+                                    .readGetMessageResult(ropGetMessageResult, requestHeader.getConsumerGroup(),
+                                            requestHeader.getTopic(), requestHeader.getQueueId());
+                            this.brokerController.getBrokerStatsManager()
+                                    .incGroupGetLatency(requestHeader.getConsumerGroup(),
+                                            requestHeader.getTopic(), requestHeader.getQueueId(),
+                                            (int) (System.currentTimeMillis() - beginTimeMills));
+                            response.setBody(r);
+                        } finally {
+                            ropGetMessageResult.release();
+                        }
+                    } else {
+                        try {
+                            FileRegion fileRegion =
+                                    new BatchMessageTransfer(
+                                            response.encodeHeader(ropGetMessageResult.getBufferTotalSize()),
+                                            ropGetMessageResult);
+
+                            channel.writeAndFlush(fileRegion).addListener((ChannelFutureListener) future -> {
+                                if (!future.isSuccess()) {
+                                    log.error("transfer many message by pagecache failed, {}", channel.remoteAddress(),
+                                            future.cause());
+                                }
+                            });
+                        } catch (Throwable e) {
+                            log.error("transfer many message by pagecache exception", e);
+                            ropGetMessageResult.release();
+                        }
+                        response = null;
+                    }
                     break;
                 case ResponseCode.PULL_NOT_FOUND:
                     if (brokerAllowSuspend && hasSuspendFlag) {
@@ -421,32 +448,27 @@ public class PullMessageProcessor implements NettyRequestProcessor {
     private byte[] readGetMessageResult(final RopGetMessageResult getMessageResult, final String group,
             final String topic,
             final int queueId) {
-        final ByteBuf byteBuffer = PooledByteBufAllocator.DEFAULT.heapBuffer(getMessageResult.getBufferTotalSize());
-
+        ByteBuffer byteBuffer = ByteBuffer.allocate(getMessageResult.getBufferTotalSize());
         long storeTimestamp = 0;
         try {
             List<ByteBuf> messageBufferList = getMessageResult.getMessageBufferList();
             for (ByteBuf bb : messageBufferList) {
-                try {
-                    byteBuffer.writeBytes(bb);
-                    int sysFlag = bb.getInt(MessageDecoder.SYSFLAG_POSITION);
-                    // bornhost has the IPv4 ip if the MessageSysFlag.BORNHOST_V6_FLAG bit of sysFlag is 0
-                    // IPv4 host = ip(4 byte) + port(4 byte); IPv6 host = ip(16 byte) + port(4 byte)
-                    int bornhostLength = (sysFlag & MessageSysFlag.BORNHOST_V6_FLAG) == 0 ? 8 : 20;
-                    int msgStoreTimePos = 4 // 1 TOTALSIZE
-                            + 4 // 2 MAGICCODE
-                            + 4 // 3 BODYCRC
-                            + 4 // 4 QUEUEID
-                            + 4 // 5 FLAG
-                            + 8 // 6 QUEUEOFFSET
-                            + 8 // 7 PHYSICALOFFSET
-                            + 4 // 8 SYSFLAG
-                            + 8 // 9 BORNTIMESTAMP
-                            + bornhostLength; // 10 BORNHOST
-                    storeTimestamp = bb.getLong(msgStoreTimePos);
-                } finally {
-                    bb.release();
-                }
+                byteBuffer.put(bb.nioBuffer());
+                int sysFlag = bb.getInt(MessageDecoder.SYSFLAG_POSITION);
+                // bornhost has the IPv4 ip if the MessageSysFlag.BORNHOST_V6_FLAG bit of sysFlag is 0
+                // IPv4 host = ip(4 byte) + port(4 byte); IPv6 host = ip(16 byte) + port(4 byte)
+                int bornHostLength = (sysFlag & MessageSysFlag.BORNHOST_V6_FLAG) == 0 ? 8 : 20;
+                int msgStoreTimePos = 4 // 1 TOTALSIZE
+                        + 4 // 2 MAGICCODE
+                        + 4 // 3 BODYCRC
+                        + 4 // 4 QUEUEID
+                        + 4 // 5 FLAG
+                        + 8 // 6 QUEUEOFFSET
+                        + 8 // 7 PHYSICALOFFSET
+                        + 4 // 8 SYSFLAG
+                        + 8 // 9 BORNTIMESTAMP
+                        + bornHostLength; // 10 BORNHOST
+                storeTimestamp = bb.getLong(msgStoreTimePos);
             }
         } finally {
         }

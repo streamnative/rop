@@ -22,6 +22,7 @@ import static org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkUti
 import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
 import java.nio.charset.StandardCharsets;
+import java.util.Objects;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bookkeeper.util.ZkUtils;
@@ -63,7 +64,7 @@ public class RopZookeeperCacheService implements AutoCloseable {
                 return ObjectMapperFactory.getThreadLocal().readValue(content, RopTopicContent.class);
             }
         };
-       this.clusterDataCache = new ZooKeeperDataCache<RopClusterContent>(cache) {
+        this.clusterDataCache = new ZooKeeperDataCache<RopClusterContent>(cache) {
             @Override
             public RopClusterContent deserialize(String key, byte[] content) throws Exception {
                 return ObjectMapperFactory.getThreadLocal().readValue(content, RopClusterContent.class);
@@ -121,7 +122,13 @@ public class RopZookeeperCacheService implements AutoCloseable {
         Preconditions.checkNotNull(topicName);
         String topicZNodePath = String.format(RopZkUtils.TOPIC_BASE_PATH_MATCH,
                 PulsarUtil.getNoDomainTopic(topicName));
-        return topicDataCache.get(topicZNodePath).get();
+        RopTopicContent topicContent = topicDataCache.getDataIfPresent(topicZNodePath);
+        try {
+            topicContent = Objects.isNull(topicContent) ? topicDataCache.get(topicZNodePath).get() : topicContent;
+        } catch (Exception e) {
+            log.warn("RopTopicContent[topicName:{}] isn't exists in metadata.", topicName);
+        }
+        return topicContent;
     }
 
     public void setTopicContent(TopicName topicName, Object jsonObj) throws Exception {
@@ -177,6 +184,7 @@ public class RopZookeeperCacheService implements AutoCloseable {
         try {
             groupContent = (groupContent == null) ? subscribeGroupConfigCache.get(groupNodePath).get() : groupContent;
         } catch (Exception e) {
+            log.warn("GroupConfig[{}] isn't exists in metadata.", group);
         }
         return groupContent;
     }
@@ -193,16 +201,16 @@ public class RopZookeeperCacheService implements AutoCloseable {
             //create
             tmpGroupContent = new RopGroupContent();
             tmpGroupContent.setConfig(groupConfig);
-            setJsonObjectForPath(groupNodePath, tmpGroupContent);
+            createFullPathWithJsonObject(groupNodePath, tmpGroupContent);
         } else {
             //update
             tmpGroupContent.setConfig(groupConfig);
-            createFullPathWithJsonObject(groupNodePath, tmpGroupContent);
+            setJsonObjectForPath(groupNodePath, tmpGroupContent);
         }
         return tmpGroupContent;
     }
 
-    public void deleteGroupConfig(String group){
+    public void deleteGroupConfig(String group) {
         String groupNodePath = String.format(RopZkUtils.GROUP_BASE_PATH_MATCH, group);
         try {
             deleteFullPath(groupNodePath);

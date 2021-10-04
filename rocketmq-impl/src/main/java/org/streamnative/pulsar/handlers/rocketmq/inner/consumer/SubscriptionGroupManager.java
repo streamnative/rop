@@ -93,7 +93,8 @@ public class SubscriptionGroupManager implements Closeable {
         Preconditions.checkArgument(config != null && Strings.isNotBlank(config.getGroupName()),
                 "GroupName in SubscriptionGroupConfig can't be empty.");
         try {
-            SubscriptionGroupConfig oldGroupConfig = zkServiceRef.get().getGroupConfig(config).getConfig();
+            RopGroupContent groupConfigContent = zkServiceRef.get().getGroupConfig(config);
+            SubscriptionGroupConfig oldGroupConfig = groupConfigContent != null ? groupConfigContent.getConfig() : null;
             if (!config.equals(oldGroupConfig)) {
                 zkServiceRef.get().updateOrCreateGroupConfig(config);
                 subscriptionGroupTableCache.put(new ClientGroupName(config.getGroupName()), config);

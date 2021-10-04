@@ -15,17 +15,21 @@
 package org.streamnative.pulsar.handlers.rocketmq.inner.consumer;
 
 import io.netty.buffer.ByteBuf;
+import java.util.ArrayList;
 import java.util.List;
 import lombok.Data;
+import lombok.ToString;
 import org.apache.rocketmq.store.GetMessageStatus;
+import org.apache.rocketmq.store.SelectMappedBufferResult;
 
 /**
  * Rop get message result.
  */
 @Data
+@ToString(exclude = "messageBufferList")
 public class RopGetMessageResult {
 
-    private List<ByteBuf> messageBufferList;
+    private final List<ByteBuf> messageBufferList = new ArrayList<>(100);
     private GetMessageStatus status;
     private long nextBeginOffset;
     private long minOffset;
@@ -34,19 +38,27 @@ public class RopGetMessageResult {
     private int msgCount4Commercial = 0;
 
     public int getMessageCount() {
-        if (messageBufferList != null) {
-            return messageBufferList.size();
-        }
-        return 0;
+        return messageBufferList.size();
     }
 
     public int getBufferTotalSize() {
-        if (messageBufferList != null) {
-            return messageBufferList.stream().reduce(0, (r, item) ->
-                            r += item.readableBytes()
-                    , Integer::sum);
+        return messageBufferList.stream().reduce(0, (r, item) ->
+                        r += item.readableBytes()
+                , Integer::sum);
+    }
+
+    public void addMessage(final ByteBuf msgBuf) {
+        messageBufferList.add(msgBuf);
+    }
+
+    public int size(){
+        return messageBufferList.size();
+    }
+
+    public void release() {
+        for (ByteBuf msgByteBuf : this.messageBufferList) {
+            msgByteBuf.release();
         }
-        return 0;
     }
 
 }
