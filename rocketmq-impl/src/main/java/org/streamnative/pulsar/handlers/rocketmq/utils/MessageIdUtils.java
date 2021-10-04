@@ -130,7 +130,12 @@ public class MessageIdUtils {
     }
 
     public static PositionImpl getFirstPosition(ManagedLedger managedLedger) {
-        return ((ManagedLedgerImpl)managedLedger).getFirstPosition();
+        PositionImpl firstPosition = ((ManagedLedgerImpl)managedLedger).getFirstPosition();
+        if (firstPosition == null) {
+            return null;
+        } else {
+            return ((ManagedLedgerImpl)managedLedger).getNextValidPosition(firstPosition);
+        }
     }
 
     public static PositionImpl getLastPosition(ManagedLedger managedLedger) {
