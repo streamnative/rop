@@ -51,7 +51,7 @@ public class SimpleProducer {
          */
         producer.start();
 
-        for (int i = 0; i < 20; i++) {
+        for (int i = 0; i < 200000000; i++) {
             try {
 
                 /*
@@ -68,9 +68,10 @@ public class SimpleProducer {
                 SendResult sendResult = producer.send(msg);
 
                 System.out.printf("%s%n", sendResult);
+                Thread.sleep(500);
             } catch (Exception e) {
                 e.printStackTrace();
-                Thread.sleep(1000);
+                Thread.sleep(500);
             }
         }
 

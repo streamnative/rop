@@ -14,6 +14,7 @@
 
 package org.streamnative.pulsar.handlers.rocketmq;
 
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 import lombok.Data;
@@ -453,5 +454,6 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
             required = true,
             doc = "broker entry metadata interceptors."
     )
-    private Set<String> brokerEntryMetadataInterceptors = new HashSet<>();
+    private Set<String> brokerEntryMetadataInterceptors = new HashSet<>(
+            Collections.singletonList("org.apache.pulsar.common.intercept.AppendIndexMetadataInterceptor"));
 }

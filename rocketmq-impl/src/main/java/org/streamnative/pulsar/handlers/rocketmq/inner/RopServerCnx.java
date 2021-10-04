@@ -15,6 +15,9 @@
 package org.streamnative.pulsar.handlers.rocketmq.inner;
 
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.SLASH_CHAR;
+import static org.streamnative.pulsar.handlers.rocketmq.utils.MessageIdUtils.getFirstPosition;
+import static org.streamnative.pulsar.handlers.rocketmq.utils.MessageIdUtils.getLastPosition;
+import static org.streamnative.pulsar.handlers.rocketmq.utils.MessageIdUtils.getLogEndOffset;
 
 import com.google.common.base.Function;
 import com.google.common.base.Joiner;
@@ -227,6 +230,31 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 // if persistentTopic is null, throw SYSTEM_ERROR to rop proxy and retry send request.
                 if (persistentTopic != null) {
                     offsetFuture = publishMessage(body.get(0), persistentTopic, pTopic);
+
+                    PositionImpl firstPosition = getFirstPosition(persistentTopic.getManagedLedger());
+                    Long firstOffset = MessageIdUtils
+                            .getOffsetOfPosition((ManagedLedgerImpl) persistentTopic.getManagedLedger(), firstPosition,
+                                    false,
+                                    systemClock.now()).get();
+                    System.out.println("========firstOffset=========");
+                    System.out.println(firstOffset);
+                    System.out.println("========firstOffset=========");
+
+                    PositionImpl lastPosition = getLastPosition(persistentTopic.getManagedLedger());
+                    Long lastOffset = MessageIdUtils
+                            .getOffsetOfPosition((ManagedLedgerImpl) persistentTopic.getManagedLedger(), lastPosition,
+                                    false,
+                                    systemClock.now()).get();
+                    System.out.println("========lastOffset=========");
+                    System.out.println(lastOffset);
+                    System.out.println("========lastOffset=========");
+
+                    Long last2Offset = getLogEndOffset(persistentTopic.getManagedLedger());
+                    System.out.println("========last2Offset=========");
+                    System.out.println(last2Offset);
+                    System.out.println("========last2Offset=========");
+
+
                 } else {
                     AppendMessageResult temp = new AppendMessageResult(AppendMessageStatus.UNKNOWN_ERROR);
                     PutMessageResult putMessageResult = new PutMessageResult(PutMessageStatus.UNKNOWN_ERROR, temp);

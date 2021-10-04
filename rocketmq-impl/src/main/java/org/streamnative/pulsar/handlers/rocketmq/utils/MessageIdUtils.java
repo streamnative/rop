@@ -129,6 +129,14 @@ public class MessageIdUtils {
         return getCurrentOffset(managedLedger) + 1;
     }
 
+    public static PositionImpl getFirstPosition(ManagedLedger managedLedger) {
+        return ((ManagedLedgerImpl)managedLedger).getFirstPosition();
+    }
+
+    public static PositionImpl getLastPosition(ManagedLedger managedLedger) {
+        return (PositionImpl) managedLedger.getLastConfirmedEntry();
+    }
+
     public static long getPublishTime(final ByteBuf byteBuf) {
         final int readerIndex = byteBuf.readerIndex();
         Commands.skipBrokerEntryMetadataIfExist(byteBuf);

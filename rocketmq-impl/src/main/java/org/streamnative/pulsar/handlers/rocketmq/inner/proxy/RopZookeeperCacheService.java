@@ -63,7 +63,7 @@ public class RopZookeeperCacheService implements AutoCloseable {
                 return ObjectMapperFactory.getThreadLocal().readValue(content, RopTopicContent.class);
             }
         };
-        this.clusterDataCache = new ZooKeeperDataCache<RopClusterContent>(cache) {
+       this.clusterDataCache = new ZooKeeperDataCache<RopClusterContent>(cache) {
             @Override
             public RopClusterContent deserialize(String key, byte[] content) throws Exception {
                 return ObjectMapperFactory.getThreadLocal().readValue(content, RopClusterContent.class);
