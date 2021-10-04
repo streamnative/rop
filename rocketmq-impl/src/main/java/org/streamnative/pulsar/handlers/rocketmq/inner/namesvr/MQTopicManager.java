@@ -309,14 +309,21 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
      *
      */
     protected void createOrUpdateInnerTopic(final TopicConfig tc) throws Exception {
+        log.info("Create or update inner topic config: [{}].", tc);
+        String fullTopicName = tc.getTopicName();
+        PartitionedTopicMetadata topicMetadata = null;
+
         try {
-            log.info("Create or update inner topic config: [{}].", tc);
-            String fullTopicName = tc.getTopicName();
-            PartitionedTopicMetadata topicMetadata = adminClient.topics().getPartitionedTopicMetadata(fullTopicName);
+            topicMetadata = adminClient.topics().getPartitionedTopicMetadata(fullTopicName);
+        } catch (Exception e) {
+            log.info("getPartitionedTopicMetadata[topic:{}] not exists.", fullTopicName);
+        }
+
+        try {
             if (topicMetadata == null || tc.getWriteQueueNums() > topicMetadata.partitions) {
                 adminClient.topics().createPartitionedTopic(fullTopicName, tc.getWriteQueueNums());
             }
-        } catch (PulsarAdminException e) {
+        } catch (Exception e) {
             log.warn("createOrUpdateInnerTopic error", e);
             throw e;
         }
@@ -349,11 +356,17 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
         }
 
         RopClusterContent clusterBrokers;
-        int currentPartitionNum;
-        try {
-            PartitionedTopicMetadata topicMetadata = adminClient.topics().getPartitionedTopicMetadata(fullTopicName);
-            currentPartitionNum = topicMetadata != null ? topicMetadata.partitions : 0;
+        PartitionedTopicMetadata topicMetadata = null;
+        int currentPartitionNum = 0;
 
+        try {
+            topicMetadata = adminClient.topics().getPartitionedTopicMetadata(fullTopicName);
+        } catch (Exception e) {
+        }
+
+        currentPartitionNum = topicMetadata != null ? topicMetadata.partitions : currentPartitionNum;
+
+        try {
             // get cluster brokers list
             clusterBrokers = zkService.getClusterContent();
         } catch (Exception e) {
