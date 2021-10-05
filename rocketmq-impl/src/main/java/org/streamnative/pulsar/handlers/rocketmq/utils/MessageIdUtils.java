@@ -23,9 +23,11 @@ import org.apache.bookkeeper.mledger.AsyncCallbacks;
 import org.apache.bookkeeper.mledger.Entry;
 import org.apache.bookkeeper.mledger.ManagedLedger;
 import org.apache.bookkeeper.mledger.ManagedLedgerException;
+import org.apache.bookkeeper.mledger.Position;
 import org.apache.bookkeeper.mledger.impl.ManagedLedgerImpl;
 import org.apache.bookkeeper.mledger.impl.PositionImpl;
 import org.apache.pulsar.broker.intercept.ManagedLedgerInterceptorImpl;
+import org.apache.pulsar.broker.service.persistent.PersistentTopic;
 import org.apache.pulsar.client.api.MessageId;
 import org.apache.pulsar.client.impl.MessageIdImpl;
 import org.apache.pulsar.common.api.proto.BrokerEntryMetadata;
@@ -130,11 +132,11 @@ public class MessageIdUtils {
     }
 
     public static PositionImpl getFirstPosition(ManagedLedger managedLedger) {
-        PositionImpl firstPosition = ((ManagedLedgerImpl)managedLedger).getFirstPosition();
+        PositionImpl firstPosition = ((ManagedLedgerImpl) managedLedger).getFirstPosition();
         if (firstPosition == null) {
             return null;
         } else {
-            return ((ManagedLedgerImpl)managedLedger).getNextValidPosition(firstPosition);
+            return ((ManagedLedgerImpl) managedLedger).getNextValidPosition(firstPosition);
         }
     }
 
@@ -148,6 +150,18 @@ public class MessageIdUtils {
         final MessageMetadata metadata = Commands.parseMessageMetadata(byteBuf);
         byteBuf.readerIndex(readerIndex);
         return metadata.getPublishTime();
+    }
+
+    public static long getQueueOffsetByPosition(PersistentTopic pulsarTopic, Position pulsarPosition) {
+        Preconditions.checkNotNull(pulsarTopic);
+        Preconditions.checkArgument(pulsarPosition != null && pulsarPosition instanceof PositionImpl);
+        Long queueOffset = -1L;
+        try {
+            ManagedLedgerImpl managedLedger = (ManagedLedgerImpl) pulsarTopic.getManagedLedger();
+            queueOffset = getOffsetOfPosition(managedLedger, (PositionImpl) pulsarPosition, false, -1).join();
+        } catch (Exception e) {
+        }
+        return queueOffset;
     }
 
     public static CompletableFuture<Long> getOffsetOfPosition(

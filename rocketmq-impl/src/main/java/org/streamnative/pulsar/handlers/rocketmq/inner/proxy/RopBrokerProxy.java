@@ -26,6 +26,9 @@ import static org.apache.rocketmq.common.protocol.RequestCode.SEND_MESSAGE_V2;
 import static org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkUtils.BROKER_CLUSTER_PATH;
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.COLO_CHAR;
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.PULSAR_REAL_PARTITION_ID_TAG;
+import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_CACHE_EXPIRE_TIME_MS;
+import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_CACHE_INITIAL_SIZE;
+import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_CACHE_MAX_SIZE;
 import static org.streamnative.pulsar.handlers.rocketmq.utils.PulsarUtil.autoExpanseBrokerGroupData;
 import static org.streamnative.pulsar.handlers.rocketmq.utils.PulsarUtil.genBrokerGroupData;
 
@@ -95,9 +98,6 @@ import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 @Slf4j
 public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseable {
 
-    private static final int CACHE_INITIAL_SIZE = 1024;
-    private static final int CACHE_MAX_SIZE = 1024 << 8;
-    private static final int CACHE_EXPIRE_TIME_MS = 120 * 1000;
     private static final int ROP_SERVICE_PORT = 9876;
     private static final int INTERNAL_SEND_TIMEOUT_MS = 3000;
 
@@ -119,8 +119,8 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
             .withInitial(() -> RemotingCommand.createResponseCommand(SendMessageResponseHeader.class));
     private final ThreadLocal<PulsarClientImpl> pulsarClientThreadLocal = new ThreadLocal<>();
     private final Cache<TopicName, String> ownedBrokerCache = CacheBuilder.newBuilder()
-            .initialCapacity(CACHE_INITIAL_SIZE).maximumSize(CACHE_MAX_SIZE)
-            .expireAfterAccess(CACHE_EXPIRE_TIME_MS, TimeUnit.MILLISECONDS).build();
+            .initialCapacity(ROP_CACHE_INITIAL_SIZE).maximumSize(ROP_CACHE_MAX_SIZE)
+            .expireAfterAccess(ROP_CACHE_EXPIRE_TIME_MS, TimeUnit.MILLISECONDS).build();
 
     public RopBrokerProxy(final RocketMQServiceConfiguration config, RocketMQBrokerController brokerController,
             final ChannelEventListener channelEventListener) {
@@ -138,7 +138,7 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
         return isOwner;
     }
 
-    private int getPulsarTopicPartitionId(TopicName pulsarTopicName, int queueId) {
+    public int getPulsarTopicPartitionId(TopicName pulsarTopicName, int queueId) {
         Map<String, List<Integer>> pulsarTopicRoute = mqTopicManager
                 .getPulsarTopicRoute(pulsarTopicName, Strings.EMPTY);
         Preconditions.checkArgument(pulsarTopicRoute != null && !pulsarTopicRoute.isEmpty());

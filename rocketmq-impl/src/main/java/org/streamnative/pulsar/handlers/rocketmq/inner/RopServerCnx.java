@@ -19,8 +19,6 @@ import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.SLASH_
 import com.google.common.base.Function;
 import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
-import com.google.common.cache.Cache;
-import com.google.common.cache.CacheBuilder;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
@@ -79,7 +77,6 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.format.RopEntryFormatter;
 import org.streamnative.pulsar.handlers.rocketmq.inner.format.RopMessageFilter;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientTopicName;
 import org.streamnative.pulsar.handlers.rocketmq.inner.pulsar.PulsarMessageStore;
-import org.streamnative.pulsar.handlers.rocketmq.inner.request.PullRequestFilterKey;
 import org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils;
 import org.streamnative.pulsar.handlers.rocketmq.utils.MessageIdUtils;
 import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
@@ -108,12 +105,6 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
     private final ChannelHandlerContext ctx;
     private final SocketAddress remoteAddress;
     private final int localListenPort;
-    private final Cache<PullRequestFilterKey, Object> requestFilterCache = CacheBuilder
-            .newBuilder()
-            .initialCapacity(1024)
-            .maximumSize(4096)
-            .build();
-    private final Object pullRequestFilterValue = new Object();
     private State state;
     private final String cursorName = "rop-cursor";
 
@@ -178,7 +169,6 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         Preconditions.checkNotNull(messageInner);
         Preconditions.checkNotNull(producerGroup);
         RocketMQTopic rmqTopic = new RocketMQTopic(messageInner.getTopic());
-        // pTopic = persistent://rocketmq/default/topicTest2-partition-1
         String pTopic = rmqTopic.getPartitionName(partitionId);
         long deliverAtTime = getDeliverAtTime(messageInner);
         int queueId = messageInner.getQueueId();
@@ -546,15 +536,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         RocketMQTopic rmqTopic = new RocketMQTopic(topicName);
         if (!this.brokerController.getTopicConfigManager()
                 .isPartitionTopicOwner(rmqTopic.getPulsarTopicName(), pulsarPartitionId)) {
-            getResult.setStatus(GetMessageStatus.OFFSET_FOUND_NULL);
+            getResult.setStatus(GetMessageStatus.NO_MATCHED_LOGIC_QUEUE);
             // set suspend flag
-            requestHeader.setSysFlag(requestHeader.getSysFlag() | 2);
-            return getResult;
-        }
-
-        if (requestFilterCache.getIfPresent(new PullRequestFilterKey(consumerGroupName, topicName, pulsarPartitionId))
-                != null) {
-            getResult.setStatus(GetMessageStatus.OFFSET_FOUND_NULL);
             requestHeader.setSysFlag(requestHeader.getSysFlag() | 2);
             return getResult;
         }
@@ -567,20 +550,14 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             return getResult;
         }
 
-        long maxOffset;
-        long minOffset;
+        long maxOffset = Long.MAX_VALUE;
+        long minOffset = 0L;
         try {
             maxOffset = this.brokerController.getConsumerOffsetManager()
                     .getMaxOffsetInQueue(new ClientTopicName(topicName), pulsarPartitionId);
             minOffset = this.brokerController.getConsumerOffsetManager()
                     .getMinOffsetInQueue(new ClientTopicName(topicName), pulsarPartitionId);
         } catch (RopPersistentTopicException e) {
-            requestFilterCache
-                    .put(new PullRequestFilterKey(consumerGroupName, topicName, pulsarPartitionId),
-                            pullRequestFilterValue);
-            getResult.setStatus(GetMessageStatus.NO_MATCHED_LOGIC_QUEUE);
-            getResult.setNextBeginOffset(0L);
-            return getResult;
         }
 
         MessageIdImpl startOffset;

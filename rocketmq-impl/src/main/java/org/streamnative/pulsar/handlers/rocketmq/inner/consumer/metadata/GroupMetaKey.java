@@ -19,23 +19,35 @@ import static org.streamnative.pulsar.handlers.rocketmq.inner.consumer.metadata.
 import static org.streamnative.pulsar.handlers.rocketmq.inner.consumer.metadata.GroupOffsetConstant.GROUP_META_KEY_TYPE_POS;
 import static org.streamnative.pulsar.handlers.rocketmq.inner.consumer.metadata.GroupOffsetConstant.GROUP_META_VERSION_POS;
 
+import com.google.common.base.Objects;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import lombok.Data;
+import lombok.ToString;
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopDecodeException;
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopEncodeException;
 
 /**
  * Group meta key.
+ *
  * @param <T>
  */
 @Data
+@ToString
 public abstract class GroupMetaKey<T extends GroupMetaKey> implements Deserializer<T> {
 
     protected short version = 1;
     protected GroupKeyType type;
     protected String groupName;
+
+    public GroupMetaKey() {
+    }
+
+    public GroupMetaKey(GroupKeyType type, String groupName) {
+        this.type = type;
+        this.groupName = groupName;
+    }
 
     /**
      * Group key type.
@@ -64,7 +76,7 @@ public abstract class GroupMetaKey<T extends GroupMetaKey> implements Deserializ
         }
     }
 
-    protected static GroupMetaKey decodeKey(ByteBuffer buffer) throws RopDecodeException {
+    protected static <M extends GroupMetaKey> M decodeKey(ByteBuffer buffer) throws RopDecodeException {
         try {
             int version = buffer.getShort(GROUP_META_VERSION_POS);
             GroupKeyType type = GroupKeyType.parseFromOrdinal(buffer.getInt(GROUP_META_KEY_TYPE_POS));
@@ -80,7 +92,7 @@ public abstract class GroupMetaKey<T extends GroupMetaKey> implements Deserializ
             metaKey.setType(type);
             metaKey.setGroupName(groupName);
             metaKey.decode(buffer);
-            return metaKey;
+            return (M) metaKey;
         } catch (Exception e) {
             throw new RopDecodeException("GroupMetaKey decodeGroupMeta error:" + e.getMessage());
         }
@@ -89,5 +101,22 @@ public abstract class GroupMetaKey<T extends GroupMetaKey> implements Deserializ
     @Override
     public int estimateSize() {
         return GROUP_META_KEY_TOTAL_HEAD_LEN + groupName.getBytes(StandardCharsets.UTF_8).length;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
+        GroupMetaKey<?> metaKey = (GroupMetaKey<?>) o;
+        return Objects.equal(groupName, metaKey.groupName);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hashCode(groupName);
     }
 }

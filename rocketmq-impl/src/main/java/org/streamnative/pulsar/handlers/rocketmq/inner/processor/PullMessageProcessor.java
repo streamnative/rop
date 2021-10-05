@@ -370,7 +370,6 @@ public class PullMessageProcessor implements NettyRequestProcessor {
                                     new BatchMessageTransfer(
                                             response.encodeHeader(ropGetMessageResult.getBufferTotalSize()),
                                             ropGetMessageResult);
-
                             channel.writeAndFlush(fileRegion).addListener((ChannelFutureListener) future -> {
                                 if (!future.isSuccess()) {
                                     log.error("transfer many message by pagecache failed, {}", channel.remoteAddress(),

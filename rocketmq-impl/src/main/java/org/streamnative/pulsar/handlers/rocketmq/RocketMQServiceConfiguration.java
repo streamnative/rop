@@ -321,7 +321,7 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
             category = CATEGORY_ROCKETMQ,
             doc = "Whether enable transfer message by heap.\n"
     )
-    private boolean transferMsgByHeap = false;
+    private boolean transferMsgByHeap = true;
 
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
