@@ -33,6 +33,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.bookkeeper.mledger.AsyncCallbacks.ReadEntryCallback;
 import org.apache.bookkeeper.mledger.Entry;
 import org.apache.bookkeeper.mledger.ManagedCursor;
 import org.apache.bookkeeper.mledger.ManagedLedger;
@@ -52,12 +53,14 @@ import org.apache.pulsar.client.impl.MessageIdImpl;
 import org.apache.pulsar.common.naming.TopicName;
 import org.apache.pulsar.common.util.FutureUtil;
 import org.apache.pulsar.common.util.collections.ConcurrentLongHashMap;
+import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.SystemClock;
 import org.apache.rocketmq.common.message.MessageAccessor;
 import org.apache.rocketmq.common.message.MessageConst;
 import org.apache.rocketmq.common.message.MessageDecoder;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageExtBatch;
+import org.apache.rocketmq.common.protocol.header.ConsumerSendMsgBackRequestHeader;
 import org.apache.rocketmq.common.protocol.header.PullMessageRequestHeader;
 import org.apache.rocketmq.common.sysflag.MessageSysFlag;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
@@ -68,6 +71,7 @@ import org.apache.rocketmq.store.MessageExtBrokerInner;
 import org.apache.rocketmq.store.PutMessageResult;
 import org.apache.rocketmq.store.PutMessageStatus;
 import org.streamnative.pulsar.handlers.rocketmq.RocketMQProtocolHandler;
+import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.CommitLogOffset;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.RopGetMessageResult;
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopEncodeException;
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopPersistentTopicException;
@@ -492,6 +496,41 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
     }
 
     @Override
+    public MessageExt lookMessageByCommitLogOffset(ConsumerSendMsgBackRequestHeader requestHeader) {
+        CommitLogOffset commitLogOffset = new CommitLogOffset(requestHeader.getOffset());
+        String topic = commitLogOffset.isRetryTopic() ? MixAll.getRetryTopic(requestHeader.getGroup())
+                : requestHeader.getOriginTopic();
+        ClientTopicName clientTopicName = new ClientTopicName(topic);
+        try {
+            PersistentTopic persistentTopic = brokerController.getGroupMetaManager()
+                    .getPulsarPersistentTopic(clientTopicName, commitLogOffset.getPartitionId());
+            PositionImpl positionForOffset = MessageIdUtils
+                    .getPositionForOffset(persistentTopic.getManagedLedger(), commitLogOffset.getQueueOffset());
+            CompletableFuture<MessageExt> messageFuture = new CompletableFuture<>();
+            persistentTopic.asyncReadEntry(positionForOffset,
+                    new ReadEntryCallback() {
+                        @Override
+                        public void readEntryComplete(Entry entry, Object ctx) {
+                            MessageExt messageExt = RopServerCnx.this.entryFormatter
+                                    .decodeMessageByPulsarEntry(clientTopicName.toPulsarTopicName()
+                                            .getPartition(commitLogOffset.getPartitionId()), entry);
+                            messageFuture.complete(messageExt);
+                        }
+
+                        @Override
+                        public void readEntryFailed(ManagedLedgerException exception, Object ctx) {
+                            messageFuture.completeExceptionally(exception);
+                        }
+                    },
+                    null);
+            return messageFuture.join();
+        } catch (RopPersistentTopicException e) {
+            log.warn("lookMessageByCommitLogOffset[request={}] error.", requestHeader, e);
+        }
+        return null;
+    }
+
+    @Override
     public MessageExt lookMessageByTimestamp(String partitionedTopic, long timestamp) {
         // TODO: will impl in next rc version
         return null;
@@ -575,7 +614,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                     try {
                         long currentOffset = MessageIdUtils.peekOffsetFromEntry(entry);
                         ByteBuf byteBuffer = this.entryFormatter
-                                .decodePulsarMessage(entry.getDataBuffer(), currentOffset, messageFilter);
+                                .decodePulsarMessage(rmqTopic.getPulsarTopicName().getPartition(pulsarPartitionId),
+                                        entry.getDataBuffer(), messageFilter);
                         if (byteBuffer != null) {
                             getResult.addMessage(byteBuffer);
                             nextBeginOffset = currentOffset + 1;

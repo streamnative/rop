@@ -162,6 +162,22 @@ public class ConsumerOffsetManager {
         });
     }
 
+    /**
+     * @param topic rocketmq topic name
+     * @param queueId rocketmq queue id
+     * @return
+     */
+    public long getMinOffsetInQueue(String topic, int queueId) {
+        ClientTopicName clientTopicName = new ClientTopicName(topic);
+        int pulsarPartitionId = brokerController.getRopBrokerProxy()
+                .getPulsarTopicPartitionId(clientTopicName.toPulsarTopicName(), queueId);
+        try {
+            return getMinOffsetInQueue(clientTopicName, pulsarPartitionId);
+        } catch (RopPersistentTopicException e) {
+            return -1L;
+        }
+    }
+
     public long getMinOffsetInQueue(ClientTopicName clientTopicName, int pulsarPartitionId)
             throws RopPersistentTopicException {
         PersistentTopic persistentTopic = getPulsarPersistentTopic(clientTopicName, pulsarPartitionId);
@@ -170,6 +186,22 @@ public class ConsumerOffsetManager {
             return MessageIdUtils.getQueueOffsetByPosition(persistentTopic, firstPosition);
         }
         throw new RopPersistentTopicException("PersistentTopic isn't exists when getMinOffsetInQueue.");
+    }
+
+    /**
+     * @param topic rocketmq topic name
+     * @param queueId rocketmq queue id
+     * @return
+     */
+    public long getMaxOffsetInQueue(String topic, int queueId) {
+        ClientTopicName clientTopicName = new ClientTopicName(topic);
+        int pulsarPartitionId = brokerController.getRopBrokerProxy()
+                .getPulsarTopicPartitionId(clientTopicName.toPulsarTopicName(), queueId);
+        try {
+            return getMaxOffsetInQueue(clientTopicName, pulsarPartitionId);
+        } catch (RopPersistentTopicException e) {
+            return 0L;
+        }
     }
 
     public long getMaxOffsetInQueue(ClientTopicName topicName, int pulsarPartitionId)

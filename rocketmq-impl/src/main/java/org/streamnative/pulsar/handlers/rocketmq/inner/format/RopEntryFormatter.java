@@ -29,6 +29,7 @@ import java.util.Map;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.bookkeeper.mledger.Entry;
 import org.apache.pulsar.client.api.Message;
 import org.apache.pulsar.client.impl.MessageIdImpl;
 import org.apache.pulsar.client.impl.TopicMessageImpl;
@@ -47,6 +48,7 @@ import org.apache.rocketmq.common.sysflag.MessageSysFlag;
 import org.apache.rocketmq.store.AppendMessageStatus;
 import org.apache.rocketmq.store.CommitLog;
 import org.apache.rocketmq.store.MessageExtBrokerInner;
+import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.CommitLogOffset;
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopEncodeException;
 import org.streamnative.pulsar.handlers.rocketmq.utils.CommitLogOffsetUtils;
 import org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils;
@@ -140,19 +142,10 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
         }
     }
 
-    public ByteBuf decodePulsarMessage(ByteBuf headersAndPayload, long offset, Predicate<ByteBuf> predicate) {
-//        BrokerEntryMetadata brokerEntryMetadata = Commands.peekBrokerEntryMetadataIfExist(headersAndPayload);
-        Commands.skipMessageMetadata(headersAndPayload);
-        if (predicate != null && !predicate.test(headersAndPayload)) {
-            return null;
-        }
-        // skip tag hash code
-        headersAndPayload.readLong();
-        ByteBuf slice = headersAndPayload.retainedSlice();
-        // set offset
-        slice.setLong(20, offset);
-        slice.setLong(28, offset);
-        return slice;
+    @Override
+    public MessageExt decodeMessageByPulsarEntry(TopicName pulsarPartitionedTopic, Entry msgEntry) {
+        ByteBuf msgBuff = decodePulsarMessage(pulsarPartitionedTopic, msgEntry.getDataBuffer(), null);
+        return CommonUtils.decode(msgBuff, true, false);
     }
 
     public ByteBuf decodePulsarMessage(TopicName partitionedTopicName, ByteBuf headersAndPayload,
@@ -166,10 +159,11 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
         ByteBuf slice = headersAndPayload.slice();
         // set offset
         slice.setLong(20, index);
+
+        // calc physicalOffset
         boolean retryTopic = NamespaceUtil.isRetryTopic(partitionedTopicName.getLocalName());
-        long physicalOffset = CommitLogOffsetUtils.setRetryTopicTag(index, retryTopic);
-        physicalOffset = CommitLogOffsetUtils.setPartitionId(physicalOffset, partitionedTopicName.getPartitionIndex());
-        slice.setLong(28, physicalOffset);
+        CommitLogOffset commitLogOffset = new CommitLogOffset(retryTopic, partitionedTopicName.getPartitionIndex(), index);
+        slice.setLong(28, commitLogOffset.getCommitLogOffset());
         return slice;
     }
 

@@ -400,13 +400,8 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
         final GetMaxOffsetRequestHeader requestHeader =
                 (GetMaxOffsetRequestHeader) request.decodeCommandCustomHeader(GetMaxOffsetRequestHeader.class);
 
-        ClientGroupAndTopicName clientGroupName = new ClientGroupAndTopicName(Strings.EMPTY, requestHeader.getTopic());
-        long offset = 0L;
-        try {
-            offset = this.brokerController.getConsumerOffsetManager()
-                    .getMaxOffsetInQueue(clientGroupName.getClientTopicName(), requestHeader.getQueueId());
-        } catch (RopPersistentTopicException e) {
-        }
+        long offset = this.brokerController.getConsumerOffsetManager()
+                .getMaxOffsetInQueue(requestHeader.getTopic(), requestHeader.getQueueId());
         responseHeader.setOffset(offset);
         response.setCode(ResponseCode.SUCCESS);
         return response;

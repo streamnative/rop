@@ -235,7 +235,7 @@ public class PullMessageProcessor implements NettyRequestProcessor {
         }
 
         final RopGetMessageResult ropGetMessageResult = pulsarMessageStore
-                .getMessage(CommonUtils.getPartitionIdFromRequest(request), request, requestHeader, messageFilter);
+                .getMessage(CommonUtils.getPulsarPartitionIdByRequest(request), request, requestHeader, messageFilter);
 
         if (ropGetMessageResult != null) {
             response.setRemark(ropGetMessageResult.getStatus().name());

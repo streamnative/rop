@@ -16,6 +16,7 @@ package org.streamnative.pulsar.handlers.rocketmq.inner.pulsar;
 
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageExtBatch;
+import org.apache.rocketmq.common.protocol.header.ConsumerSendMsgBackRequestHeader;
 import org.apache.rocketmq.common.protocol.header.PullMessageRequestHeader;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.store.MessageExtBrokerInner;
@@ -40,6 +41,8 @@ public interface PulsarMessageStore {
     MessageExt lookMessageByMessageId(String topic, String msgId);
 
     MessageExt lookMessageByMessageId(String topic, long offset);
+
+    MessageExt lookMessageByCommitLogOffset(ConsumerSendMsgBackRequestHeader requestHeader);
 
     /**
      * Reset the subscription associated with this reader to a specific message publish time.

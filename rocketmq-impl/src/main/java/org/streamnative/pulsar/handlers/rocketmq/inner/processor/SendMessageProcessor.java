@@ -169,12 +169,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         }
 
         MessageExt msgExt = this.getServerCnxMsgStore(ctx, requestHeader.getGroup())
-                .lookMessageByMessageId(MixAll.getRetryTopic(requestHeader.getGroup()), requestHeader.getOffset());
-        if (msgExt == null) {
-            msgExt = this.getServerCnxMsgStore(ctx, requestHeader.getGroup())
-                    .lookMessageByMessageId(requestHeader.getOriginTopic(), requestHeader.getOffset());
-        }
-
+                .lookMessageByCommitLogOffset(requestHeader);
         if (null == msgExt) {
             response.setCode(ResponseCode.SYSTEM_ERROR);
             response.setRemark("look message by offset failed, " + requestHeader.getOffset());
@@ -236,7 +231,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
 
         try {
             this.getServerCnxMsgStore(ctx, requestHeader.getGroup())
-                    .putMessage(CommonUtils.getPartitionIdFromRequest(request), msgInner, requestHeader.getGroup(),
+                    .putMessage(CommonUtils.getPulsarPartitionIdByRequest(request), msgInner, requestHeader.getGroup(),
                             new SendMessageBackCallback(response, request, ctx, requestHeader, msgExt));
             return null;
         } catch (Exception e) {
@@ -350,7 +345,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         } else {
             try {
                 this.getServerCnxMsgStore(ctx, requestHeader.getProducerGroup())
-                        .putMessage(CommonUtils.getPartitionIdFromRequest(request),
+                        .putMessage(CommonUtils.getPulsarPartitionIdByRequest(request),
                                 msgInner,
                                 requestHeader.getProducerGroup(),
                                 new SendMessageCallback(response, request, msgInner, responseHeader,
@@ -529,7 +524,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
 
         try {
             this.getServerCnxMsgStore(ctx, requestHeader.getProducerGroup())
-                    .putMessages(CommonUtils.getPartitionIdFromRequest(request),
+                    .putMessages(CommonUtils.getPulsarPartitionIdByRequest(request),
                             messageExtBatch,
                             requestHeader.getProducerGroup(),
                             new SendMessageCallback(response, request, messageExtBatch, responseHeader,
