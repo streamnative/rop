@@ -492,28 +492,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
 
     @Override
     public MessageExt lookMessageByTimestamp(String partitionedTopic, long timestamp) {
-        try {
-            lookMsgLock.lock();
-            Long readerKey = (long) partitionedTopic.hashCode();
-            Reader<byte[]> topicReader = this.lookMsgReaders.get(readerKey);
-            if (topicReader == null) {
-                topicReader = service.pulsar().getClient().newReader()
-                        .topic(partitionedTopic)
-                        .create();
-                this.lookMsgReaders.put(readerKey, topicReader);
-            }
-            Preconditions.checkNotNull(topicReader);
-            Message<byte[]> message;
-            topicReader.seek(timestamp);
-            message = topicReader.readNext();
-            if (message != null) {
-                return this.entryFormatter.decodePulsarMessage(Collections.singletonList(message), null).get(0);
-            }
-        } catch (Exception ex) {
-            log.warn("lookMessageByMessageId message[topic={}, timestamp={}] error.", partitionedTopic, timestamp);
-        } finally {
-            lookMsgLock.unlock();
-        }
+        // TODO: will impl in next rc version
         return null;
     }
 

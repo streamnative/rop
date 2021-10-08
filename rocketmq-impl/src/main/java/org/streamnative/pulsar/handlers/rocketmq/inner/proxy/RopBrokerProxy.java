@@ -143,7 +143,9 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                 .getPulsarTopicRoute(pulsarTopicName, Strings.EMPTY);
         Preconditions.checkArgument(pulsarTopicRoute != null && !pulsarTopicRoute.isEmpty());
         List<Integer> pulsarPartitionIdList = pulsarTopicRoute.get(this.brokerTag);
-        Preconditions.checkArgument(pulsarPartitionIdList != null && !pulsarPartitionIdList.isEmpty() && queueId < pulsarPartitionIdList.size());
+        Preconditions.checkArgument(pulsarPartitionIdList != null
+                && !pulsarPartitionIdList.isEmpty()
+                && queueId < pulsarPartitionIdList.size());
         return pulsarPartitionIdList.get(queueId);
     }
 

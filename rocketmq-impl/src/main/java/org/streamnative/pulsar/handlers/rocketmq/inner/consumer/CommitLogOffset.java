@@ -19,7 +19,7 @@ import lombok.Getter;
 import org.streamnative.pulsar.handlers.rocketmq.utils.CommitLogOffsetUtils;
 
 /**
- * commit log offset is used to lookup message in retry logic
+ * commit log offset is used to lookup message in retry logic.
  * it's made up by 3 components, isRetryTopic + partitionId + offset
  */
 @Getter

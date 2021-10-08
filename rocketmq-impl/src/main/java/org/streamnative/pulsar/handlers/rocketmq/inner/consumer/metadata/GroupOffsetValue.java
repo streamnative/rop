@@ -23,7 +23,6 @@ import static org.streamnative.pulsar.handlers.rocketmq.inner.consumer.metadata.
 import java.nio.ByteBuffer;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
-import lombok.Getter;
 import lombok.ToString;
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopDecodeException;
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopEncodeException;
@@ -40,7 +39,7 @@ public class GroupOffsetValue implements Deserializer<GroupOffsetValue> {
     private long offset;
     private long commitTimestamp;
     private long expireTimestamp;
-    transient private volatile boolean isUpdated = true;
+    private transient volatile boolean isUpdated = true;
 
     public GroupOffsetValue() {
     }

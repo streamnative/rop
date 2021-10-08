@@ -14,7 +14,6 @@
 package org.streamnative.pulsar.handlers.rocketmq.inner.bean;
 
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.Map.Entry;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.remoting.protocol.RemotingSerializable;

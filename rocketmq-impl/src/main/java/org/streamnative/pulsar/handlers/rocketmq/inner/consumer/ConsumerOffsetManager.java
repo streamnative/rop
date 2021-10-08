@@ -121,9 +121,11 @@ public class ConsumerOffsetManager {
                             .getPulsarTopicPartitionId(searchTopic.toPulsarTopicName(), key.getQueueId());
                     minOffset = getMinOffsetInQueue(searchTopic, pulsarPartitionId);
                 } catch (Exception ex) {
+                    log.warn("get Pulsar Topic PartitionId error: ", ex);
                 }
                 if (groupOffsetMap.get(key).getOffset() >= minOffset) {
-                    queueMinOffset.merge(key.getQueueId(), groupOffsetMap.get(key).getOffset(), (a, b) -> Math.min(b, a));
+                    queueMinOffset.merge(key.getQueueId(),
+                            groupOffsetMap.get(key).getOffset(), (a, b) -> Math.min(b, a));
                 }
             }
         }
@@ -137,8 +139,8 @@ public class ConsumerOffsetManager {
 
         return groupOffsetMap.entrySet().stream().filter(entry -> {
             GroupOffsetKey key = entry.getKey();
-            return key.getTopicName().equals(groupAndTopicName.getClientTopicName().getPulsarTopicName()) &&
-                    key.getGroupName().equals(groupAndTopicName.getClientGroupName().getPulsarGroupName());
+            return key.getTopicName().equals(groupAndTopicName.getClientTopicName().getPulsarTopicName())
+                    && key.getGroupName().equals(groupAndTopicName.getClientGroupName().getPulsarGroupName());
         }).collect(toMap(entry -> entry.getKey().getQueueId()
                 , entry -> entry.getValue().getOffset()));
     }
@@ -149,8 +151,8 @@ public class ConsumerOffsetManager {
 
         groupMetaManager.getOffsetTable().asMap().entrySet().stream().filter((entry) -> {
             GroupOffsetKey key = entry.getKey();
-            return key.getTopicName().equals(srcGroupAndTopic.getClientTopicName().getPulsarTopicName()) &&
-                    key.getGroupName().equals(srcGroupAndTopic.getClientGroupName().getPulsarGroupName());
+            return key.getTopicName().equals(srcGroupAndTopic.getClientTopicName().getPulsarTopicName())
+                    && key.getGroupName().equals(srcGroupAndTopic.getClientGroupName().getPulsarGroupName());
         }).forEach((srcEntry) -> {
             GroupOffsetKey key = srcEntry.getKey();
             GroupOffsetValue value = srcEntry.getValue();
@@ -174,7 +176,7 @@ public class ConsumerOffsetManager {
             throws RopPersistentTopicException {
         PersistentTopic persistentTopic = getPulsarPersistentTopic(topicName, pulsarPartitionId);
         if (persistentTopic != null) {
-            Position lastPosition = persistentTopic.getLastPosition();
+            Position lastPosition = MessageIdUtils.getLastPosition(persistentTopic.getManagedLedger());
             return MessageIdUtils.getQueueOffsetByPosition(persistentTopic, lastPosition);
         }
         throw new RopPersistentTopicException("PersistentTopic isn't exists when getMaxOffsetInQueue.");

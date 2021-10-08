@@ -17,7 +17,6 @@ package org.streamnative.pulsar.handlers.rocketmq.inner.consumer.metadata;
 import java.nio.ByteBuffer;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
-import lombok.Getter;
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopDecodeException;
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopEncodeException;
 

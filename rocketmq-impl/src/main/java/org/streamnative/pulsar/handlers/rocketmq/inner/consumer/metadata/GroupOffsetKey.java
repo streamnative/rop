@@ -96,8 +96,8 @@ public class GroupOffsetKey extends GroupMetaKey<GroupOffsetKey> {
             return false;
         }
         GroupOffsetKey that = (GroupOffsetKey) o;
-        return queueId == that.queueId &&
-                Objects.equal(topicName, that.topicName);
+        return queueId == that.queueId
+                && Objects.equal(topicName, that.topicName);
     }
 
     @Override

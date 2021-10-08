@@ -106,7 +106,6 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.bean.RopConsumeStats;
 import org.streamnative.pulsar.handlers.rocketmq.inner.bean.RopOffsetWrapper;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.ConsumerGroupInfo;
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopPersistentTopicException;
-import org.streamnative.pulsar.handlers.rocketmq.inner.namesvr.MQTopicManager;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupAndTopicName;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupName;
 import org.streamnative.pulsar.handlers.rocketmq.utils.MessageIdUtils;

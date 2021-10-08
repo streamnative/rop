@@ -103,14 +103,6 @@ public class MessageIdUtils {
         return new PositionImpl(messageId.getLedgerId(), messageId.getEntryId());
     }
 
-    public static boolean isMinOffset(long offset) {
-        return offset <= MIN_ROP_OFFSET;
-    }
-
-    public static boolean isMaxOffset(long offset) {
-        return offset == MAX_ROP_OFFSET;
-    }
-
     public static boolean isMessageEquals(MessageId left, MessageId right) {
         if (left != null && right != null) {
             MessageIdImpl leftMsgId = (MessageIdImpl) left;
@@ -154,7 +146,7 @@ public class MessageIdUtils {
 
     public static long getQueueOffsetByPosition(PersistentTopic pulsarTopic, Position pulsarPosition) {
         Preconditions.checkNotNull(pulsarTopic);
-        Preconditions.checkArgument(pulsarPosition != null && pulsarPosition instanceof PositionImpl);
+        Preconditions.checkArgument(pulsarPosition instanceof PositionImpl);
         Long queueOffset = -1L;
         try {
             ManagedLedgerImpl managedLedger = (ManagedLedgerImpl) pulsarTopic.getManagedLedger();

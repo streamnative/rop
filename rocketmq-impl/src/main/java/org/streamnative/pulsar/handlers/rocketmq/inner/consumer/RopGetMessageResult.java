@@ -20,7 +20,6 @@ import java.util.List;
 import lombok.Data;
 import lombok.ToString;
 import org.apache.rocketmq.store.GetMessageStatus;
-import org.apache.rocketmq.store.SelectMappedBufferResult;
 
 /**
  * Rop get message result.

@@ -24,7 +24,7 @@ import java.nio.channels.WritableByteChannel;
 import java.util.List;
 
 /**
- * write channel using non-heap buffer
+ * write channel using non-heap buffer.
  */
 public class BatchMessageTransfer extends AbstractReferenceCounted implements FileRegion, Closeable {
 
