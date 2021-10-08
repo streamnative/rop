@@ -121,6 +121,8 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
     private final Cache<TopicName, String> ownedBrokerCache = CacheBuilder.newBuilder()
             .initialCapacity(ROP_CACHE_INITIAL_SIZE).maximumSize(ROP_CACHE_MAX_SIZE)
             .expireAfterAccess(ROP_CACHE_EXPIRE_TIME_MS, TimeUnit.MILLISECONDS).build();
+    @Getter
+    private PullMessageProcessor pullMessageProcessor;
 
     public RopBrokerProxy(final RocketMQServiceConfiguration config, RocketMQBrokerController brokerController,
             final ChannelEventListener channelEventListener) {
@@ -570,6 +572,7 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
         @Override
         public boolean registerProxyProcessor() {
             RopBrokerProxy.this.registerProcessor(PULL_MESSAGE, this, processorExecutor);
+            RopBrokerProxy.this.pullMessageProcessor = this;
             return true;
         }
     }
