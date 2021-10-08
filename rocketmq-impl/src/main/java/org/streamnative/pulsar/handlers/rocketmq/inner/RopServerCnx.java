@@ -209,8 +209,10 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
              */
             if (isNotDelayMessage(deliverAtTime) && this.brokerController.getTopicConfigManager()
                     .isPartitionTopicOwner(rmqTopic.getPulsarTopicName(), partitionId)) {
-                PersistentTopic persistentTopic = this.brokerController.getTopicConfigManager()
-                        .getPulsarPersistentTopic(pTopic);
+                ClientTopicName clientTopicName = new ClientTopicName(messageInner.getTopic());
+                String pulsarTopicName = clientTopicName.getPulsarTopicName();
+                PersistentTopic persistentTopic = this.brokerController.getConsumerOffsetManager()
+                        .getPulsarPersistentTopic(clientTopicName, partitionId);
                 // if persistentTopic is null, throw SYSTEM_ERROR to rop proxy and retry send request.
                 if (persistentTopic != null) {
                     offsetFuture = publishMessage(body.get(0), persistentTopic, pTopic);
@@ -316,8 +318,9 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
              */
             if (this.brokerController.getTopicConfigManager()
                     .isPartitionTopicOwner(rmqTopic.getPulsarTopicName(), realPartitionID)) {
-                PersistentTopic persistentTopic = this.brokerController.getTopicConfigManager()
-                        .getPulsarPersistentTopic(pTopic);
+                ClientTopicName clientTopicName = new ClientTopicName(batchMessage.getTopic());
+                PersistentTopic persistentTopic = this.brokerController.getConsumerOffsetManager()
+                        .getPulsarPersistentTopic(clientTopicName, realPartitionID);
                 if (persistentTopic != null) {
                     for (byte[] body : bodies) {
                         CompletableFuture<Long> offsetFuture = publishMessage(body, persistentTopic, pTopic);

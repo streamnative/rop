@@ -20,7 +20,6 @@ import com.google.common.base.Function;
 import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Sets;
-import java.net.InetSocketAddress;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
@@ -38,7 +37,6 @@ import org.apache.pulsar.broker.PulsarService;
 import org.apache.pulsar.broker.namespace.NamespaceBundleOwnershipListener;
 import org.apache.pulsar.broker.service.BrokerService;
 import org.apache.pulsar.broker.service.Producer;
-import org.apache.pulsar.broker.service.Topic;
 import org.apache.pulsar.broker.service.persistent.PersistentTopic;
 import org.apache.pulsar.client.admin.PulsarAdmin;
 import org.apache.pulsar.client.admin.PulsarAdminException;
@@ -153,23 +151,6 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
      */
     public boolean isPartitionTopicOwner(TopicName topicName, int partitionId) {
         return this.brokerController.getBrokerService().isTopicNsOwnedByBroker(topicName.getPartition(partitionId));
-    }
-
-    /**
-     * Get pulsar persistent topic.
-     *
-     * @param topicName topic name
-     * @return persistent topic
-     */
-    public PersistentTopic getPulsarPersistentTopic(String topicName) {
-        PulsarService pulsarService = this.brokerController.getBrokerService().pulsar();
-        Optional<Topic> topic = pulsarService.getBrokerService().getTopicIfExists(topicName).join();
-        if (topic.isPresent()) {
-            return (PersistentTopic) topic.get();
-        } else {
-            log.warn("Not found pulsar persistentTopic [{}]", topicName);
-        }
-        return null;
     }
 
     @Override
@@ -362,6 +343,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
         try {
             topicMetadata = adminClient.topics().getPartitionedTopicMetadata(fullTopicName);
         } catch (Exception e) {
+            log.warn("get partitioned topic metadata[{}] error:", fullTopicName, e);
         }
 
         currentPartitionNum = topicMetadata != null ? topicMetadata.partitions : currentPartitionNum;
@@ -448,18 +430,6 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
         }
 
         updateTopicConfig(tc);
-    }
-
-    private InetSocketAddress lookupTopic(String pulsarTopicName) {
-        try {
-            return ((PulsarClientImpl) pulsarService.getClient()).getLookup()
-                    .getBroker(TopicName.get(pulsarTopicName))
-                    .get()
-                    .getLeft();
-        } catch (Exception e) {
-            log.error("LookupTopics pulsar topic=[{}] error.", pulsarTopicName, e);
-        }
-        return null;
     }
 
     /**
