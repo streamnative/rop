@@ -45,6 +45,7 @@ import org.apache.pulsar.broker.PulsarServerException;
 import org.apache.pulsar.broker.service.BrokerService;
 import org.apache.pulsar.broker.service.persistent.PersistentTopic;
 import org.apache.pulsar.client.api.Message;
+import org.apache.pulsar.client.api.MessageId;
 import org.apache.pulsar.client.api.Producer;
 import org.apache.pulsar.client.api.PulsarClientException;
 import org.apache.pulsar.client.api.Reader;
@@ -182,7 +183,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         final int tranType = MessageSysFlag.getTransactionValue(messageInner.getSysFlag());
         if (tranType == MessageSysFlag.TRANSACTION_NOT_TYPE || tranType == MessageSysFlag.TRANSACTION_COMMIT_TYPE) {
             // Delay Delivery
-            if (isNotDelayMessage(deliverAtTime) && messageInner.getDelayTimeLevel() > 0 && !rmqTopic.isDLQTopic()) {
+            if (!isDelayMessage(deliverAtTime) && messageInner.getDelayTimeLevel() > 0 && !rmqTopic.isDLQTopic()) {
                 if (messageInner.getDelayTimeLevel() > this.brokerController.getServerConfig().getMaxDelayLevelNum()) {
                     messageInner.setDelayTimeLevel(this.brokerController.getServerConfig().getMaxDelayLevelNum());
                 }
@@ -211,10 +212,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
              * If the broker is the owner of the current partitioned topic, directly use the PersistentTopic interface
              * for publish message.
              */
-            if (isNotDelayMessage(deliverAtTime) && this.brokerController.getTopicConfigManager()
-                    .isPartitionTopicOwner(rmqTopic.getPulsarTopicName(), partitionId)) {
+            if (!isDelayMessage(deliverAtTime)) {
                 ClientTopicName clientTopicName = new ClientTopicName(messageInner.getTopic());
-                String pulsarTopicName = clientTopicName.getPulsarTopicName();
                 PersistentTopic persistentTopic = this.brokerController.getConsumerOffsetManager()
                         .getPulsarPersistentTopic(clientTopicName, partitionId);
                 // if persistentTopic is null, throw SYSTEM_ERROR to rop proxy and retry send request.
@@ -227,34 +226,42 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                     callback.callback(putMessageResult);
                     return;
                 }
-            }
-
-            /*
-             * Use pulsar producer send delay message.
-             */
-            long producerId = buildPulsarProducerId(producerGroup, pTopic,
-                    ctx.channel().remoteAddress().toString());
-            Producer<byte[]> producer = this.producers.get(producerId);
-            if (producer == null) {
-                synchronized (this.producers) {
-                    log.info("[{}] PutMessage creating producer[id={}] and channel=[{}].",
-                            rmqTopic.getPulsarFullName(), producerId, ctx.channel());
-                    if (this.producers.get(producerId) == null) {
-                        producer = createNewProducer(pTopic, producerGroup, producerId);
-                        Producer<byte[]> oldProducer = this.producers.put(producerId, producer);
-                        if (oldProducer != null) {
-                            oldProducer.closeAsync();
+            } else {
+                /*
+                 * Use pulsar producer send delay message.
+                 */
+                long producerId = buildPulsarProducerId(producerGroup, pTopic,
+                        ctx.channel().remoteAddress().toString());
+                Producer<byte[]> producer = this.producers.get(producerId);
+                if (producer == null) {
+                    synchronized (this.producers) {
+                        log.info("[{}] PutMessage creating producer[id={}] and channel=[{}].",
+                                rmqTopic.getPulsarFullName(), producerId, ctx.channel());
+                        if (this.producers.get(producerId) == null) {
+                            producer = createNewProducer(pTopic, producerGroup, producerId);
+                            Producer<byte[]> oldProducer = this.producers.put(producerId, producer);
+                            if (oldProducer != null) {
+                                oldProducer.closeAsync();
+                            }
                         }
                     }
                 }
+
+                CompletableFuture<MessageId> messageIdFuture = this.producers.get(producerId).newMessage()
+                        .value((body.get(0)))
+                        .deliverAt(deliverAtTime)
+                        .sendAsync();
+                offsetFuture = messageIdFuture.thenApply((Function<MessageId, Long>) messageId -> {
+                    try {
+                        if (messageId == null) {
+                            return -1L;
+                        }
+                        return MessageIdUtils.getOffset((MessageIdImpl) messageId);
+                    } catch (Exception e) {
+                        return -1L;
+                    }
+                });
             }
-            // TODO: handle delay message
-//            if (!isNotDelayMessage(deliverAtTime)) {
-//                offsetFuture = this.producers.get(producerId).newMessage()
-//                        .value((body.get(0)))
-//                        .deliverAt(deliverAtTime)
-//                        .sendAsync();
-//            }
 
             /*
              * Handle future async by brokerController.getSendCallbackExecutor().
@@ -707,7 +714,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         return NumberUtils.toLong(messageInner.getProperties().getOrDefault("__STARTDELIVERTIME", "0"));
     }
 
-    private boolean isNotDelayMessage(long deliverAtTime) {
-        return deliverAtTime <= System.currentTimeMillis();
+    private boolean isDelayMessage(long deliverAtTime) {
+        return deliverAtTime > System.currentTimeMillis();
     }
 }
