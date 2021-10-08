@@ -588,7 +588,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         PersistentTopic persistentTopic;
         try {
             persistentTopic = brokerController.getConsumerOffsetManager()
-                    .getPulsarPersistentTopic(new ClientTopicName(rmqTopic.getPulsarTopicName()), pulsarPartitionId);
+                    .getPulsarPersistentTopic(new ClientTopicName(topicName), pulsarPartitionId);
         } catch (Exception e) {
             throw new RuntimeException();
         }
@@ -653,7 +653,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 try {
                     managedLedger.deleteCursor(cursorName);
                 } catch (ManagedLedgerException.CursorNotFoundException e) {
-                    //
+                    log.warn("Cursor NotFound Exception: ", e);
                 }
 
                 PositionImpl cursorStartPosition = startPosition;

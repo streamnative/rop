@@ -160,10 +160,10 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                 RocketMQTopic rmqTopic = new RocketMQTopic(pullMsgHeader.getTopic());
                 boolean isOwnedBroker = checkTopicOwnerBroker(cmd, rmqTopic.getPulsarTopicName(),
                         pullMsgHeader.getQueueId());
-                if (isOwnedBroker || cmd.getExtFields().containsKey("test")) {
+                if (isOwnedBroker) {
                     super.processRequestCommand(ctx, cmd);
                 } else {
-
+                    // TODO:
                 }
                 break;
             case SEND_MESSAGE:
@@ -182,10 +182,9 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                 } else {
                     isOwnedBroker = checkTopicOwnerBroker(cmd, pulsarTopicName,
                             sendHeader.getQueueId());
-                    if (!isOwnedBroker || cmd.getExtFields().containsKey("test")) {
+                    if (isOwnedBroker) {
                         super.processRequestCommand(ctx, cmd);
                     } else {
-                        cmd.addExtField("test", "0");
                         processNonOwnedBrokerSendRequest(ctx, cmd, pulsarTopicName,
                                 INTERNAL_SEND_TIMEOUT_MS);
                     }
