@@ -152,7 +152,7 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
             Predicate<ByteBuf> predicate) {
         BrokerEntryMetadata brokerEntryMetadata = Commands.parseBrokerEntryMetadataIfExist(headersAndPayload);
         long index = (brokerEntryMetadata != null) ? brokerEntryMetadata.getIndex() : -1L;
-        Preconditions.checkArgument(index > 0, "the version of broker must be > 2.8.0");
+        Preconditions.checkArgument(index >= 0, "the version of broker must be > 2.8.0");
         Commands.skipMessageMetadata(headersAndPayload);
         // check the tag and filter
         if (predicate != null && !predicate.test(headersAndPayload)) {

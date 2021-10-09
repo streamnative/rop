@@ -14,7 +14,9 @@
 
 package org.streamnative.rocketmq.example.quickstart;
 
+import java.io.UnsupportedEncodingException;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
 import org.apache.rocketmq.client.consumer.DefaultMQPushConsumer;
 import org.apache.rocketmq.client.consumer.listener.ConsumeConcurrentlyContext;
 import org.apache.rocketmq.client.consumer.listener.ConsumeConcurrentlyStatus;
@@ -52,7 +54,7 @@ public class SimpleConsumer {
          * Specify where to start in case the specified consumer group is a brand new one.
          */
         consumer.setConsumeFromWhere(ConsumeFromWhere.CONSUME_FROM_LAST_OFFSET);
-
+        AtomicLong count = new AtomicLong(0L);
         /*
          * Subscribe one more more topics to consume.
          */
@@ -66,7 +68,16 @@ public class SimpleConsumer {
             @Override
             public ConsumeConcurrentlyStatus consumeMessage(List<MessageExt> msgs,
                     ConsumeConcurrentlyContext context) {
-                System.out.printf("%s Receive New Messages: %s %n", Thread.currentThread().getName(), msgs);
+                msgs.forEach((msg) -> {
+                    try {
+                        System.out.printf("Msg payload: %s, topic is:%s, MsgId is:%s%n",
+                                new String(msg.getBody(), "GBK"), msg.getTopic(), msg.getMsgId());
+                    } catch (UnsupportedEncodingException e) {
+                        e.printStackTrace();
+                    }
+                    count.incrementAndGet();
+                    System.out.println("total ====> " + count.get());
+                });
                 return ConsumeConcurrentlyStatus.CONSUME_SUCCESS;
             }
         });
