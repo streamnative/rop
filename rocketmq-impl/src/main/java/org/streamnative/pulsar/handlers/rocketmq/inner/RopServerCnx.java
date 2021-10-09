@@ -582,7 +582,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             minOffset = this.brokerController.getConsumerOffsetManager()
                     .getMinOffsetInQueue(new ClientTopicName(topicName), pulsarPartitionId);
         } catch (RopPersistentTopicException e) {
-            //
+            log.warn("get min or max offset error:", e);
         }
 
         PersistentTopic persistentTopic;

@@ -181,11 +181,15 @@ public class ConsumerOffsetManager {
     public long getMinOffsetInQueue(ClientTopicName clientTopicName, int pulsarPartitionId)
             throws RopPersistentTopicException {
         PersistentTopic persistentTopic = getPulsarPersistentTopic(clientTopicName, pulsarPartitionId);
-        if (persistentTopic != null) {
-            PositionImpl firstPosition = MessageIdUtils.getFirstPosition(persistentTopic.getManagedLedger());
+        ManagedLedgerImpl managedLedger = (ManagedLedgerImpl) persistentTopic.getManagedLedger();
+        PositionImpl lac = (PositionImpl) managedLedger.getLastConfirmedEntry();
+        PositionImpl firstPosition = MessageIdUtils.getFirstPosition(persistentTopic.getManagedLedger());
+        assert firstPosition != null;
+        if (firstPosition.compareTo(lac) > 0 || MessageIdUtils.getCurrentOffset(managedLedger) < 0) {
+            return Math.max(0, MessageIdUtils.getCurrentOffset(managedLedger));
+        } else {
             return MessageIdUtils.getQueueOffsetByPosition(persistentTopic, firstPosition);
         }
-        throw new RopPersistentTopicException("PersistentTopic isn't exists when getMinOffsetInQueue.");
     }
 
     /**
@@ -207,11 +211,13 @@ public class ConsumerOffsetManager {
     public long getMaxOffsetInQueue(ClientTopicName topicName, int pulsarPartitionId)
             throws RopPersistentTopicException {
         PersistentTopic persistentTopic = getPulsarPersistentTopic(topicName, pulsarPartitionId);
-        if (persistentTopic != null) {
-            Position lastPosition = MessageIdUtils.getLastPosition(persistentTopic.getManagedLedger());
+        ManagedLedgerImpl managedLedger = (ManagedLedgerImpl) persistentTopic.getManagedLedger();
+        Position lastPosition = MessageIdUtils.getLastPosition(persistentTopic.getManagedLedger());
+        if (MessageIdUtils.getCurrentOffset(managedLedger) < 0) {
+            return Math.max(0, MessageIdUtils.getCurrentOffset(managedLedger));
+        } else {
             return MessageIdUtils.getQueueOffsetByPosition(persistentTopic, lastPosition);
         }
-        throw new RopPersistentTopicException("PersistentTopic isn't exists when getMaxOffsetInQueue.");
     }
 
     public long searchOffsetByTimestamp(ClientGroupAndTopicName groupAndTopic, int partitionId, long timestamp) {
