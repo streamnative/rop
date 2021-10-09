@@ -98,11 +98,6 @@ public class MessageIdUtils {
         return new MessageIdImpl(ledgerId, entryId, partitionId);
     }
 
-    public static final PositionImpl getPosition(long offset) {
-        MessageIdImpl messageId = getMessageId(offset);
-        return new PositionImpl(messageId.getLedgerId(), messageId.getEntryId());
-    }
-
     public static boolean isMessageEquals(MessageId left, MessageId right) {
         if (left != null && right != null) {
             MessageIdImpl leftMsgId = (MessageIdImpl) left;

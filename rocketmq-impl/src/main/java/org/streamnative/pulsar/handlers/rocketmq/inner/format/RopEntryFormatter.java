@@ -50,7 +50,6 @@ import org.apache.rocketmq.store.CommitLog;
 import org.apache.rocketmq.store.MessageExtBrokerInner;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.CommitLogOffset;
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopEncodeException;
-import org.streamnative.pulsar.handlers.rocketmq.utils.CommitLogOffsetUtils;
 import org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils;
 
 /**
@@ -166,7 +165,9 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
 
         // calc physicalOffset
         boolean retryTopic = NamespaceUtil.isRetryTopic(partitionedTopicName.getLocalName());
-        CommitLogOffset commitLogOffset = new CommitLogOffset(retryTopic, partitionedTopicName.getPartitionIndex(), index);
+        CommitLogOffset commitLogOffset = new CommitLogOffset(retryTopic,
+                partitionedTopicName.getPartitionIndex(),
+                index);
         slice.setLong(28, commitLogOffset.getCommitLogOffset());
         return slice;
     }

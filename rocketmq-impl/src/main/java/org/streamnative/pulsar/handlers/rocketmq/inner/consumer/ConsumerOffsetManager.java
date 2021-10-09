@@ -123,9 +123,11 @@ public class ConsumerOffsetManager {
                 } catch (Exception ex) {
                     log.warn("get Pulsar Topic PartitionId error: ", ex);
                 }
-                if (groupOffsetMap.get(key).getOffset() >= minOffset) {
-                    queueMinOffset.merge(key.getQueueId(),
-                            groupOffsetMap.get(key).getOffset(), (a, b) -> Math.min(b, a));
+                for (Map.Entry<GroupOffsetKey, GroupOffsetValue> entry: groupOffsetMap.entrySet()) {
+                    if (entry.getValue().getOffset() >= minOffset) {
+                        queueMinOffset.merge(entry.getKey().getQueueId(),
+                                entry.getValue().getOffset(), (a, b) -> Math.min(b, a));
+                    }
                 }
             }
         }

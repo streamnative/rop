@@ -76,7 +76,7 @@ public abstract class GroupMetaKey<T extends GroupMetaKey> implements Deserializ
         }
     }
 
-    protected static <M extends GroupMetaKey> M decodeKey(ByteBuffer buffer) throws RopDecodeException {
+    protected static <T extends GroupMetaKey> T decodeKey(ByteBuffer buffer) throws RopDecodeException {
         try {
             int version = buffer.getShort(GROUP_META_VERSION_POS);
             GroupKeyType type = GroupKeyType.parseFromOrdinal(buffer.getInt(GROUP_META_KEY_TYPE_POS));
@@ -92,7 +92,7 @@ public abstract class GroupMetaKey<T extends GroupMetaKey> implements Deserializ
             metaKey.setType(type);
             metaKey.setGroupName(groupName);
             metaKey.decode(buffer);
-            return (M) metaKey;
+            return (T) metaKey;
         } catch (Exception e) {
             throw new RopDecodeException("GroupMetaKey decodeGroupMeta error:" + e.getMessage());
         }

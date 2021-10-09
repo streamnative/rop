@@ -270,7 +270,7 @@ public class CommonUtils {
                 MessageAccessor.setProperties(msgExt, map);
             }
             return msgExt;
-        } catch (Exception ex) {
+        } catch (IOException ex) {
             log.warn("Decode message error.", ex);
         }
         return null;

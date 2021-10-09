@@ -255,15 +255,14 @@ public class PulsarUtil {
         Preconditions.checkArgument(activeBrokers != null && !activeBrokers.isEmpty());
         Preconditions.checkArgument(repFactor > 0);
         Map<String, List<String>> brokerCluster = clusterContent.getBrokerCluster();
-        List<String> brokerTags = brokerCluster.keySet().stream().collect(Collectors.toList());
-        Collections.sort(brokerTags);
+        List<String> brokerTags = brokerCluster.keySet().stream().sorted().collect(Collectors.toList());
         List<String> allBrokers = new ArrayList<>();
         for (String brokerTag : brokerTags) {
             allBrokers.addAll(brokerCluster.get(brokerTag));
         }
 
         if (!allBrokers.containsAll(activeBrokers)) {
-            activeBrokers.remove(allBrokers);
+            activeBrokers.removeAll(allBrokers);
             allBrokers.addAll(activeBrokers);
             clusterContent.setBrokerCluster(genBrokerGroupData(allBrokers, repFactor));
             return true;
