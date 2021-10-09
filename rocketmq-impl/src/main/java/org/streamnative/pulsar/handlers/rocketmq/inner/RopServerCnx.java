@@ -254,10 +254,12 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 offsetFuture = messageIdFuture.thenApply((Function<MessageId, Long>) messageId -> {
                     try {
                         if (messageId == null) {
+                            log.warn("Rop send delay message error, messageId is null.");
                             return -1L;
                         }
                         return MessageIdUtils.getOffset((MessageIdImpl) messageId);
                     } catch (Exception e) {
+                        log.warn("Rop send delay message error.", e);
                         return -1L;
                     }
                 });
@@ -268,7 +270,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
              */
             Preconditions.checkNotNull(offsetFuture);
             offsetFuture.whenCompleteAsync((offset, t) -> {
-                if (t != null) {
+                if (t != null || offset == null || offset == -1L) {
                     log.warn("[{}] PutMessage error.", rmqTopic.getPulsarFullName(), t);
 
                     PutMessageStatus status = PutMessageStatus.FLUSH_DISK_TIMEOUT;
