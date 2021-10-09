@@ -42,7 +42,7 @@
         <redirectTestOutputToFile>true</redirectTestOutputToFile>
         <maven-surefire-plugin.version>3.0.0-M1</maven-surefire-plugin.version>
 
-        <commons-lang3.version>3.4</commons-lang3.version>
+        <commons-lang3.version>3.11</commons-lang3.version>
         <guava.version>21.0</guava.version>
         <grpc.version>1.18.0</grpc.version>
         <jackson.version>2.12.1</jackson.version>

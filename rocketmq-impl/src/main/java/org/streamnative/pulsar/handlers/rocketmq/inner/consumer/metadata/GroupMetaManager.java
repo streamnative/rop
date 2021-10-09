@@ -103,12 +103,12 @@ public class GroupMetaManager {
         this.pulsarTopicCache = new ConcurrentHashMap<>(ROP_CACHE_INITIAL_SIZE);
         this.offsetTable = CacheBuilder.newBuilder()
                 .initialCapacity(ROP_CACHE_INITIAL_SIZE)
-                .expireAfterAccess(ROP_OFFSET_CACHE_EXPIRE_TIME_MS, TimeUnit.MILLISECONDS)
+                .expireAfterAccess(offsetsRetentionMs, TimeUnit.MILLISECONDS)
                 .removalListener((RemovalListener<GroupOffsetKey, GroupOffsetValue>) listener -> {
                     GroupOffsetKey key = listener.getKey();
                     GroupOffsetValue value = listener.getValue();
-                    log.info("Begin to remove GroupOffsetKey[{}] with GroupOffsetValue[{}].", key, value);
                     if (System.currentTimeMillis() >= value.getExpireTimestamp()) {
+                        log.info("Begin to remove GroupOffsetKey[{}] with GroupOffsetValue[{}].", key, value);
                         try {
                             Producer<ByteBuffer> producer = GroupMetaManager.this.groupOffsetProducer;
                             if (producer != null && producer.isConnected()) {
@@ -119,9 +119,6 @@ public class GroupMetaManager {
                         } catch (Exception e) {
                             log.warn("remove expired-group-offset-key[{}] error.", key, e);
                         }
-                    } else {
-                        log.info("group-offset-key[{}] haven't expired and rejoin to cache.", key);
-                        GroupMetaManager.this.getOffsetTable().put(key, value);
                     }
                 }).build();
     }
@@ -263,7 +260,7 @@ public class GroupMetaManager {
 
                     PersistentTopic persistentTopic = null;
                     try {
-                        persistentTopic = getPulsarPersistentTopic(new ClientTopicName(pulsarTopicName),
+                        persistentTopic = getPulsarPersistentTopic(new ClientTopicName(TopicName.get(pulsarTopicName)),
                                 pulsarTopicPartitionId);
                     } catch (Exception e) {
                         log.warn("[{}] getPulsarPersistentTopic [{}] error.", pulsarTopicName, offset, e);
