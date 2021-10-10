@@ -105,10 +105,10 @@ public class PullRequestHoldService extends ServiceThread {
                     ClientTopicName clientTopicName = new ClientTopicName(topic);
                     if (this.brokerController.getTopicConfigManager()
                             .isPartitionTopicOwner(clientTopicName.toPulsarTopicName(), queueId)) {
-                        offset = this.brokerController.getConsumerOffsetManager()
-                                .getMaxOffsetInQueue(new ClientTopicName(topic), queueId);
+                       /*TODO offset = this.brokerController.getConsumerOffsetManager()
+                                .getMaxOffsetInQueue(new ClientTopicName(topic), queueId);*/
                     }
-                } catch (RopPersistentTopicException e) {
+                } catch (Exception e) {
                     //
                 }
                 try {

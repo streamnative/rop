@@ -162,18 +162,11 @@ public class CommonUtils {
 
     public static MessageExt decode(
             ByteBuf byteBuf, boolean readBody,
-            boolean deCompressBody, boolean isClient) {
-        return decode(byteBuf, readBody, deCompressBody);
-    }
-
-    public static MessageExt decode(
-            ByteBuf byteBuf, boolean readBody,
             final boolean deCompressBody) {
         Preconditions.checkArgument(byteBuf != null && byteBuf.readableBytes() > 0);
         try {
             MessageExt msgExt = new MessageExt();
 
-            byteBuf.skipBytes(8);
             // 1 TOTALSIZE
             int storeSize = byteBuf.readInt();
             msgExt.setStoreSize(storeSize);

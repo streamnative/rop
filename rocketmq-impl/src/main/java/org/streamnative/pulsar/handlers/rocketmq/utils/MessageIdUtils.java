@@ -110,25 +110,21 @@ public class MessageIdUtils {
     }
 
 
-    public static long getCurrentOffset(ManagedLedger managedLedger) {
+    public static long getLastMessageIndex(ManagedLedger managedLedger) {
         return ((ManagedLedgerInterceptorImpl) managedLedger.getManagedLedgerInterceptor()).getIndex();
     }
 
+    public static boolean hasMessagesInQueue(ManagedLedger managedLedger) {
+        return getLastMessageIndex(managedLedger) >= 0;
+    }
+
     public static long getLogEndOffset(ManagedLedger managedLedger) {
-        return getCurrentOffset(managedLedger) + 1;
+        return getLastMessageIndex(managedLedger) + 1;
     }
 
     public static PositionImpl getFirstPosition(ManagedLedger managedLedger) {
         PositionImpl firstPosition = ((ManagedLedgerImpl) managedLedger).getFirstPosition();
-        if (firstPosition == null) {
-            return null;
-        } else {
-            return ((ManagedLedgerImpl) managedLedger).getNextValidPosition(firstPosition);
-        }
-    }
-
-    public static PositionImpl getLastPosition(ManagedLedger managedLedger) {
-        return (PositionImpl) managedLedger.getLastConfirmedEntry();
+        return (firstPosition == null) ? null : ((ManagedLedgerImpl) managedLedger).getNextValidPosition(firstPosition);
     }
 
     public static long getPublishTime(final ByteBuf byteBuf) {
@@ -142,10 +138,12 @@ public class MessageIdUtils {
     public static long getQueueOffsetByPosition(PersistentTopic pulsarTopic, Position pulsarPosition) {
         Preconditions.checkNotNull(pulsarTopic);
         Preconditions.checkArgument(pulsarPosition instanceof PositionImpl);
-        Long queueOffset = -1L;
+        Long queueOffset = 0L;
         try {
             ManagedLedgerImpl managedLedger = (ManagedLedgerImpl) pulsarTopic.getManagedLedger();
-            queueOffset = getOffsetOfPosition(managedLedger, (PositionImpl) pulsarPosition, false, -1).join();
+            queueOffset =
+                    hasMessagesInQueue(managedLedger) ? getOffsetOfPosition(managedLedger, (PositionImpl) pulsarPosition, false,
+                            -1).join() : queueOffset;
         } catch (Exception e) {
         }
         return queueOffset;
@@ -160,6 +158,7 @@ public class MessageIdUtils {
         managedLedger.asyncReadEntry(position, new AsyncCallbacks.ReadEntryCallback() {
             @Override
             public void readEntryFailed(ManagedLedgerException exception, Object ctx) {
+                log.debug("{}--->{}", managedLedger.toString(), position);
                 future.completeExceptionally(exception);
             }
 

@@ -144,7 +144,11 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
     @Override
     public MessageExt decodeMessageByPulsarEntry(TopicName pulsarPartitionedTopic, Entry msgEntry) {
         ByteBuf msgBuff = decodePulsarMessage(pulsarPartitionedTopic, msgEntry.getDataBuffer(), null);
-        return CommonUtils.decode(msgBuff, true, false);
+        try {
+            return CommonUtils.decode(msgBuff, true, false);
+        } finally {
+            msgBuff.release();
+        }
     }
 
     public ByteBuf decodePulsarMessage(TopicName partitionedTopicName, ByteBuf headersAndPayload,
