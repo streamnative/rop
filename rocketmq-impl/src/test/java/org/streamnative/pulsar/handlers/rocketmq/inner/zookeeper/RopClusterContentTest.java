@@ -91,10 +91,12 @@ public class RopClusterContentTest {
             }
             return oldValue;
         });
+        brokers2.add("1.1.1.3:9876");
         brokers2.add("1.1.1.2:9876");
         brokers2.add("1.1.1.1:9876");
-        brokers2.add("1.1.1.3:9876");
 
+        assertEquals(clusterContent1.getClusterName(), clusterContent2.getClusterName());
+        assertEquals(clusterContent1.getBrokerCluster().size(), clusterContent2.getBrokerCluster().size());
         assertEquals(clusterContent1, clusterContent2);
     }
 
