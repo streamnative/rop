@@ -163,7 +163,7 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
         }
         // read long tag
         headersAndPayload.readLong();
-        ByteBuf slice = headersAndPayload.retainedSlice();
+        ByteBuf slice = headersAndPayload.retainedSlice(headersAndPayload.readerIndex(), headersAndPayload.readableBytes());
         // set offset
         slice.setLong(20, index);
 

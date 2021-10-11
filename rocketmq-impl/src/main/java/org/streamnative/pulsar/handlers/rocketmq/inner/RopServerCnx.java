@@ -464,7 +464,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         return brokerController.getRopBrokerProxy().getPulsarClient().newProducer()
                 .topic(pTopic)
                 .maxPendingMessages(maxPendingMessages)
-                .producerName(producerGroup + CommonUtils.UNDERSCORE_CHAR + producerId)
+                .producerName(producerGroup + CommonUtils.UNDERSCORE_CHAR + System.currentTimeMillis())
                 .sendTimeout(sendTimeoutInSec, TimeUnit.SECONDS)
                 .enableBatching(true)
                 .blockIfQueueFull(false)
@@ -555,6 +555,9 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                     .getPulsarPersistentTopic(clientTopicName, commitLogOffset.getPartitionId());
             PositionImpl positionForOffset = MessageIdUtils
                     .getPositionForOffset(persistentTopic.getManagedLedger(), commitLogOffset.getQueueOffset());
+            Preconditions.checkNotNull(positionForOffset,
+                    String.format("lookMessageByCommitLogOffset [topic:%s, partitionId:%d, offset:%d] not found.",
+                            topic, commitLogOffset.getPartitionId(), commitLogOffset.getQueueOffset()));
             CompletableFuture<MessageExt> messageFuture = new CompletableFuture<>();
             persistentTopic.asyncReadEntry(positionForOffset,
                     new ReadEntryCallback() {
@@ -627,6 +630,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                     .getMaxOffsetInQueue(new ClientTopicName(topicName), pulsarPartitionId);
             minOffset = this.brokerController.getConsumerOffsetManager()
                     .getMinOffsetInQueue(new ClientTopicName(topicName), pulsarPartitionId);
+            minOffset = Math.min(minOffset, queueOffset);
         } catch (Exception e) {
             throw new RuntimeException();
         }
@@ -635,7 +639,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         PositionImpl startPosition;
         if (queueOffset <= MessageIdUtils.MIN_ROP_OFFSET) {
             startPosition = PositionImpl.earliest;
-        } else if (queueOffset > MessageIdUtils.getLogEndOffset(managedLedger)) {
+        } else if (queueOffset > maxOffset) {
             startPosition = PositionImpl.latest;
         } else {
             startPosition = MessageIdUtils.getPositionForOffset(managedLedger, queueOffset);
