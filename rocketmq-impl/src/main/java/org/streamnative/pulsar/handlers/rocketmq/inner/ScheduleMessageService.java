@@ -20,18 +20,17 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.pulsar.broker.PulsarServerException;
-import org.apache.pulsar.broker.PulsarService;
-import org.apache.pulsar.broker.service.BrokerService;
 import org.apache.pulsar.client.admin.PulsarAdmin;
 import org.apache.pulsar.client.api.Consumer;
 import org.apache.pulsar.client.api.DeadLetterPolicy;
@@ -63,8 +62,8 @@ import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 @Slf4j
 public class ScheduleMessageService {
 
-    private static final long FIRST_DELAY_TIME = 1000L;
-    private static final long DELAY_FOR_A_WHILE = 200L;
+    private static final long FIRST_DELAY_TIME = 200L;
+    private static final long DELAY_FOR_A_WHILE = 500L;
     private static final long DELAY_FOR_A_PERIOD = 10000L;
     private static final int MAX_FETCH_MESSAGE_NUM = 100;
     /*  key is delayed level  value is delay timeMillis */
@@ -73,11 +72,10 @@ public class ScheduleMessageService {
     private final RocketMQServiceConfiguration config;
     private final RocketMQBrokerController rocketBroker;
     private final ServiceThread expirationReaper;
-    private final Timer timer = new Timer();
+    private final ScheduledExecutorService timer = Executors.newSingleThreadScheduledExecutor();
     private final Map<String, Producer<byte[]>> sendBackProducers;
     private final String scheduleTopicPrefix;
     private String[] delayLevelArray;
-    private BrokerService pulsarBroker;
     private List<DeliverDelayedMessageTimerTask> deliverDelayedMessageManager;
 
     public ScheduleMessageService(final RocketMQBrokerController rocketBroker, RocketMQServiceConfiguration config) {
@@ -137,14 +135,14 @@ public class ScheduleMessageService {
 
     public void start() throws Exception {
         if (started.compareAndSet(false, true)) {
-            this.pulsarBroker = rocketBroker.getBrokerService();
             this.createDelayedSubscription();
             this.deliverDelayedMessageManager = delayLevelTable.keySet().stream()
                     .collect(ArrayList::new, (arr, level) -> {
                         arr.add(new DeliverDelayedMessageTimerTask(level));
                     }, ArrayList::addAll);
             this.deliverDelayedMessageManager
-                    .forEach((i) -> this.timer.schedule(i, FIRST_DELAY_TIME, DELAY_FOR_A_WHILE));
+                    .forEach((i) -> this.timer
+                            .scheduleWithFixedDelay(i, FIRST_DELAY_TIME, DELAY_FOR_A_WHILE, TimeUnit.MILLISECONDS));
             this.expirationReaper.start();
         }
     }
@@ -154,7 +152,7 @@ public class ScheduleMessageService {
             expirationReaper.shutdown();
             deliverDelayedMessageManager.forEach(DeliverDelayedMessageTimerTask::close);
             sendBackProducers.values().forEach(Producer::closeAsync);
-            timer.cancel();
+            timer.shutdownNow();
         }
     }
 
@@ -192,16 +190,15 @@ public class ScheduleMessageService {
 
         private static final int PULL_MESSAGE_TIMEOUT_MS = 500;
         private static final int SEND_MESSAGE_TIMEOUT_MS = 3000;
-        private final PulsarService pulsarService;
         private final RocketMQBrokerController rocketBroker;
         private final int delayLevel;
         private final RopEntryFormatter formatter = new RopEntryFormatter();
         private final SystemTimer timeoutTimer;
         private Consumer<byte[]> delayedConsumer = null;
+        final AtomicInteger msgNum = new AtomicInteger(0);
 
         public DeliverDelayedMessageTimerTask(int delayLevel) {
             this.delayLevel = delayLevel;
-            this.pulsarService = ScheduleMessageService.this.pulsarBroker.pulsar();
             this.rocketBroker = ScheduleMessageService.this.rocketBroker;
             this.timeoutTimer = SystemTimer.builder().executorName("DeliverDelayedMessageTimeWheelExecutor").build();
         }
@@ -220,8 +217,8 @@ public class ScheduleMessageService {
         @Override
         public void run() {
             try {
-                createConsumer();
-                AtomicInteger msgNum = new AtomicInteger(0);
+                createConsumerIfNotExists();
+                msgNum.set(0);
                 while (msgNum.get() < config.getMaxScheduleMsgBatchSize()
                         && timeoutTimer.size() < config.getMaxScheduleMsgBatchSize()
                         && ScheduleMessageService.this.isStarted()) {
@@ -235,7 +232,7 @@ public class ScheduleMessageService {
                     messages.forEach(message -> {
                         MessageExt messageExt = this.formatter.decodePulsarMessage(message);
                         long deliveryTime = computeDeliverTimestamp(this.delayLevel,
-                                messageExt.getStoreTimestamp());
+                                messageExt.getBornTimestamp());
                         long diff = deliveryTime - Instant.now().toEpochMilli();
                         diff = diff < 0 ? 0 : diff;
                         log.debug(
@@ -262,18 +259,22 @@ public class ScheduleMessageService {
                                             }
 
                                             RocketMQTopic rmqTopic = new RocketMQTopic(msgInner.getTopic());
-                                            String pTopic = rmqTopic.getPartitionName(msgInner.getQueueId());
+                                            String pTopic = rmqTopic.getPulsarFullName();
                                             Producer<byte[]> producer = getProducerFromCache(pTopic);
-                                            CompletableFuture<MessageId> sendFuture = producer.newMessage()
+                                            producer.newMessage()
                                                     .value(formatter.encode(msgInner, 1).get(0))
-                                                    .sendAsync();
-                                            sendFuture.whenCompleteAsync((msgId, ex) -> {
-                                                if (ex == null) {
-                                                    delayedConsumer.acknowledgeAsync(message);
-                                                } else {
-                                                    delayedConsumer.negativeAcknowledge(message);
-                                                }
-                                            });
+                                                    .sendAsync()
+                                                    .whenCompleteAsync((msgId, ex) -> {
+                                                        if (ex == null) {
+                                                            rocketBroker.getMessageArrivingListener()
+                                                                    .arriving(msgInner.getTopic(),
+                                                                            msgInner.getQueueId(), -1, 0, 0,
+                                                                            null, null);
+                                                            delayedConsumer.acknowledgeAsync(message);
+                                                        } else {
+                                                            delayedConsumer.negativeAcknowledge(message);
+                                                        }
+                                                    });
                                         } catch (Exception ex) {
                                             log.warn("delayedMessageSender send message[{}] failed.",
                                                     message.getMessageId(), ex);
@@ -311,7 +312,7 @@ public class ScheduleMessageService {
             return producer;
         }
 
-        private void createConsumer() {
+        private void createConsumerIfNotExists() {
             try {
                 if (delayedConsumer != null) {
                     return;

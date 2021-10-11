@@ -123,7 +123,7 @@ public class ConsumerOffsetManager {
                 } catch (Exception ex) {
                     log.warn("get Pulsar Topic PartitionId error: ", ex);
                 }
-                for (Map.Entry<GroupOffsetKey, GroupOffsetValue> entry: groupOffsetMap.entrySet()) {
+                for (Map.Entry<GroupOffsetKey, GroupOffsetValue> entry : groupOffsetMap.entrySet()) {
                     if (entry.getValue().getOffset() >= minOffset) {
                         queueMinOffset.merge(entry.getKey().getQueueId(),
                                 entry.getValue().getOffset(), (a, b) -> Math.min(b, a));
@@ -184,7 +184,6 @@ public class ConsumerOffsetManager {
             throws RopPersistentTopicException {
         PersistentTopic persistentTopic = getPulsarPersistentTopic(clientTopicName, pulsarPartitionId);
         PositionImpl firstPosition = MessageIdUtils.getFirstPosition(persistentTopic.getManagedLedger());
-        assert firstPosition != null;
         return MessageIdUtils.getQueueOffsetByPosition(persistentTopic, firstPosition);
     }
 

@@ -123,8 +123,11 @@ public class MessageIdUtils {
     }
 
     public static PositionImpl getFirstPosition(ManagedLedger managedLedger) {
-        PositionImpl firstPosition = ((ManagedLedgerImpl) managedLedger).getFirstPosition();
-        return (firstPosition == null) ? null : ((ManagedLedgerImpl) managedLedger).getNextValidPosition(firstPosition);
+        ManagedLedgerImpl managedLedgerImpl = (ManagedLedgerImpl) managedLedger;
+        Long ledgeId = managedLedgerImpl.getLedgersInfo().firstKey();
+        Preconditions.checkNotNull(ledgeId);
+        PositionImpl firstPosition = new PositionImpl(ledgeId, -1);
+        return managedLedgerImpl.getNextValidPosition(firstPosition);
     }
 
     public static long getPublishTime(final ByteBuf byteBuf) {
@@ -138,12 +141,11 @@ public class MessageIdUtils {
     public static long getQueueOffsetByPosition(PersistentTopic pulsarTopic, Position pulsarPosition) {
         Preconditions.checkNotNull(pulsarTopic);
         Preconditions.checkArgument(pulsarPosition instanceof PositionImpl);
-        Long queueOffset = 0L;
+        Long queueOffset = getLogEndOffset(pulsarTopic.getManagedLedger());
         try {
             ManagedLedgerImpl managedLedger = (ManagedLedgerImpl) pulsarTopic.getManagedLedger();
-            queueOffset =
-                    hasMessagesInQueue(managedLedger) ? getOffsetOfPosition(managedLedger,
-                            (PositionImpl) pulsarPosition, false, -1).join() : queueOffset;
+            return getOffsetOfPosition(managedLedger,
+                    (PositionImpl) pulsarPosition, false, -1).join();
         } catch (Exception e) {
             log.warn("get offset of position error: ", e);
         }
@@ -177,7 +179,6 @@ public class MessageIdUtils {
                     } else {
                         future.complete(peekBaseOffsetFromEntry(entry));
                     }
-
                 } catch (Exception e) {
                     future.completeExceptionally(e);
                 } finally {

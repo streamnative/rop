@@ -630,12 +630,10 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                     .getMaxOffsetInQueue(new ClientTopicName(topicName), pulsarPartitionId);
             minOffset = this.brokerController.getConsumerOffsetManager()
                     .getMinOffsetInQueue(new ClientTopicName(topicName), pulsarPartitionId);
-            minOffset = Math.min(minOffset, queueOffset);
         } catch (Exception e) {
             throw new RuntimeException();
         }
         ManagedLedger managedLedger = persistentTopic.getManagedLedger();
-
         PositionImpl startPosition;
         if (queueOffset <= MessageIdUtils.MIN_ROP_OFFSET) {
             startPosition = PositionImpl.earliest;

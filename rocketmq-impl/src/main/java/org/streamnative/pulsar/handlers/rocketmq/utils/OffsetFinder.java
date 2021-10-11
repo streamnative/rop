@@ -49,15 +49,6 @@ public class OffsetFinder implements FindEntryCallback {
         this.managedLedger = managedLedger;
     }
 
-    public static PositionImpl getFirstValidPosition(ManagedLedgerImpl managedLedger) {
-        PositionImpl firstPosition = managedLedger.getFirstPosition();
-        if (firstPosition == null) {
-            return null;
-        } else {
-            return managedLedger.getNextValidPosition(firstPosition);
-        }
-    }
-
     public void findMessages(final long timestamp, FindEntryCallback callback) {
         this.timestamp = timestamp;
         if (messageFindInProgressUpdater.compareAndSet(this, FALSE, TRUE)) {
