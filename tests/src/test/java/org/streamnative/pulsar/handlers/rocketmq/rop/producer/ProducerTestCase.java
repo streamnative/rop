@@ -36,6 +36,7 @@ import org.testng.annotations.Test;
 public class ProducerTestCase extends RocketMQTestBase {
 
     @Test(timeOut = 1000 * 60)
+    @Ignore
     public void simpleProducerTest() throws Exception {
         DefaultMQProducer producer = new DefaultMQProducer("test_producer_group_name");
         String nameSrvAddr = "127.0.0.1:" + getRocketmqBrokerPortList().get(0);
@@ -71,6 +72,7 @@ public class ProducerTestCase extends RocketMQTestBase {
     }
 
     @Test(timeOut = 1000 * 60)
+    @Ignore
     public void producerWithNamespace() throws Exception{
         DefaultMQProducer producer = new DefaultMQProducer("test1|InstanceTest", "pidTest");
         String nameSrvAddr = "127.0.0.1:" + getRocketmqBrokerPortList().get(0);
