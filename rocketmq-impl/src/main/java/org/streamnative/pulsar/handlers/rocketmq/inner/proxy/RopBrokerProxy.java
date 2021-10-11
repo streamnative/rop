@@ -149,9 +149,7 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                 .getPulsarTopicRoute(pulsarTopicName, Strings.EMPTY);
         Preconditions.checkArgument(pulsarTopicRoute != null && !pulsarTopicRoute.isEmpty());
         List<Integer> pulsarPartitionIdList = pulsarTopicRoute.get(this.brokerTag);
-        Preconditions.checkArgument(pulsarPartitionIdList != null
-                && !pulsarPartitionIdList.isEmpty()
-                && queueId < pulsarPartitionIdList.size());
+        Preconditions.checkArgument(!pulsarPartitionIdList.isEmpty() && queueId < pulsarPartitionIdList.size());
         return pulsarPartitionIdList.get(queueId);
     }
 
@@ -317,27 +315,20 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
             long timeoutTime = System.currentTimeMillis() + timeout;
             brokerNetworkClients.invokeAsync(address, cmd, timeout, (responseFuture) -> {
                 RemotingCommand pullResponse = responseFuture.getResponseCommand();
-                if (pullResponse != null) {
-                    if (pullResponse.getCode() == ResponseCode.SUCCESS) {
-                        ctx.writeAndFlush(pullResponse);
-                    } else {
-                        //maybe partitioned topic have transfer to other broker, invalidate cache at once.
-                        ownedBrokerCache.invalidate(partitionedTopicName);
-                        log.info("processNonOwnedBrokerPullRequest failed and retry, {} {}", pullResponse.getCode(),
-                                pullResponse.getRemark());
-                        long curTime = System.currentTimeMillis();
-                        if (curTime < timeoutTime) {
-                            processNonOwnedBrokerSendRequest(ctx, cmd, pulsarTopicName,
-                                    timeoutTime - curTime);
-                        } else {
-                            ctx.writeAndFlush(pullResponse);
-                        }
-                    }
-                } else {
-                    log.warn("getPullResponseCommand return null");
-                    pullResponse.setCode(ResponseCode.SYSTEM_ERROR);
-                    pullResponse.setRemark("getPullResponseCommand return null");
+                if (pullResponse.getCode() == ResponseCode.SUCCESS) {
                     ctx.writeAndFlush(pullResponse);
+                } else {
+                    //maybe partitioned topic have transfer to other broker, invalidate cache at once.
+                    ownedBrokerCache.invalidate(partitionedTopicName);
+                    log.info("processNonOwnedBrokerPullRequest failed and retry, {} {}", pullResponse.getCode(),
+                            pullResponse.getRemark());
+                    long curTime = System.currentTimeMillis();
+                    if (curTime < timeoutTime) {
+                        processNonOwnedBrokerSendRequest(ctx, cmd, pulsarTopicName,
+                                timeoutTime - curTime);
+                    } else {
+                        ctx.writeAndFlush(pullResponse);
+                    }
                 }
             });
         } catch (Exception e) {

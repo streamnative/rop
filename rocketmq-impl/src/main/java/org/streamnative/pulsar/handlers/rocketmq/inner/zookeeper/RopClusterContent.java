@@ -40,7 +40,7 @@ public class RopClusterContent {
 
     public Map<String, List<Integer>> createTopicRouteMap(int partitionNum) {
         Preconditions
-                .checkArgument(brokerCluster != null && brokerCluster.size() > 0, "Rop Cluster config haven't be set.");
+                .checkArgument(brokerCluster.size() > 0, "Rop Cluster config haven't be set.");
         Preconditions.checkArgument(partitionNum > 0, "the num of top partition must be more than zero.");
         int brokerGroupNum = brokerCluster.entrySet().size();
         int size = partitionNum / brokerGroupNum;
