@@ -340,12 +340,12 @@ public class GroupMetaManager {
 
     public void shutdown() {
         if (isRunning) {
+            isRunning = false;
             persistOffsetExecutor.shutdown();
             offsetReaderExecutor.shutdown();
 
             groupOffsetProducer.closeAsync();
             groupOffsetReader.closeAsync();
-            isRunning = false;
         }
     }
 

@@ -466,7 +466,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 .maxPendingMessages(maxPendingMessages)
                 .producerName(producerGroup + CommonUtils.UNDERSCORE_CHAR + System.currentTimeMillis())
                 .sendTimeout(sendTimeoutInSec, TimeUnit.SECONDS)
-                .enableBatching(true)
+                .enableBatching(false)
                 .blockIfQueueFull(false)
                 .create();
     }

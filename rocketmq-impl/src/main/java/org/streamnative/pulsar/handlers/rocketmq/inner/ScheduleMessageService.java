@@ -300,7 +300,7 @@ public class ScheduleMessageService {
                     return rocketBroker.getRopBrokerProxy().getPulsarClient().newProducer()
                             .topic(pulsarTopic)
                             .producerName(pulsarTopic + "_delayedMessageSender")
-                            .enableBatching(true)
+                            .enableBatching(false)
                             .sendTimeout(SEND_MESSAGE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
                             .create();
                 } catch (Exception e) {
@@ -321,6 +321,7 @@ public class ScheduleMessageService {
                         pulsarClient.getConfiguration());
                 this.delayedConsumer = rocketBroker.getRopBrokerProxy().getPulsarClient()
                         .newConsumer()
+                        .ackTimeout(2, TimeUnit.HOURS)
                         .receiverQueueSize(MAX_FETCH_MESSAGE_NUM)
                         .subscriptionMode(SubscriptionMode.Durable)
                         .subscriptionType(SubscriptionType.Shared)
