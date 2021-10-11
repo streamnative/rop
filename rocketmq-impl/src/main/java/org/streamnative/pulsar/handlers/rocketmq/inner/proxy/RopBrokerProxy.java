@@ -118,8 +118,6 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
     private final MQTopicManager mqTopicManager;
     private final ThreadLocal<RemotingCommand> sendResponseThreadLocal = ThreadLocal
             .withInitial(() -> RemotingCommand.createResponseCommand(SendMessageResponseHeader.class));
-    private final ThreadLocal<RemotingCommand> consumeResponseThreadLocal = ThreadLocal
-            .withInitial(() -> RemotingCommand.createResponseCommand(PullMessageResponseHeader.class));
     private final ThreadLocal<PulsarClientImpl> pulsarClientThreadLocal = new ThreadLocal<>();
     private final Cache<TopicName, String> ownedBrokerCache = CacheBuilder.newBuilder()
             .initialCapacity(ROP_CACHE_INITIAL_SIZE).maximumSize(ROP_CACHE_MAX_SIZE)
@@ -158,23 +156,16 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
     public void processRequestCommand(ChannelHandlerContext ctx, RemotingCommand cmd) throws RemotingCommandException {
         switch (cmd.getCode()) {
             case PULL_MESSAGE:
-                RemotingCommand pullResponse = sendResponseThreadLocal.get();
-                pullResponse.setCode(-1);
-                if (pullResponse.getCode() != -1) {
-                    //fail to msgCheck and flush error at once;
-                    ctx.writeAndFlush(pullResponse);
+                PullMessageRequestHeader pullMsgHeader =
+                        (PullMessageRequestHeader) cmd.decodeCommandCustomHeader(PullMessageRequestHeader.class);
+                RocketMQTopic rmqTopic = new RocketMQTopic(pullMsgHeader.getTopic());
+                TopicName pulsarTopicName = rmqTopic.getPulsarTopicName();
+                boolean isOwnedBroker = checkTopicOwnerBroker(cmd, rmqTopic.getPulsarTopicName(),
+                        pullMsgHeader.getQueueId());
+                if (isOwnedBroker) {
+                    super.processRequestCommand(ctx, cmd);
                 } else {
-                    PullMessageRequestHeader pullMsgHeader =
-                            (PullMessageRequestHeader) cmd.decodeCommandCustomHeader(PullMessageRequestHeader.class);
-                    RocketMQTopic rmqTopic = new RocketMQTopic(pullMsgHeader.getTopic());
-                    TopicName pulsarTopicName = rmqTopic.getPulsarTopicName();
-                    boolean isOwnedBroker = checkTopicOwnerBroker(cmd, rmqTopic.getPulsarTopicName(),
-                            pullMsgHeader.getQueueId());
-                    if (isOwnedBroker) {
-                        super.processRequestCommand(ctx, cmd);
-                    } else {
-                        processNonOwnedBrokerPullRequest(ctx, cmd, pulsarTopicName, INTERNAL_REDIRECT_TIMEOUT_MS);
-                    }
+                    processNonOwnedBrokerPullRequest(ctx, cmd, pulsarTopicName, INTERNAL_REDIRECT_TIMEOUT_MS);
                 }
                 break;
             case SEND_MESSAGE:
@@ -190,9 +181,9 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                     SendMessageProcessor
                             .msgCheck(brokerController.getServerConfig(), mqTopicManager, ctx, sendHeader,
                                     sendResponse);
-                    RocketMQTopic rmqTopic = new RocketMQTopic(sendHeader.getTopic());
-                    TopicName pulsarTopicName = rmqTopic.getPulsarTopicName();
-                    boolean isOwnedBroker = checkTopicOwnerBroker(cmd, pulsarTopicName,
+                    rmqTopic = new RocketMQTopic(sendHeader.getTopic());
+                    pulsarTopicName = rmqTopic.getPulsarTopicName();
+                    isOwnedBroker = checkTopicOwnerBroker(cmd, pulsarTopicName,
                             sendHeader.getQueueId());
                     if (isOwnedBroker) {
                         super.processRequestCommand(ctx, cmd);
@@ -203,6 +194,7 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                 break;
             case QUERY_MESSAGE:
                 // TODO: not to support in the version
+                break;
             case CONSUMER_SEND_MSG_BACK: //TODO: CommitLogOffset 0
                 break;
             default:
@@ -281,7 +273,6 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                     }
                 } else {
                     log.warn("getPullResponseCommand return null");
-                    pullResponse = consumeResponseThreadLocal.get();
                     pullResponse.setCode(ResponseCode.SYSTEM_ERROR);
                     pullResponse.setRemark("getPullResponseCommand return null");
                     ctx.writeAndFlush(pullResponse);
@@ -289,7 +280,7 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
             });
         } catch (Exception e) {
             log.warn("BrokerNetworkAPI invokeAsync error.", e);
-            RemotingCommand consumeResponse = consumeResponseThreadLocal.get();
+            RemotingCommand consumeResponse = RemotingCommand.createResponseCommand(PullMessageResponseHeader.class);
             consumeResponse.setCode(ResponseCode.SYSTEM_ERROR);
             consumeResponse.setRemark("BrokerNetworkAPI invokeAsync error");
             ctx.writeAndFlush(consumeResponse);
