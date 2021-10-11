@@ -165,6 +165,9 @@ public class RocketMQProtocolHandler implements ProtocolHandler {
 
     @Override
     public void close() {
-        // no-on
+        log.info("Shutdown rop.");
+        if (rocketmqBroker != null) {
+            rocketmqBroker.shutdown();
+        }
     }
 }
