@@ -232,7 +232,7 @@ public class ScheduleMessageService {
                     messages.forEach(message -> {
                         MessageExt messageExt = this.formatter.decodePulsarMessage(message);
                         long deliveryTime = computeDeliverTimestamp(this.delayLevel,
-                                messageExt.getBornTimestamp());
+                                messageExt.getStoreTimestamp());
                         long diff = deliveryTime - Instant.now().toEpochMilli();
                         diff = diff < 0 ? 0 : diff;
                         log.debug(

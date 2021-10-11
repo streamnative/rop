@@ -147,7 +147,7 @@ public class MessageIdUtils {
             return getOffsetOfPosition(managedLedger,
                     (PositionImpl) pulsarPosition, false, -1).join();
         } catch (Exception e) {
-            log.warn("get offset of position error: ", e);
+            log.warn("get offset of position[{}] error.", pulsarPosition);
         }
         return queueOffset;
     }
