@@ -746,9 +746,8 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
             }
 
             // TODO: please set topicBrokerAddr
-            Map<String, List<Integer>> topicBrokerAddr = null;
-                    /*brokerController.getTopicConfigManager()
-                    .getTopicRoute(topicName, Strings.EMPTY);*/
+            Map<String, List<Integer>> topicBrokerAddr =
+                    brokerController.getTopicConfigManager().getPulsarTopicRoute(topicName, Strings.EMPTY);
             List<Integer> queueList = topicBrokerAddr.get(brokerController.getBrokerHost());
 
             if (queueList == null) {

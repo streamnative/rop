@@ -46,7 +46,6 @@ import org.apache.pulsar.client.api.Producer;
 import org.apache.pulsar.client.api.PulsarClient;
 import org.apache.pulsar.client.api.Reader;
 import org.apache.pulsar.client.api.Schema;
-import org.apache.pulsar.client.impl.MessageIdImpl;
 import org.apache.pulsar.common.api.proto.CommandSubscribe.InitialPosition;
 import org.apache.pulsar.common.naming.TopicName;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
@@ -250,70 +249,63 @@ public class GroupMetaManager {
                 long offset = groupOffsetValue.getOffset();
                 storeOffset(groupOffsetKey, groupOffsetValue);
 
+                int pulsarTopicPartitionId = brokerController.getRopBrokerProxy()
+                        .getPulsarTopicPartitionId(TopicName.get(pulsarTopicName), queueId);
+                if (!this.brokerController.getTopicConfigManager().isPartitionTopicOwner(
+                        TopicName.get(pulsarTopicName), pulsarTopicPartitionId)) {
+                    continue;
+                }
+
+                PersistentTopic persistentTopic = null;
                 try {
-                    int pulsarTopicPartitionId = brokerController.getRopBrokerProxy()
-                            .getPulsarTopicPartitionId(TopicName.get(pulsarTopicName), queueId);
-                    if (!this.brokerController.getTopicConfigManager().isPartitionTopicOwner(
-                            TopicName.get(pulsarTopicName), pulsarTopicPartitionId)) {
-                        continue;
-                    }
-
-                    PersistentTopic persistentTopic = null;
-                    try {
-                        persistentTopic = getPulsarPersistentTopic(new ClientTopicName(TopicName.get(pulsarTopicName)),
-                                pulsarTopicPartitionId);
-                    } catch (Exception e) {
-                        log.warn("[{}] getPulsarPersistentTopic [{}] error.", pulsarTopicName, offset, e);
-                    }
-                    if (persistentTopic != null) {
-                        PersistentSubscription subscription = persistentTopic.getSubscription(pulsarGroup);
-                        if (subscription == null) {
-                            try {
-                                subscription = (PersistentSubscription) persistentTopic
-                                        .createSubscription(pulsarGroup, InitialPosition.Earliest, false)
-                                        .get();
-                            } catch (Exception e) {
-                                log.warn("[{}] createSubscription [{}] error.", pulsarTopicName, pulsarGroup, e);
-                            }
-                        }
-                        assert subscription != null;
-                        ManagedCursor cursor = subscription.getCursor();
-                        PositionImpl markDeletedPosition = (PositionImpl) cursor.getMarkDeletedPosition();
-
-                        // get position by manage ledger and offset
-                        PositionImpl commitPosition = MessageIdUtils
-                                .getPositionForOffset(persistentTopic.getManagedLedger(), offset);
-                        PositionImpl lastPosition = (PositionImpl) persistentTopic.getLastPosition();
-
-                        if (commitPosition.getEntryId() > 0) {
-                            commitPosition = MessageIdUtils
-                                    .getPositionForOffset(persistentTopic.getManagedLedger(), offset - 1);
-                        }
-
-                        if (commitPosition.compareTo(lastPosition) > 0) {
-                            commitPosition = lastPosition;
-                            offset = MessageIdUtils.getOffset(new MessageIdImpl(lastPosition.getLedgerId(),
-                                    lastPosition.getEntryId() + 1,
-                                    pulsarTopicPartitionId));
-                        }
-
-                        if (commitPosition.compareTo(markDeletedPosition) > 0) {
-                            try {
-                                cursor.markDelete(commitPosition);
-                                log.debug("[{}] [{}] Mark delete [position = {}] successfully.",
-                                        pulsarGroup, pulsarTopicName, commitPosition);
-                            } catch (Exception e) {
-                                log.info("[{}] [{}] Mark delete [position = {}] and deletedPosition[{}] error.",
-                                        pulsarGroup, pulsarTopicName, commitPosition, markDeletedPosition, e);
-                            }
-                        } else {
-                            log.debug(
-                                    "[{}] [{}] Skip mark delete for [position = {}] less than [oldPosition = {}].",
-                                    pulsarGroup, pulsarTopicName, commitPosition, markDeletedPosition);
-                        }
-                    }
+                    persistentTopic = getPulsarPersistentTopic(new ClientTopicName(TopicName.get(pulsarTopicName)),
+                            pulsarTopicPartitionId);
                 } catch (Exception e) {
-                    log.warn("persistOffset to pulsar error.");
+                    log.warn("[{}] getPulsarPersistentTopic [{}] error.", pulsarTopicName, offset, e);
+                }
+                if (persistentTopic != null) {
+                    PersistentSubscription subscription = persistentTopic.getSubscription(pulsarGroup);
+                    if (subscription == null) {
+                        try {
+                            subscription = (PersistentSubscription) persistentTopic
+                                    .createSubscription(pulsarGroup, InitialPosition.Earliest, false)
+                                    .get();
+                        } catch (Exception e) {
+                            log.warn("[{}] createSubscription [{}] error.", pulsarTopicName, pulsarGroup, e);
+                        }
+                    }
+                    assert subscription != null;
+                    ManagedCursor cursor = subscription.getCursor();
+                    PositionImpl markDeletedPosition = (PositionImpl) cursor.getMarkDeletedPosition();
+
+                    // get position by manage ledger and offset
+                    PositionImpl commitPosition = MessageIdUtils
+                            .getPositionForOffset(persistentTopic.getManagedLedger(), offset);
+                    PositionImpl lastPosition = (PositionImpl) persistentTopic.getLastPosition();
+
+                    if (commitPosition.getEntryId() > 0) {
+                        commitPosition = MessageIdUtils
+                                .getPositionForOffset(persistentTopic.getManagedLedger(), offset - 1);
+                    }
+
+                    if (commitPosition.compareTo(lastPosition) > 0) {
+                        commitPosition = lastPosition;
+                    }
+
+                    if (commitPosition.compareTo(markDeletedPosition) > 0) {
+                        try {
+                            cursor.markDelete(commitPosition);
+                            log.debug("[{}] [{}] Mark delete [position = {}] successfully.",
+                                    pulsarGroup, pulsarTopicName, commitPosition);
+                        } catch (Exception e) {
+                            log.info("[{}] [{}] Mark delete [position = {}] and deletedPosition[{}] error.",
+                                    pulsarGroup, pulsarTopicName, commitPosition, markDeletedPosition, e);
+                        }
+                    } else {
+                        log.debug(
+                                "[{}] [{}] Skip mark delete for [position = {}] less than [oldPosition = {}].",
+                                pulsarGroup, pulsarTopicName, commitPosition, markDeletedPosition);
+                    }
                 }
             }
         }

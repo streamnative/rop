@@ -194,7 +194,7 @@ public class NameserverProcessor implements NettyRequestProcessor {
             Map<String, List<Integer>> topicBrokerAddr = mqTopicManager
                     .getPulsarTopicRoute(mqTopic.getPulsarTopicName(), listenerName);
             try {
-                Preconditions.checkArgument(topicBrokerAddr != null && !topicBrokerAddr.isEmpty(),
+                Preconditions.checkArgument(!topicBrokerAddr.isEmpty(),
                         String.format("Topic(%s) route can't be found.", requestTopic));
                 topicBrokerAddr.forEach((brokerTag, queueList) -> {
                     RopClusterContent ropClusterContent = brokerProxy.getRopClusterContent();
