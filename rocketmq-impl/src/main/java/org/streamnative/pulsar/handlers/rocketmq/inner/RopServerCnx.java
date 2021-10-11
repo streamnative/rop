@@ -61,6 +61,7 @@ import org.apache.rocketmq.common.message.MessageConst;
 import org.apache.rocketmq.common.message.MessageDecoder;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageExtBatch;
+import org.apache.rocketmq.common.protocol.ResponseCode;
 import org.apache.rocketmq.common.protocol.header.ConsumerSendMsgBackRequestHeader;
 import org.apache.rocketmq.common.protocol.header.PullMessageRequestHeader;
 import org.apache.rocketmq.common.sysflag.MessageSysFlag;
@@ -91,7 +92,7 @@ import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 @Getter
 public class RopServerCnx extends ChannelInboundHandlerAdapter implements PulsarMessageStore {
 
-    private static final int sendTimeoutInSec = 30;
+    private static final int sendTimeoutInSec = 3;
     private static final int maxPendingMessages = 1000;
     private static final int fetchTimeoutInMs = 3000; // 3 sec
     private static final String ropHandlerName = "RopServerCnxHandler";
@@ -254,10 +255,12 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 offsetFuture = messageIdFuture.thenApply((Function<MessageId, Long>) messageId -> {
                     try {
                         if (messageId == null) {
+                            log.warn("Rop send delay message error, messageId is null.");
                             return -1L;
                         }
                         return MessageIdUtils.getOffset((MessageIdImpl) messageId);
                     } catch (Exception e) {
+                        log.warn("Rop send delay message error.", e);
                         return -1L;
                     }
                 });
@@ -268,7 +271,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
              */
             Preconditions.checkNotNull(offsetFuture);
             offsetFuture.whenCompleteAsync((offset, t) -> {
-                if (t != null) {
+                if (t != null || offset == null || offset == -1L) {
                     log.warn("[{}] PutMessage error.", rmqTopic.getPulsarFullName(), t);
 
                     PutMessageStatus status = PutMessageStatus.FLUSH_DISK_TIMEOUT;
@@ -281,10 +284,11 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 AppendMessageResult appendMessageResult = new AppendMessageResult(AppendMessageStatus.PUT_OK);
                 appendMessageResult.setMsgNum(1);
                 appendMessageResult.setWroteBytes(body.get(0).length);
+                CommitLogOffset commitLogOffset = new CommitLogOffset(false, partitionId, offset);
                 appendMessageResult.setMsgId(
-                        CommonUtils.createMessageId(this.ctx.channel().localAddress(), localListenPort, offset));
+                        CommonUtils.createMessageId(this.ctx.channel().localAddress(), localListenPort, commitLogOffset.getCommitLogOffset()));
                 appendMessageResult.setLogicsOffset(offset);
-                appendMessageResult.setWroteOffset(offset);
+                appendMessageResult.setWroteOffset(commitLogOffset.getCommitLogOffset());
                 PutMessageResult putMessageResult = new PutMessageResult(PutMessageStatus.PUT_OK, appendMessageResult);
 
                 callback.callback(putMessageResult);
@@ -300,6 +304,49 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         } catch (Exception e) {
             log.warn("PutMessage error.", e);
             throw e;
+        }
+    }
+
+    @Override
+    public void putSendBackMsg(MessageExtBrokerInner messageInner, String producerGroup,
+            RemotingCommand response, CompletableFuture<RemotingCommand> cmdFuture) {
+        RocketMQTopic rmqTopic = new RocketMQTopic(messageInner.getTopic());
+        String pTopic = rmqTopic.getPulsarFullName();
+        if (messageInner.getDelayTimeLevel() > 0 && !rmqTopic.isDLQTopic()) {
+            if (messageInner.getDelayTimeLevel() > this.brokerController.getServerConfig().getMaxDelayLevelNum()) {
+                messageInner.setDelayTimeLevel(this.brokerController.getServerConfig().getMaxDelayLevelNum());
+            }
+
+            pTopic = this.brokerController.getDelayedMessageService()
+                    .getDelayedTopicName(messageInner.getDelayTimeLevel());
+            MessageAccessor.putProperty(messageInner, MessageConst.PROPERTY_REAL_TOPIC, messageInner.getTopic());
+            MessageAccessor.putProperty(messageInner, MessageConst.PROPERTY_REAL_QUEUE_ID,
+                    String.valueOf(messageInner.getQueueId()));
+            messageInner.setPropertiesString(MessageDecoder.messageProperties2String(messageInner.getProperties()));
+            messageInner.setTopic(pTopic);
+        }
+
+        try {
+            long producerId = buildPulsarProducerId(pTopic);
+            Producer<byte[]> producer = getProducerFromCache(pTopic, producerGroup, producerId);
+            List<byte[]> body = this.entryFormatter.encode(messageInner, 1);
+            CompletableFuture<MessageId> messageIdFuture = producer.newMessage()
+                    .value((body.get(0)))
+                    .sendAsync();
+            messageIdFuture.whenCompleteAsync((msgId, ex) -> {
+                if (ex == null) {
+                    response.setCode(ResponseCode.SUCCESS);
+                    response.setRemark(null);
+                } else {
+                    log.warn("putSendBackMsg error. exception:{}", ex.getMessage());
+                    response.setCode(ResponseCode.SYSTEM_ERROR);
+                    response.setRemark("putSendBackMsg error:" + ex.getMessage());
+                }
+                cmdFuture.complete(response);
+            }, brokerController.getSendCallbackExecutor());
+        } catch (RopEncodeException e) {
+            log.warn("putSendBackMsg error.", e);
+            cmdFuture.completeExceptionally(e);
         }
     }
 
@@ -408,9 +455,6 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         } catch (RopEncodeException e) {
             log.warn("putMessages batchMessage encode error.", e);
             throw e;
-        } catch (PulsarServerException e) {
-            log.warn("putMessages batchMessage send error.", e);
-            throw e;
         } catch (Exception e) {
             log.warn("putMessages batchMessage error.", e);
             throw e;
@@ -418,13 +462,13 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
     }
 
     private Producer<byte[]> createNewProducer(String pTopic, String producerGroup, long producerId)
-            throws PulsarServerException, PulsarClientException {
-        return this.service.pulsar().getClient().newProducer()
+            throws PulsarClientException {
+        return brokerController.getRopBrokerProxy().getPulsarClient().newProducer()
                 .topic(pTopic)
                 .maxPendingMessages(maxPendingMessages)
                 .producerName(producerGroup + CommonUtils.UNDERSCORE_CHAR + producerId)
-                .sendTimeout(sendTimeoutInSec, TimeUnit.MILLISECONDS)
-                .enableBatching(false)
+                .sendTimeout(sendTimeoutInSec, TimeUnit.SECONDS)
+                .enableBatching(true)
                 .blockIfQueueFull(false)
                 .create();
     }
@@ -462,7 +506,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
 
     @Override
     public MessageExt lookMessageByMessageId(String originTopic, long offset) {
-        Preconditions.checkNotNull(originTopic, "topic mustn't be null");
+        /*Preconditions.checkNotNull(originTopic, "topic mustn't be null");
         MessageIdImpl messageId = MessageIdUtils.getMessageId(offset);
 
         RocketMQTopic rocketMQTopic = new RocketMQTopic(originTopic);
@@ -498,7 +542,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             log.warn("lookMessageByMessageId message[topic={}, msgId={}] error.", originTopic, messageId);
         } finally {
             lookMsgLock.unlock();
-        }
+        }*/
         return null;
     }
 
@@ -576,19 +620,15 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
 
         long maxOffset = Long.MAX_VALUE;
         long minOffset = 0L;
-        try {
-            maxOffset = this.brokerController.getConsumerOffsetManager()
-                    .getMaxOffsetInQueue(new ClientTopicName(topicName), pulsarPartitionId);
-            minOffset = this.brokerController.getConsumerOffsetManager()
-                    .getMinOffsetInQueue(new ClientTopicName(topicName), pulsarPartitionId);
-        } catch (RopPersistentTopicException e) {
-            log.warn("get min or max offset error:", e);
-        }
 
         PersistentTopic persistentTopic;
         try {
             persistentTopic = brokerController.getConsumerOffsetManager()
                     .getPulsarPersistentTopic(new ClientTopicName(topicName), pulsarPartitionId);
+            maxOffset = this.brokerController.getConsumerOffsetManager()
+                    .getMaxOffsetInQueue(new ClientTopicName(topicName), pulsarPartitionId);
+            minOffset = this.brokerController.getConsumerOffsetManager()
+                    .getMinOffsetInQueue(new ClientTopicName(topicName), pulsarPartitionId);
         } catch (Exception e) {
             throw new RuntimeException();
         }
@@ -716,5 +756,19 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
 
     private boolean isDelayMessage(long deliverAtTime) {
         return deliverAtTime > System.currentTimeMillis();
+    }
+
+    private Producer<byte[]> getProducerFromCache(String pulsarTopic, String producerGroup, long producerKey) {
+        Producer<byte[]> producer = producers.computeIfAbsent(producerKey, key -> {
+            log.info("getProducerFromCache [{}] producer[id={}] and channel=[{}].",
+                    pulsarTopic, producerKey, ctx.channel());
+            try {
+                return createNewProducer(pulsarTopic, producerGroup, producerKey);
+            } catch (Exception e) {
+                log.warn("getProducerFromCache[topic={},producerGroup={}] error.", pulsarTopic, producerGroup, e);
+            }
+            return null;
+        });
+        return producer;
     }
 }

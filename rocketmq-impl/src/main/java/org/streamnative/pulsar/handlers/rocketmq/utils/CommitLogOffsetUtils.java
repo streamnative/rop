@@ -23,15 +23,17 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class CommitLogOffsetUtils {
 
+    // 1 bits reserved bit
     // use 1 bits to describe whether the topic is retry-topic,
-    // 11 bits for pulsar real partitionId,
+    // 10 bits for pulsar real partitionId,
     // 52 bits for message offset.
+    public static final int RESERVED_BITS = 1;
     public static final int RETRY_TOPIC_TAG_BITS = 1;
-    public static final int PULSAR_PARTITION_ID_BITS = 11;
-    public static final int OFFSET_BITS = Long.SIZE - (RETRY_TOPIC_TAG_BITS + PULSAR_PARTITION_ID_BITS);
+    public static final int PULSAR_PARTITION_ID_BITS = 10;
+    public static final int OFFSET_BITS = Long.SIZE - (RESERVED_BITS + RETRY_TOPIC_TAG_BITS + PULSAR_PARTITION_ID_BITS);
 
     public static final long setRetryTopicTag(long commitLogOffset, boolean isRetryTopic) {
-        return isRetryTopic ? (commitLogOffset | 0x8000000000000000L) : (commitLogOffset & 0x7FFFFFFFFFFFFFFFL);
+        return isRetryTopic ? (commitLogOffset | 0x4000000000000000L) : (commitLogOffset & 0x3FFFFFFFFFFFFFFFL);
     }
 
     public static final boolean isRetryTopic(long commitLogOffset) {
@@ -40,13 +42,12 @@ public class CommitLogOffsetUtils {
 
     public static final long setPartitionId(long commitLogOffset, int partitionId) {
         Preconditions.checkArgument(partitionId >= 0 && partitionId < (1 << PULSAR_PARTITION_ID_BITS),
-                "partitionId must be between 0 and 2048.");
-        return (((commitLogOffset >>> (Long.SIZE - RETRY_TOPIC_TAG_BITS)) << PULSAR_PARTITION_ID_BITS) | partitionId)
-                << OFFSET_BITS;
+                "partitionId must be between 0 and 1024.");
+        return commitLogOffset | (((long)partitionId) << OFFSET_BITS);
     }
 
     public static final int getPartitionId(long commitLogOffset) {
-        return (int) ((commitLogOffset >>> OFFSET_BITS) & 0x7FFL);
+        return (int) ((commitLogOffset >>> OFFSET_BITS) & 0x3FFL);
     }
 
     public static final long setQueueOffset(long commitLogOffset, long queueOffset) {
@@ -57,5 +58,4 @@ public class CommitLogOffsetUtils {
     public static final long getQueueOffset(long commitLogOffset) {
         return commitLogOffset & ((1L << OFFSET_BITS) - 1);
     }
-
 }

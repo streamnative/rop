@@ -69,11 +69,11 @@ public abstract class TopicConfigManager {
         {
             // MixAll.BENCHMARK_TOPIC
             String topic = RocketMQTopic.getPulsarMetaNoDomainTopic(MixAll.BENCHMARK_TOPIC);
-            TopicConfig topicConfig = new TopicConfig(topic);
             this.systemTopicList.add(topic);
-            topicConfig.setReadQueueNums(defaultPartitionNum);
-            topicConfig.setWriteQueueNums(defaultPartitionNum);
-            this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);
+//            TopicConfig topicConfig = new TopicConfig(topic);
+//            topicConfig.setReadQueueNums(defaultPartitionNum);
+//            topicConfig.setWriteQueueNums(defaultPartitionNum);
+//            this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);
         }
         {
 

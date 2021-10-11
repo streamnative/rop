@@ -14,6 +14,7 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.pulsar;
 
+import java.util.concurrent.CompletableFuture;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageExtBatch;
 import org.apache.rocketmq.common.protocol.header.ConsumerSendMsgBackRequestHeader;
@@ -31,6 +32,9 @@ public interface PulsarMessageStore {
 
     void putMessage(int partition, MessageExtBrokerInner messageExtBrokerInner, String producerGroup,
             PutMessageCallback callback) throws Exception;
+
+    void putSendBackMsg(MessageExtBrokerInner messageExtBrokerInner, String producerGroup, RemotingCommand response, CompletableFuture<RemotingCommand> cmdFuture)
+            throws Exception;
 
     RopGetMessageResult getMessage(int partition, RemotingCommand request, PullMessageRequestHeader requestHeader,
             RopMessageFilter messageFilter);

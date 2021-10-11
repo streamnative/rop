@@ -51,6 +51,7 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RopClientChannelCnx;
 import org.streamnative.pulsar.handlers.rocketmq.inner.namesvr.TopicConfigManager;
 import org.streamnative.pulsar.handlers.rocketmq.inner.pulsar.PulsarMessageStore;
+import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 
 /**
  * Abstract send message processor.
@@ -185,8 +186,7 @@ public abstract class AbstractSendMessageProcessor implements NettyRequestProces
         if (!TopicValidator.validateTopic(requestHeader.getTopic(), response)) {
             return;
         }
-
-        TopicConfig topicConfig = topicManager.selectTopicConfig(requestHeader.getTopic());
+        TopicConfig topicConfig = topicManager.selectTopicConfig(RocketMQTopic.getPulsarOrigNoDomainTopic(requestHeader.getTopic()));
         if (null == topicConfig) {
             int topicSysFlag = 0;
             if (requestHeader.isUnitMode()) {

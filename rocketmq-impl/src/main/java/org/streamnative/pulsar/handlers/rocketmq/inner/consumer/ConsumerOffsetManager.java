@@ -176,22 +176,16 @@ public class ConsumerOffsetManager {
         try {
             return getMinOffsetInQueue(clientTopicName, pulsarPartitionId);
         } catch (RopPersistentTopicException e) {
-            return -1L;
+            return 0L;
         }
     }
 
     public long getMinOffsetInQueue(ClientTopicName clientTopicName, int pulsarPartitionId)
             throws RopPersistentTopicException {
         PersistentTopic persistentTopic = getPulsarPersistentTopic(clientTopicName, pulsarPartitionId);
-        ManagedLedgerImpl managedLedger = (ManagedLedgerImpl) persistentTopic.getManagedLedger();
-        PositionImpl lac = (PositionImpl) managedLedger.getLastConfirmedEntry();
         PositionImpl firstPosition = MessageIdUtils.getFirstPosition(persistentTopic.getManagedLedger());
         assert firstPosition != null;
-        if (firstPosition.compareTo(lac) > 0 || MessageIdUtils.getCurrentOffset(managedLedger) < 0) {
-            return Math.max(0, MessageIdUtils.getCurrentOffset(managedLedger));
-        } else {
-            return MessageIdUtils.getQueueOffsetByPosition(persistentTopic, firstPosition);
-        }
+        return MessageIdUtils.getQueueOffsetByPosition(persistentTopic, firstPosition);
     }
 
     /**
@@ -206,20 +200,15 @@ public class ConsumerOffsetManager {
         try {
             return getMaxOffsetInQueue(clientTopicName, pulsarPartitionId);
         } catch (RopPersistentTopicException e) {
-            return 0L;
+            return Long.MAX_VALUE;
         }
     }
 
     public long getMaxOffsetInQueue(ClientTopicName topicName, int pulsarPartitionId)
             throws RopPersistentTopicException {
         PersistentTopic persistentTopic = getPulsarPersistentTopic(topicName, pulsarPartitionId);
-        ManagedLedgerImpl managedLedger = (ManagedLedgerImpl) persistentTopic.getManagedLedger();
-        Position lastPosition = MessageIdUtils.getLastPosition(persistentTopic.getManagedLedger());
-        if (MessageIdUtils.getCurrentOffset(managedLedger) < 0) {
-            return Math.max(0, MessageIdUtils.getCurrentOffset(managedLedger));
-        } else {
-            return MessageIdUtils.getQueueOffsetByPosition(persistentTopic, lastPosition);
-        }
+        long lastMessageIndex = MessageIdUtils.getLastMessageIndex(persistentTopic.getManagedLedger());
+        return lastMessageIndex < 0 ? 0L : lastMessageIndex;
     }
 
     public long searchOffsetByTimestamp(ClientGroupAndTopicName groupAndTopic, int partitionId, long timestamp) {

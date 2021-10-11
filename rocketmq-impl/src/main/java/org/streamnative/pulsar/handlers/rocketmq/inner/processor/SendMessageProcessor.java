@@ -17,6 +17,7 @@ package org.streamnative.pulsar.handlers.rocketmq.inner.processor;
 import io.netty.channel.ChannelHandlerContext;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.broker.mqtrace.ConsumeMessageContext;
 import org.apache.rocketmq.broker.mqtrace.ConsumeMessageHook;
@@ -230,16 +231,16 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         MessageAccessor.setOriginMessageId(msgInner, UtilAll.isBlank(originMsgId) ? msgExt.getMsgId() : originMsgId);
 
         try {
+            CompletableFuture<RemotingCommand> responseFuture = new CompletableFuture<>();
             this.getServerCnxMsgStore(ctx, requestHeader.getGroup())
-                    .putMessage(CommonUtils.getPulsarPartitionIdByRequest(request), msgInner, requestHeader.getGroup(),
-                            new SendMessageBackCallback(response, request, ctx, requestHeader, msgExt));
-            return null;
+                    .putSendBackMsg(msgInner, requestHeader.getGroup(), response, responseFuture);
+            return responseFuture.get();
         } catch (Exception e) {
             log.warn("[{}] consumerSendMsgBack failed", pulsarGroupName.getPulsarFullName(), e);
             response.setCode(ResponseCode.SYSTEM_ERROR);
             response.setRemark(e.getMessage());
-            return response;
         }
+        return response;
     }
 
     private boolean handleRetryAndDLQ(SendMessageRequestHeader requestHeader, RemotingCommand response,
