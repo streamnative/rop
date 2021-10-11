@@ -24,7 +24,6 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import java.net.SocketAddress;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -41,10 +40,8 @@ import org.apache.bookkeeper.mledger.ManagedLedgerException;
 import org.apache.bookkeeper.mledger.impl.PositionImpl;
 import org.apache.commons.lang.exception.ExceptionUtils;
 import org.apache.commons.lang3.math.NumberUtils;
-import org.apache.pulsar.broker.PulsarServerException;
 import org.apache.pulsar.broker.service.BrokerService;
 import org.apache.pulsar.broker.service.persistent.PersistentTopic;
-import org.apache.pulsar.client.api.Message;
 import org.apache.pulsar.client.api.MessageId;
 import org.apache.pulsar.client.api.Producer;
 import org.apache.pulsar.client.api.PulsarClientException;
@@ -286,7 +283,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 appendMessageResult.setWroteBytes(body.get(0).length);
                 CommitLogOffset commitLogOffset = new CommitLogOffset(false, partitionId, offset);
                 appendMessageResult.setMsgId(
-                        CommonUtils.createMessageId(this.ctx.channel().localAddress(), localListenPort, commitLogOffset.getCommitLogOffset()));
+                        CommonUtils.createMessageId(this.ctx.channel().localAddress(), localListenPort,
+                                commitLogOffset.getCommitLogOffset()));
                 appendMessageResult.setLogicsOffset(offset);
                 appendMessageResult.setWroteOffset(commitLogOffset.getCommitLogOffset());
                 PutMessageResult putMessageResult = new PutMessageResult(PutMessageStatus.PUT_OK, appendMessageResult);

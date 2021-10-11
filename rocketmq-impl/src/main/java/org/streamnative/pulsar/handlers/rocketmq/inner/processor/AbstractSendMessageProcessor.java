@@ -186,7 +186,8 @@ public abstract class AbstractSendMessageProcessor implements NettyRequestProces
         if (!TopicValidator.validateTopic(requestHeader.getTopic(), response)) {
             return;
         }
-        TopicConfig topicConfig = topicManager.selectTopicConfig(RocketMQTopic.getPulsarOrigNoDomainTopic(requestHeader.getTopic()));
+        TopicConfig topicConfig = topicManager
+                .selectTopicConfig(RocketMQTopic.getPulsarOrigNoDomainTopic(requestHeader.getTopic()));
         if (null == topicConfig) {
             int topicSysFlag = 0;
             if (requestHeader.isUnitMode()) {
@@ -207,8 +208,8 @@ public abstract class AbstractSendMessageProcessor implements NettyRequestProces
             if (null == topicConfig) {
                 if (requestHeader.getTopic().startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)) {
                     topicConfig = topicManager.createTopicInSendMessageBackMethod(
-                                    requestHeader.getTopic(), 1, PermName.PERM_WRITE | PermName.PERM_READ,
-                                    topicSysFlag);
+                            requestHeader.getTopic(), 1, PermName.PERM_WRITE | PermName.PERM_READ,
+                            topicSysFlag);
                 }
             }
 

@@ -142,9 +142,10 @@ public class MessageIdUtils {
         try {
             ManagedLedgerImpl managedLedger = (ManagedLedgerImpl) pulsarTopic.getManagedLedger();
             queueOffset =
-                    hasMessagesInQueue(managedLedger) ? getOffsetOfPosition(managedLedger, (PositionImpl) pulsarPosition, false,
-                            -1).join() : queueOffset;
+                    hasMessagesInQueue(managedLedger) ? getOffsetOfPosition(managedLedger,
+                            (PositionImpl) pulsarPosition, false, -1).join() : queueOffset;
         } catch (Exception e) {
+            log.warn("get offset of position error: ", e);
         }
         return queueOffset;
     }

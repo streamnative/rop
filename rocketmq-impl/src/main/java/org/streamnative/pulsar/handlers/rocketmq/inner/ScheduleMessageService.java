@@ -255,7 +255,8 @@ public class ScheduleMessageService {
                                             MessageExtBrokerInner msgInner = messageTimeup(messageExt);
                                             if (MixAll.RMQ_SYS_TRANS_HALF_TOPIC.equals(messageExt.getTopic())) {
                                                 log.error(
-                                                        "[BUG] the real topic of schedule msg is {}, discard the msg. msg={}",
+                                                        "[BUG] the real topic of schedule msg is {}, "
+                                                                + "discard the msg. msg={}",
                                                         messageExt.getTopic(), messageExt);
                                                 return;
                                             }

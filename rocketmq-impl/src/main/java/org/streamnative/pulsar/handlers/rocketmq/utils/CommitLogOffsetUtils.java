@@ -43,7 +43,7 @@ public class CommitLogOffsetUtils {
     public static final long setPartitionId(long commitLogOffset, int partitionId) {
         Preconditions.checkArgument(partitionId >= 0 && partitionId < (1 << PULSAR_PARTITION_ID_BITS),
                 "partitionId must be between 0 and 1024.");
-        return commitLogOffset | (((long)partitionId) << OFFSET_BITS);
+        return commitLogOffset | (((long) partitionId) << OFFSET_BITS);
     }
 
     public static final int getPartitionId(long commitLogOffset) {
