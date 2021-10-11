@@ -17,8 +17,8 @@ package org.streamnative.pulsar.handlers.rocketmq.inner.processor;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import java.io.UnsupportedEncodingException;
-import java.net.InetSocketAddress;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -249,8 +249,7 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
         topicConfig.setTopicFilterType(requestHeader.getTopicFilterTypeEnum());
         topicConfig.setPerm(requestHeader.getPerm());
         topicConfig.setTopicSysFlag(requestHeader.getTopicSysFlag() == null ? 0 : requestHeader.getTopicSysFlag());
-
-        this.brokerController.getTopicConfigManager().updateTopicConfig(topicConfig);
+        topicConfig.setTopicName(RocketMQTopic.getPulsarOrigNoDomainTopic(topicConfig.getTopicName()));
 
         this.brokerController.getTopicConfigManager().createOrUpdateTopic(topicConfig);
 
@@ -309,8 +308,9 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
 
     private synchronized RemotingCommand updateBrokerConfig(ChannelHandlerContext ctx, RemotingCommand request) {
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
-
         log.info("updateBrokerConfig called by {}", RemotingHelper.parseChannelRemoteAddr(ctx.channel()));
+
+//        MQTopicManager topicConfigManager = brokerController.getTopicConfigManager();
 
         byte[] body = request.getBody();
         if (body != null) {
@@ -400,13 +400,8 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
         final GetMaxOffsetRequestHeader requestHeader =
                 (GetMaxOffsetRequestHeader) request.decodeCommandCustomHeader(GetMaxOffsetRequestHeader.class);
 
-        ClientGroupAndTopicName clientGroupName = new ClientGroupAndTopicName(Strings.EMPTY, requestHeader.getTopic());
-        long offset = 0L;
-        try {
-            offset = this.brokerController.getConsumerOffsetManager()
-                    .getMaxOffsetInQueue(clientGroupName.getClientTopicName(), requestHeader.getQueueId());
-        } catch (RopPersistentTopicException e) {
-        }
+        long offset = this.brokerController.getConsumerOffsetManager()
+                .getMaxOffsetInQueue(requestHeader.getTopic(), requestHeader.getQueueId());
         responseHeader.setOffset(offset);
         response.setCode(ResponseCode.SUCCESS);
         return response;
@@ -722,7 +717,7 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
             try {
                 PartitionedTopicStats partitionedTopicStats = pulsarAdmin.topics()
                         .getPartitionedStats(topicName.toString(), false);
-                if (!partitionedTopicStats.subscriptions.containsKey(pulsarGroupName)) {
+                if (!partitionedTopicStats.getSubscriptions().containsKey(pulsarGroupName)) {
                     continue;
                 }
             } catch (PulsarAdminException e) {
@@ -750,14 +745,17 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
                 }
             }
 
-            Map<Integer, InetSocketAddress> topicBrokerAddr = brokerController.getTopicConfigManager()
-                    .getTopicBrokerAddr(topicName, Strings.EMPTY);
+            // TODO: please set topicBrokerAddr
+            Map<String, List<Integer>> topicBrokerAddr =
+                    brokerController.getTopicConfigManager().getPulsarTopicRoute(topicName, Strings.EMPTY);
+            List<Integer> queueList = topicBrokerAddr.get(brokerController.getBrokerHost());
 
-            for (int i = 0; i < topicConfig.getReadQueueNums(); i++) {
-                if (!topicBrokerAddr.containsKey(i)) {
-                    log.debug("getConsumeStats not found this queue, topic: {}, queue: {}", topic, i);
-                    continue;
-                }
+            if (queueList == null) {
+                log.warn("getConsumeStats not found this queue, topic: {}", topic);
+                queueList = Collections.emptyList();
+            }
+
+            for (int i = 0; i < queueList.size(); i++) {
 
                 // skip this queue if this broker not owner for the request queueId topic
                 if (!this.brokerController.getTopicConfigManager().isPartitionTopicOwner(topicName, i)) {
@@ -768,7 +766,7 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
 
                 MessageQueue mq = new MessageQueue();
                 mq.setTopic(topic);
-                mq.setBrokerName(topicBrokerAddr.get(i).getHostName());
+                mq.setBrokerName(brokerController.getBrokerHost());
                 mq.setQueueId(i);
 
                 RopOffsetWrapper offsetWrapper = new RopOffsetWrapper();
@@ -777,8 +775,8 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
                 String pulsarTopicName = topicName.getPartition(i).toString();
                 try {
                     TopicStats topicStats = pulsarAdmin.topics().getStats(pulsarTopicName);
-                    if (topicStats.subscriptions.containsKey(pulsarGroupName)) {
-                        offsetWrapper.setMsgBacklog(topicStats.subscriptions.get(pulsarGroupName).msgBacklog);
+                    if (topicStats.getSubscriptions().containsKey(pulsarGroupName)) {
+                        offsetWrapper.setMsgBacklog(topicStats.getSubscriptions().get(pulsarGroupName).getMsgBacklog());
                     } else {
                         log.warn("getConsumeStats not found subscriptions, pulsarTopicName: {}, pulsarGroupName: {}",
                                 pulsarTopicName, pulsarGroupName);
@@ -969,7 +967,7 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
             try {
                 PartitionedTopicStats partitionedTopicStats =
                         pulsarAdmin.topics().getPartitionedStats(pulsarTopicName, false);
-                groupInOffset.removeIf(g -> !partitionedTopicStats.subscriptions
+                groupInOffset.removeIf(g -> !partitionedTopicStats.getSubscriptions()
                         .containsKey(new ClientGroupName(g).getPulsarGroupName()));
             } catch (PulsarAdminException e) {
                 log.warn("queryTopicConsumeByWho getPartitionedStats failed", e);

@@ -40,7 +40,7 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupName;
 public class ConsumerManager {
 
     private static final long CHANNEL_EXPIRED_TIMEOUT = 120000L;
-    private final ConcurrentMap<ClientGroupName, ConsumerGroupInfo> consumerTable = new ConcurrentHashMap<>(1024);
+    private final ConcurrentHashMap<ClientGroupName, ConsumerGroupInfo> consumerTable = new ConcurrentHashMap<>(1024);
     //ConsumerIdsChangeListener groupName is rocketmq groupName example: tenant|ns%topicName; %RETRY%tenant|ns%topicName
     private final ConsumerIdsChangeListener consumerIdsChangeListener;
 
@@ -146,17 +146,17 @@ public class ConsumerManager {
     }
 
     public void scanNotActiveChannel() {
-        Iterator it = this.consumerTable.entrySet().iterator();
+        Iterator<Entry<ClientGroupName, ConsumerGroupInfo>> it = this.consumerTable.entrySet().iterator();
 
         while (it.hasNext()) {
-            Entry<ClientGroupName, ConsumerGroupInfo> next = (Entry) it.next();
+            Entry<ClientGroupName, ConsumerGroupInfo> next = it.next();
             ClientGroupName group = next.getKey();
             ConsumerGroupInfo consumerGroupInfo = next.getValue();
             ConcurrentMap<Channel, ClientChannelInfo> channelInfoTable = consumerGroupInfo.getChannelInfoTable();
-            Iterator itChannel = channelInfoTable.entrySet().iterator();
+            Iterator<Entry<Channel, ClientChannelInfo>> itChannel = channelInfoTable.entrySet().iterator();
 
             while (itChannel.hasNext()) {
-                Entry<Channel, ClientChannelInfo> nextChannel = (Entry) itChannel.next();
+                Entry<Channel, ClientChannelInfo> nextChannel = itChannel.next();
                 ClientChannelInfo clientChannelInfo = nextChannel.getValue();
                 long diff = System.currentTimeMillis() - clientChannelInfo.getLastUpdateTimestamp();
                 if (diff > CHANNEL_EXPIRED_TIMEOUT) {

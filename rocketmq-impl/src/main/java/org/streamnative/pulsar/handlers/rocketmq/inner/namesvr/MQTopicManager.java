@@ -14,15 +14,13 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.namesvr;
 
+import static org.apache.pulsar.broker.web.PulsarWebResource.joinPath;
+
 import com.google.common.base.Function;
 import com.google.common.base.Joiner;
-import com.google.common.cache.Cache;
-import com.google.common.cache.CacheBuilder;
-import com.google.common.cache.RemovalNotification;
+import com.google.common.base.Preconditions;
 import com.google.common.collect.Sets;
-import java.net.InetSocketAddress;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -30,27 +28,19 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
-import java.util.stream.IntStream;
+import java.util.concurrent.atomic.AtomicBoolean;
 import javax.annotation.Nullable;
-import lombok.AllArgsConstructor;
-import lombok.EqualsAndHashCode;
 import lombok.Getter;
-import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.util.Strings;
 import org.apache.pulsar.broker.PulsarService;
 import org.apache.pulsar.broker.namespace.NamespaceBundleOwnershipListener;
 import org.apache.pulsar.broker.service.BrokerService;
 import org.apache.pulsar.broker.service.Producer;
-import org.apache.pulsar.broker.service.Topic;
 import org.apache.pulsar.broker.service.persistent.PersistentTopic;
 import org.apache.pulsar.client.admin.PulsarAdmin;
+import org.apache.pulsar.client.admin.PulsarAdminException;
 import org.apache.pulsar.client.admin.PulsarAdminException.ConflictException;
-import org.apache.pulsar.client.api.ClientBuilder;
-import org.apache.pulsar.client.api.PulsarClient;
-import org.apache.pulsar.client.impl.Backoff;
 import org.apache.pulsar.client.impl.PulsarClientImpl;
 import org.apache.pulsar.common.naming.NamespaceBundle;
 import org.apache.pulsar.common.naming.NamespaceName;
@@ -59,12 +49,18 @@ import org.apache.pulsar.common.partition.PartitionedTopicMetadata;
 import org.apache.pulsar.common.policies.data.ClusterData;
 import org.apache.pulsar.common.policies.data.RetentionPolicies;
 import org.apache.pulsar.common.policies.data.TenantInfo;
+import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.TopicConfig;
 import org.streamnative.pulsar.handlers.rocketmq.inner.InternalProducer;
 import org.streamnative.pulsar.handlers.rocketmq.inner.InternalServerCnx;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RopServerCnx;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientTopicName;
+import org.streamnative.pulsar.handlers.rocketmq.inner.proxy.RopZookeeperCacheService;
+import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopClusterContent;
+import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopTopicContent;
+import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkUtils;
+import org.streamnative.pulsar.handlers.rocketmq.utils.PulsarUtil;
 import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 import org.testng.collections.Maps;
 
@@ -74,22 +70,11 @@ import org.testng.collections.Maps;
 @Slf4j
 public class MQTopicManager extends TopicConfigManager implements NamespaceBundleOwnershipListener {
 
-    private final int maxCacheSize = 1024;
-    private final int maxCacheTimeInSec = 10;
-    //cache-key TopicName = {tenant/ns/topic}, Map key={partition id} nonPartitionedTopic, only one record in map.
-    @Getter
-    private final Cache<LookupCacheKey, Map<Integer, InetSocketAddress>> lookupCache = CacheBuilder
-            .newBuilder()
-            .initialCapacity(maxCacheSize)
-            .expireAfterWrite(maxCacheTimeInSec, TimeUnit.SECONDS)
-            .removalListener((RemovalNotification<LookupCacheKey, Map<Integer, InetSocketAddress>> notification) ->
-                    log.info("Remove Listener [key={}]========>[value={}] from Guava cache.",
-                            notification.getKey().topicName, notification))
-            .build();
-    private final Map<String, PulsarClient> pulsarClientMap = Maps.newConcurrentMap();
+    private final AtomicBoolean shuttingDown = new AtomicBoolean(false);
     private PulsarService pulsarService;
     private BrokerService brokerService;
     private PulsarAdmin adminClient;
+    private RopZookeeperCacheService zkService;
 
     public MQTopicManager(RocketMQBrokerController brokerController) {
         super(brokerController);
@@ -97,25 +82,14 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
 
     @Override
     protected void createPulsarPartitionedTopic(TopicConfig tc) {
-        String cluster = config.getClusterName();
-        TopicName rmqTopic = TopicName.get(tc.getTopicName());
-        String tenant = rmqTopic.getTenant();
-        String ns = rmqTopic.getNamespacePortion();
-        tenant = Strings.isBlank(tenant) ? config.getRocketmqTenant() : tenant;
-        ns = Strings.isBlank(ns) ? config.getRocketmqNamespace() : ns;
-
-        try {
-            createPulsarNamespaceIfNeeded(brokerService, cluster, tenant, ns);
-            createPulsarTopic(tc);
-        } catch (Exception e) {
-            log.warn("createPulsarPartitionedTopic tenant=[{}] and namespace=[{}] error.", tenant, ns);
-        }
+        createOrUpdateTopic(tc);
     }
 
-    public void start() throws Exception {
+    public void start(RopZookeeperCacheService zkService) throws Exception {
         this.pulsarService = brokerController.getBrokerService().pulsar();
         this.brokerService = pulsarService.getBrokerService();
-        this.adminClient = this.pulsarService.getAdminClient();
+        this.adminClient = pulsarService.getAdminClient();
+        this.zkService = zkService;
         this.createSysResource();
         this.pulsarService.getNamespaceService().addNamespaceBundleOwnershipListener(this);
         log.info("MQTopicManager started successfully.");
@@ -124,124 +98,59 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
     @Override
     public TopicConfig selectTopicConfig(String rmqTopicName) {
         TopicConfig topicConfig = super.selectTopicConfig(rmqTopicName);
-        if (topicConfig == null) {
-            //load from pulsar server
-            String lookupTopic = RocketMQTopic.getPulsarOrigNoDomainTopic(rmqTopicName);
-            getTopicBrokerAddr(TopicName.get(lookupTopic));
+        try {
+            if (topicConfig == null) {
+                RopTopicContent ropTopicContent = zkService.getTopicContent(TopicName.get(rmqTopicName));
+                if (ropTopicContent != null) {
+                    topicConfig = ropTopicContent.getConfig();
+                    this.topicConfigTable.put(rmqTopicName, topicConfig);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("zkService getTopicContent for topic[{}] error.", rmqTopicName, e);
         }
-        return super.selectTopicConfig(rmqTopicName);
+        return topicConfig;
     }
 
     public void shutdown() {
-        lookupCache.invalidateAll();
+        shuttingDown.set(true);
     }
 
     public void getTopicBrokerAddr(TopicName topicName) {
-        getTopicBrokerAddr(topicName, Strings.EMPTY);
+        //TODO:getTopicRoute(topicName, Strings.EMPTY);
     }
 
-    // call pulsarClient.lookup.getBroker to get and own a topic.
-    // when error happens, the returned future will complete with null.
-    public Map<Integer, InetSocketAddress> getTopicBrokerAddr(TopicName topicName, String listenerName) {
-        LookupCacheKey lookupCacheKey = new LookupCacheKey(topicName, listenerName);
-        if (lookupCache.getIfPresent(lookupCacheKey) != null) {
-            return lookupCache.getIfPresent(lookupCacheKey);
-        }
-
-        Map<Integer, InetSocketAddress> partitionedTopicAddr = new HashMap<>();
+    public Map<String, List<Integer>> getPulsarTopicRoute(TopicName topicName, String listenerName) {
         try {
-            PartitionedTopicMetadata pTopicMeta = brokerService.fetchPartitionedTopicMetadataAsync(topicName).get();
-            if (pTopicMeta.partitions > 0) {
-                IntStream.range(0, pTopicMeta.partitions).forEach((i) -> {
-                    try {
-                        Backoff backoff = new Backoff(
-                                100, TimeUnit.MILLISECONDS,
-                                15, TimeUnit.SECONDS,
-                                15, TimeUnit.SECONDS
-                        );
-                        CompletableFuture<InetSocketAddress> resultFuture = new CompletableFuture<>();
-                        lookupBroker(topicName.getPartition(i), backoff, listenerName, resultFuture);
-                        partitionedTopicAddr.put(i, resultFuture.get());
-                    } catch (Exception e) {
-                        log.warn("getTopicBrokerAddr error.", e);
-                    }
-                });
-            }
-            if (!partitionedTopicAddr.isEmpty()) {
-                lookupCache.put(lookupCacheKey, partitionedTopicAddr);
-                putPulsarTopic2Config(topicName, partitionedTopicAddr.size());
+            String topicConfigKey = joinPath(topicName.getNamespace(), topicName.getLocalName());
+            if (isTBW12Topic(topicName) && this.topicConfigTable.containsKey(topicConfigKey)) {
+                RopClusterContent clusterContent = zkService.getClusterContent();
+                TopicConfig topicConfig = topicConfigTable.get(topicConfigKey);
+                int writeQueueNums = topicConfig.getWriteQueueNums();
+                return clusterContent.createTopicRouteMap(writeQueueNums);
+            } else {
+                RopTopicContent ropTopicContent = zkService.getTopicContent(topicName);
+                Preconditions
+                        .checkNotNull(ropTopicContent, "RopTopicContent[" + topicName.toString() + "] can't be null.");
+                brokerController.getRopBrokerProxy().getPulsarClient().getLookup().getBroker(topicName);
+                this.topicConfigTable.put(topicConfigKey, ropTopicContent.getConfig());
+                return ropTopicContent.getRouteMap();
             }
         } catch (Exception e) {
-            log.warn("getTopicBroker info error for the topic[{}].", topicName, e);
+            log.warn("[{}] Get topic route error.", topicName.toString(), e);
         }
-        return partitionedTopicAddr;
+        return Maps.newHashMap();
     }
 
     /**
      * If current broker is this partition topic owner return true else return false.
      *
      * @param topicName topic name
-     * @param queueId queue id
+     * @param partitionId real partition ID
      * @return if current broker is this partition topic owner return true else return false.
      */
-    public boolean isPartitionTopicOwner(TopicName topicName, int queueId) {
-//        String brokerServiceUrl = this.brokerController.getBrokerService().pulsar().getBrokerServiceUrl();
-//
-//        Map<Integer, InetSocketAddress> topicBrokerAddr = getTopicBrokerAddr(topicName, Strings.EMPTY);
-//        String brokerName = topicBrokerAddr.get(queueId).getHostName();
-//
-//        return PulsarUtil.getBrokerHost(brokerServiceUrl).equals(brokerName);
-
-        return this.brokerController.getBrokerService().isTopicNsOwnedByBroker(topicName.getPartition(queueId));
-    }
-
-    /**
-     * Get pulsar persistent topic.
-     *
-     * @param topicName topic name
-     * @return persistent topic
-     */
-    public PersistentTopic getPulsarPersistentTopic(String topicName) {
-        PulsarService pulsarService = this.brokerController.getBrokerService().pulsar();
-        Optional<Topic> topic = pulsarService.getBrokerService().getTopicIfExists(topicName).join();
-        if (topic.isPresent()) {
-            return (PersistentTopic) topic.get();
-        } else {
-            log.warn("Not found pulsar persistentTopic [{}]", topicName);
-        }
-        return null;
-    }
-
-    // this method do the real lookup into Pulsar broker.
-    // retFuture will be completed with null when meet error.
-    private void lookupBroker(TopicName topicName, Backoff backoff, String listenerName,
-            CompletableFuture<InetSocketAddress> retFuture) {
-        try {
-            PulsarClient pulsarClient =
-                    StringUtils.isBlank(listenerName) ? pulsarService.getClient() : getClient(listenerName);
-            ((PulsarClientImpl) pulsarClient).getLookup()
-                    .getBroker(topicName)
-                    .thenAccept(pair -> retFuture.complete(pair.getLeft())).exceptionally(th -> {
-                long waitTimeMs = backoff.next();
-                if (backoff.isMandatoryStopMade()) {
-                    log.warn("getBroker for topic {} failed, retried too many times {}, return null.",
-                            topicName, waitTimeMs, th);
-                    retFuture.complete(null);
-                } else {
-                    log.warn("getBroker for topic [{}] failed, will retry in [{}] ms.",
-                            topicName, waitTimeMs, th);
-                    pulsarService.getExecutor()
-                            .schedule(() -> lookupBroker(topicName, backoff, listenerName, retFuture),
-                                    waitTimeMs,
-                                    TimeUnit.MILLISECONDS);
-                }
-                return null;
-            });
-        } catch (Exception e) {
-            log.error("getTopicBroker for topic {} failed get pulsar client, return null. throwable: ",
-                    topicName, e);
-            retFuture.complete(null);
-        }
+    public boolean isPartitionTopicOwner(TopicName topicName, int partitionId) {
+        return this.brokerController.getBrokerService().isTopicNsOwnedByBroker(topicName.getPartition(partitionId));
     }
 
     @Override
@@ -291,18 +200,6 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                         for (String topic : topics) {
                             log.info("[MQTopicManager] unload topic[{}] from current node.", topic);
                             TopicName partitionedTopic = TopicName.get(topic);
-                            LookupCacheKey lookupKey = new LookupCacheKey(
-                                    TopicName.get(partitionedTopic.getPartitionedTopicName()));
-                            int partitionIdx = partitionedTopic.getPartitionIndex();
-                            //remove topic from lookup cache
-                            Map<Integer, InetSocketAddress> pTopicAddress = this.lookupCache
-                                    .getIfPresent(lookupKey);
-                            if (pTopicAddress != null && !pTopicAddress.isEmpty()) {
-                                pTopicAddress.remove(partitionIdx);
-                                if (pTopicAddress.isEmpty()) {
-                                    this.lookupCache.invalidate(lookupKey);
-                                }
-                            }
 
                             //remove cache from consumer offset manager
                             ClientTopicName clientTopicName = new ClientTopicName(
@@ -342,39 +239,9 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
 
         //for test
         createPulsarNamespaceIfNeeded(brokerService, cluster, "test1", "InstanceTest");
-        this.topicConfigTable.values().forEach(this::createPulsarTopic);
-    }
-
-    // tenant/ns/topicName
-    public void lookupTopics(String pulsarTopicName) {
-        try {
-            ((PulsarClientImpl) pulsarService.getClient()).getLookup()
-                    .getBroker(TopicName.get(pulsarTopicName))
-                    .whenComplete((serviceUrl, throwable1) -> {
-                        if (throwable1 != null) {
-                            log.warn("lookupTopicAsync topic[{}] exception.", pulsarTopicName);
-                            return;
-                        }
-                        log.info("lookupTopics topic[{}] successfully.", pulsarTopicName);
-                    }).get();
-        } catch (Exception e) {
-            log.error("lookupTopics pulsar topic=[{}] error.", pulsarTopicName, e);
-        }
-    }
-
-    private void createPulsarTopic(TopicConfig tc) {
-        String fullTopicName = tc.getTopicName();
-        try {
-            PartitionedTopicMetadata pTopicMeta = adminClient.topics()
-                    .getPartitionedTopicMetadata(fullTopicName);
-            if (pTopicMeta.partitions <= 0) {
-                log.info("RocketMQ metadata topic {} doesn't exist. Creating it ...", fullTopicName);
-                adminClient.topics().createPartitionedTopic(
-                        fullTopicName,
-                        tc.getWriteQueueNums());
-            }
-        } catch (Exception e) {
-            log.error("createPulsarTopic topic=[{}] error.", tc, e);
+        for (TopicConfig topicConfig : this.topicConfigTable.values()) {
+            //createOrUpdateTopic(topicConfig);
+            createOrUpdateInnerTopic(topicConfig);
         }
     }
 
@@ -382,10 +249,13 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
             throws Exception {
         String fullNs = Joiner.on('/').join(tenant, ns);
         try {
-            ClusterData clusterData = new ClusterData(service.pulsar().getWebServiceAddress(),
-                    null /* serviceUrlTls */,
-                    service.pulsar().getBrokerServiceUrl(),
-                    null /* brokerServiceUrlTls */);
+
+            ClusterData clusterData = ClusterData.builder()
+                    .serviceUrl(service.getPulsar().getWebServiceAddress())
+                    .serviceUrlTls(null)
+                    .brokerServiceUrl(service.getPulsar().getBrokerServiceUrl())
+                    .brokerServiceUrlTls(null)
+                    .build();
             if (!adminClient.clusters().getClusters().contains(cluster)) {
                 adminClient.clusters().createCluster(cluster, clusterData);
             } else {
@@ -394,7 +264,10 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
 
             if (!adminClient.tenants().getTenants().contains(tenant)) {
                 adminClient.tenants().createTenant(tenant,
-                        new TenantInfo(Sets.newHashSet(this.config.getSuperUserRoles()), Sets.newHashSet(cluster)));
+                        TenantInfo.builder()
+                                .adminRoles(this.config.getSuperUserRoles())
+                                .allowedClusters(Sets.newHashSet(cluster))
+                                .build());
             }
             if (!adminClient.namespaces().getNamespaces(tenant).contains(fullNs)) {
                 Set<String> clusters = Sets.newHashSet(this.config.getClusterName());
@@ -414,44 +287,149 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
     }
 
     /**
-     * if pulsar topic not exist, create pulsar topic, else update pulsar topic partition.
+     *
+     */
+    protected void createOrUpdateInnerTopic(final TopicConfig tc) throws Exception {
+        log.info("Create or update inner topic config: [{}].", tc);
+        String fullTopicName = tc.getTopicName();
+        PartitionedTopicMetadata topicMetadata = null;
+
+        try {
+            topicMetadata = adminClient.topics().getPartitionedTopicMetadata(fullTopicName);
+        } catch (Exception e) {
+            log.info("getPartitionedTopicMetadata[topic:{}] not exists.", fullTopicName);
+        }
+
+        try {
+            if (topicMetadata == null || tc.getWriteQueueNums() > topicMetadata.partitions) {
+                adminClient.topics().createPartitionedTopic(fullTopicName, tc.getWriteQueueNums());
+            }
+        } catch (Exception e) {
+            log.warn("createOrUpdateInnerTopic error", e);
+            throw e;
+        }
+    }
+
+    /**
+     * if pulsar topic not exist, create pulsar topic,
+     * else update pulsar topic partition.
+     * meanwhile create rop topic partition mapping table
      *
      * @param tc topic config
      */
     public void createOrUpdateTopic(final TopicConfig tc) {
-        String cluster = config.getClusterName();
-        String fullTopicName = RocketMQTopic.getPulsarOrigNoDomainTopic(tc.getTopicName());
-        TopicName rmqTopic = TopicName.get(fullTopicName);
-        String tenant = rmqTopic.getTenant();
-        String ns = rmqTopic.getNamespacePortion();
+        String fullTopicName = tc.getTopicName();
+        log.info("Create or update topic [{}], config: [{}].", fullTopicName, tc);
+
+        TopicName topicName = TopicName.get(fullTopicName);
+        String tenant = topicName.getTenant();
+        String ns = topicName.getNamespacePortion();
         tenant = Strings.isBlank(tenant) ? config.getRocketmqTenant() : tenant;
+        ns = Strings.isBlank(ns) ? config.getRocketmqNamespace() : ns;
 
         try {
-            createPulsarNamespaceIfNeeded(brokerService, cluster, tenant, ns);
-        } catch (Exception e) {
-            log.warn("createPulsarPartitionedTopic tenant=[{}] and namespace=[{}] error.", tenant, ns);
-        }
-
-        try {
-            PartitionedTopicMetadata topicMetadata = adminClient.topics().getPartitionedTopicMetadata(fullTopicName);
-            // If the partition < 0, the topic does not exist, let us to create topic.
-            if (topicMetadata.partitions <= 0) {
-                log.info("RocketMQ metadata topic {} doesn't exist. Creating it ...", fullTopicName);
-                adminClient.topics().createPartitionedTopic(fullTopicName, tc.getWriteQueueNums());
-//                for (int i = 0; i < tc.getWriteQueueNums(); i++) {
-//                    adminClient.topics().createNonPartitionedTopic(fullTopicName + PARTITIONED_TOPIC_SUFFIX + i);
-//                }
-//                lookupTopics(fullTopicName);
-            } else if (topicMetadata.partitions < tc.getWriteQueueNums()) {
-                adminClient.topics().updatePartitionedTopic(fullTopicName, tc.getWriteQueueNums());
-//                for (int i = topicMetadata.partitions; i < tc.getWriteQueueNums(); i++) {
-//                    adminClient.topics().createNonPartitionedTopic(fullTopicName + PARTITIONED_TOPIC_SUFFIX + i);
-//                }
-//                lookupTopics(fullTopicName);
+            if (brokerController.getServerConfig().isAutoCreateTopicEnable()) {
+                createPulsarNamespaceIfNeeded(brokerService, config.getClusterName(), tenant, ns);
             }
         } catch (Exception e) {
-            log.warn("[CREATE] Topic {} create or update partition failed", fullTopicName, e);
+            log.warn("CreatePulsarPartitionedTopic tenant=[{}] and namespace=[{}] error.", tenant, ns);
+            throw new RuntimeException("Create topic error.");
         }
+
+        RopClusterContent clusterBrokers;
+        PartitionedTopicMetadata topicMetadata = null;
+        int currentPartitionNum = 0;
+
+        try {
+            topicMetadata = adminClient.topics().getPartitionedTopicMetadata(fullTopicName);
+        } catch (Exception e) {
+            log.warn("get partitioned topic metadata[{}] error:", fullTopicName, e);
+        }
+
+        currentPartitionNum = topicMetadata != null ? topicMetadata.partitions : currentPartitionNum;
+
+        try {
+            // get cluster brokers list
+            clusterBrokers = zkService.getClusterContent();
+        } catch (Exception e) {
+            log.warn("clusterBrokers haven't been created, error: ", e);
+            throw new RuntimeException("cluster config haven't been created.");
+        }
+        Preconditions.checkNotNull(clusterBrokers, "clusterBrokers can't be null.");
+
+        // If the partition < 0, the topic does not exist, and create topic.
+        if (currentPartitionNum <= 0) {
+            log.info("RocketMQ topic {} doesn't exist. Creating it ...", fullTopicName);
+            try {
+                adminClient.topics().createPartitionedTopic(fullTopicName, tc.getWriteQueueNums());
+                adminClient.lookups().lookupPartitionedTopic(fullTopicName);
+                currentPartitionNum = tc.getWriteQueueNums();
+            } catch (PulsarAdminException e) {
+                log.warn("create or get partitioned topic metadata [{}] error: ", fullTopicName, e);
+                throw new RuntimeException("Create topic error.");
+            }
+
+            Map<String, List<Integer>> topicRouteMap = clusterBrokers.createTopicRouteMap(currentPartitionNum);
+            // Create or update zk topic node
+            RopTopicContent topicContent;
+            try {
+                topicContent = zkService.getTopicContent(topicName);
+                topicContent.setConfig(tc);
+                topicContent.setRouteMap(topicRouteMap);
+                zkService.setTopicContent(topicName, topicContent);
+            } catch (Exception e) {
+                topicContent = new RopTopicContent();
+                topicContent.setConfig(tc);
+                topicContent.setRouteMap(topicRouteMap);
+                try {
+                    zkService.createTopicContent(topicName, topicContent);
+                } catch (Exception exception) {
+                    log.error("createTopicContent [{}] error. caused by: {}", topicName, exception);
+                    throw new RuntimeException("createTopicContent error.");
+                }
+            }
+        } else {
+            log.info("RocketMQ topic {} has exist. Updating it ...", fullTopicName);
+
+            // expand partition
+            try {
+                if (currentPartitionNum < tc.getWriteQueueNums()) {
+                    log.info("Expend partition for topic [{}], from [{}] to [{}].", fullTopicName, currentPartitionNum,
+                            tc.getWriteQueueNums());
+                    adminClient.topics().updatePartitionedTopic(fullTopicName, tc.getWriteQueueNums());
+                    currentPartitionNum = tc.getWriteQueueNums();
+                }
+            } catch (PulsarAdminException e) {
+                log.warn("Expend partitioned for topic [{}] error.", fullTopicName, e);
+                throw new RuntimeException("Update topic error.");
+            }
+
+            // partition can not be shrink
+            if (currentPartitionNum > tc.getWriteQueueNums()) {
+                tc.setWriteQueueNums(currentPartitionNum);
+            }
+            Map<String, List<Integer>> topicRouteMap = clusterBrokers.createTopicRouteMap(currentPartitionNum);
+            // Create or update zk topic node
+            RopTopicContent topicContent;
+            try {
+                topicContent = zkService.getTopicContent(topicName);
+                topicContent.setConfig(tc);
+                topicContent.setRouteMap(topicRouteMap);
+                zkService.setTopicContent(topicName, topicContent);
+            } catch (Exception e) {
+                topicContent = new RopTopicContent();
+                topicContent.setConfig(tc);
+                topicContent.setRouteMap(topicRouteMap);
+                try {
+                    zkService.createTopicContent(topicName, topicContent);
+                } catch (Exception exception) {
+                    log.error("createTopicContent [{}] error. caused by: {}", topicName, exception);
+                    throw new RuntimeException("createTopicContent error.");
+                }
+            }
+        }
+
+        updateTopicConfig(tc);
     }
 
     /**
@@ -461,51 +439,24 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
      */
     public void deleteTopic(final String topic) {
         String fullTopicName = RocketMQTopic.getPulsarOrigNoDomainTopic(topic);
+        log.info("Delete topic [{}].", fullTopicName);
+
         try {
+            //delete metadata from pulsar system
             PartitionedTopicMetadata topicMetadata = adminClient.topics().getPartitionedTopicMetadata(fullTopicName);
             if (topicMetadata.partitions > 0) {
                 adminClient.topics().deletePartitionedTopic(fullTopicName, true);
             }
+
+            //delete metadata from zookeeper
+            String topicNodePath = String
+                    .format(RopZkUtils.TOPIC_BASE_PATH_MATCH,
+                            PulsarUtil.getNoDomainTopic(TopicName.get(fullTopicName)));
+            zkService.deleteFullPath(topicNodePath);
         } catch (Exception e) {
             log.warn("[DELETE] Topic {} create or update partition failed", fullTopicName, e);
         }
 
-    }
-
-    private synchronized PulsarClient getClient(String listenerName) {
-        if (pulsarClientMap.get(listenerName) == null || pulsarClientMap.get(listenerName).isClosed()) {
-            try {
-                ClientBuilder builder =
-                        PulsarClient.builder().serviceUrl(this.brokerService.getPulsar().getBrokerServiceUrl());
-                if (StringUtils.isNotBlank(this.config.getBrokerClientAuthenticationPlugin())) {
-                    builder.authentication(
-                            this.config.getBrokerClientAuthenticationPlugin(),
-                            this.config.getBrokerClientAuthenticationParameters()
-                    );
-                }
-                if (StringUtils.isNotBlank(listenerName)) {
-                    builder.listenerName(listenerName);
-                }
-                pulsarClientMap.put(listenerName, builder.build());
-            } catch (Exception e) {
-                log.error("listenerName [{}] getClient error", listenerName, e);
-            }
-        }
-        return pulsarClientMap.get(listenerName);
-    }
-
-    @EqualsAndHashCode
-    @AllArgsConstructor
-    @NoArgsConstructor
-    private static class LookupCacheKey {
-
-        TopicName topicName;
-        String listenerName;
-
-        public LookupCacheKey(TopicName topicName) {
-            this.topicName = topicName;
-            this.listenerName = Strings.EMPTY;
-        }
     }
 
     @Getter
@@ -535,7 +486,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                 brokerService.generateUniqueProducerName(), Collections.singletonMap("Type", "ROP"));
 
         // this will register and add USAGE_COUNT_UPDATER.
-        persistentTopic.addProducer(producer);
+        persistentTopic.addProducer(producer, new CompletableFuture<>());
         return producer;
     }
 
@@ -550,4 +501,48 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
         }
     }
 
+    private boolean isTBW12Topic(TopicName topicName) {
+        return MixAll.AUTO_CREATE_TOPIC_KEY_TOPIC.equals(topicName.getLocalName());
+    }
+
+    //create RoP cluster broker list
+    public CompletableFuture<Optional<RopClusterContent>> createOrUpdateClusterConfig(
+            RopClusterContent clusterContent) {
+        CompletableFuture<Optional<RopClusterContent>> future = new CompletableFuture<>();
+        if (clusterContent == null) {
+            future.completeExceptionally(
+                    new IllegalArgumentException("Invalid parameters for createOrUpdateClusterConfig"));
+            return future;
+        }
+        String clusterZNodePath = RopZkUtils.getClusterZNodePath();
+        zkService.getClusterDataCache().getAsync(clusterZNodePath).thenAccept(clusterInfo -> {
+            if (clusterInfo.isPresent()) {
+                RopClusterContent oldClusterContent = clusterInfo.get();
+                if (clusterContent.equals(oldClusterContent)) {
+                    future.complete(clusterInfo);
+                } else {
+                    try {
+                        zkService.setJsonObjectForPath(clusterZNodePath, clusterContent);
+                        zkService.getClusterDataCache().reloadCache(clusterZNodePath);
+                        future.complete(clusterInfo);
+                    } catch (Exception e) {
+                        log.warn("fail to createOrUpdateClusterConfig. caused by: ", e);
+                        throw new RuntimeException("setJsonObjectForPath error, path: " + clusterZNodePath);
+                    }
+                }
+            } else {
+                try {
+                    zkService.createFullPathWithJsonObject(clusterZNodePath, clusterContent);
+                } catch (Exception e) {
+                    log.warn("fail to createOrUpdateClusterConfig. caused by: ", e);
+                    throw new RuntimeException("createFullPathWithJsonObject error, path: " + clusterZNodePath);
+                }
+            }
+            future.complete(Optional.of(clusterContent));
+        }).exceptionally(ex -> {
+            future.completeExceptionally(ex);
+            return null;
+        });
+        return future;
+    }
 }

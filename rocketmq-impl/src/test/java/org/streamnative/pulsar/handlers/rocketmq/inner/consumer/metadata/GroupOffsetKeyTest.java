@@ -33,7 +33,7 @@ public class GroupOffsetKeyTest {
         groupOffsetKey.setVersion((short) 2);
         groupOffsetKey.setGroupName("my_first_group");
         groupOffsetKey.setTopicName("my_first_topic");
-        groupOffsetKey.setPartition(10);
+        groupOffsetKey.setQueueId(10);
     }
 
     @Test

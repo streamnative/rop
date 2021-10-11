@@ -14,6 +14,8 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.consumer;
 
+import static java.util.stream.Collectors.toMap;
+
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -21,7 +23,6 @@ import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
@@ -34,6 +35,8 @@ import org.apache.pulsar.broker.service.persistent.PersistentTopic;
 import org.apache.rocketmq.common.UtilAll;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.metadata.GroupMetaManager;
+import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.metadata.GroupOffsetKey;
+import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.metadata.GroupOffsetValue;
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopPersistentTopicException;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupAndTopicName;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupName;
@@ -48,8 +51,10 @@ import org.streamnative.pulsar.handlers.rocketmq.utils.OffsetFinder;
 public class ConsumerOffsetManager {
 
     private final GroupMetaManager groupMetaManager;
+    private final RocketMQBrokerController brokerController;
 
     public ConsumerOffsetManager(RocketMQBrokerController brokerController, GroupMetaManager groupMetaManager) {
+        this.brokerController = brokerController;
         this.groupMetaManager = groupMetaManager;
     }
 
@@ -64,12 +69,11 @@ public class ConsumerOffsetManager {
 
     public Set<String> whichTopicByConsumer(final String group) {
         Set<String> topics = new HashSet<>();
-        for (Entry<ClientGroupAndTopicName, ConcurrentMap<Integer, Long>> next : groupMetaManager.getOffsetTable()
-                .entrySet()) {
-            ClientGroupName clientGroupName = next.getKey().getClientGroupName();
+        for (Entry<GroupOffsetKey, GroupOffsetValue> next : groupMetaManager.getOffsetTable()
+                .asMap().entrySet()) {
+            ClientGroupName clientGroupName = new ClientGroupName(next.getKey().getGroupName());
             if (group.equals(clientGroupName.getRmqGroupName())) {
-                String topicAtGroup = next.getKey().getClientTopicName().getRmqTopicName();
-                topics.add(topicAtGroup);
+                topics.add(next.getKey().getTopicName());
             }
         }
         return topics;
@@ -77,12 +81,11 @@ public class ConsumerOffsetManager {
 
     public Set<String> whichGroupByTopic(final String topic) {
         Set<String> groups = new HashSet<>();
-        for (Entry<ClientGroupAndTopicName, ConcurrentMap<Integer, Long>> next : groupMetaManager.getOffsetTable()
-                .entrySet()) {
-            ClientTopicName clientTopicName = next.getKey().getClientTopicName();
+        for (Entry<GroupOffsetKey, GroupOffsetValue> next : groupMetaManager.getOffsetTable()
+                .asMap().entrySet()) {
+            ClientTopicName clientTopicName = new ClientTopicName(next.getKey().getTopicName());
             if (topic.equals(clientTopicName.getRmqTopicName())) {
-                ClientGroupName clientGroupName = next.getKey().getClientGroupName();
-                groups.add(clientGroupName.getRmqGroupName());
+                groups.add(next.getKey().getGroupName());
             }
         }
         return groups;
@@ -99,69 +102,113 @@ public class ConsumerOffsetManager {
 
     public Map<Integer, Long> queryMinOffsetInAllGroup(final String topic, final String filterGroups) {
         Map<Integer, Long> queueMinOffset = new HashMap<>();
-        Set<ClientGroupAndTopicName> topicGroups = groupMetaManager.getOffsetTable().keySet();
+        ConcurrentMap<GroupOffsetKey, GroupOffsetValue> groupOffsetMap = groupMetaManager
+                .getOffsetTable().asMap();
+        Set<GroupOffsetKey> topicGroups = groupOffsetMap.keySet();
         if (!UtilAll.isBlank(filterGroups)) {
             for (String group : filterGroups.split(",")) {
-                topicGroups.removeIf(clientGroupAndTopicName -> group
-                        .equals(clientGroupAndTopicName.getClientGroupName().getRmqGroupName()));
+                topicGroups.removeIf(groupOffsetKey -> group
+                        .equals(groupOffsetKey.getGroupName()));
             }
         }
 
-        for (Entry<ClientGroupAndTopicName, ConcurrentMap<Integer, Long>> offSetEntry : groupMetaManager
-                .getOffsetTable().entrySet()) {
-            ClientGroupAndTopicName topicGroup = offSetEntry.getKey();
-            if (topic.equals(topicGroup.getClientTopicName().getRmqTopicName())) {
-                for (Entry<Integer, Long> entry : offSetEntry.getValue().entrySet()) {
-                    long minOffset = 0L;
-                    try {
-                        minOffset = getMinOffsetInQueue(topicGroup.getClientTopicName(), entry.getKey());
-                    } catch (RopPersistentTopicException ignore) {
-                    }
-                    if (entry.getValue() >= minOffset) {
-                        queueMinOffset.merge(entry.getKey(), entry.getValue(), (a, b) -> Math.min(b, a));
+        ClientTopicName searchTopic = new ClientTopicName(topic);
+        for (GroupOffsetKey key : topicGroups) {
+            if (searchTopic.getPulsarTopicName().equals(key.getTopicName())) {
+                long minOffset = 0L;
+                try {
+                    int pulsarPartitionId = brokerController.getRopBrokerProxy()
+                            .getPulsarTopicPartitionId(searchTopic.toPulsarTopicName(), key.getQueueId());
+                    minOffset = getMinOffsetInQueue(searchTopic, pulsarPartitionId);
+                } catch (Exception ex) {
+                    log.warn("get Pulsar Topic PartitionId error: ", ex);
+                }
+                for (Map.Entry<GroupOffsetKey, GroupOffsetValue> entry: groupOffsetMap.entrySet()) {
+                    if (entry.getValue().getOffset() >= minOffset) {
+                        queueMinOffset.merge(entry.getKey().getQueueId(),
+                                entry.getValue().getOffset(), (a, b) -> Math.min(b, a));
                     }
                 }
             }
-
         }
         return queueMinOffset;
     }
 
     public Map<Integer, Long> queryOffset(final String group, final String topic) {
-        return groupMetaManager.getOffsetTable().get(new ClientGroupAndTopicName(group, topic));
+        ClientGroupAndTopicName groupAndTopicName = new ClientGroupAndTopicName(group, topic);
+        ConcurrentMap<GroupOffsetKey, GroupOffsetValue> groupOffsetMap = groupMetaManager
+                .getOffsetTable().asMap();
+
+        return groupOffsetMap.entrySet().stream().filter(entry -> {
+            GroupOffsetKey key = entry.getKey();
+            return key.getTopicName().equals(groupAndTopicName.getClientTopicName().getPulsarTopicName())
+                    && key.getGroupName().equals(groupAndTopicName.getClientGroupName().getPulsarGroupName());
+        }).collect(toMap(entry -> entry.getKey().getQueueId()
+                , entry -> entry.getValue().getOffset()));
     }
 
     public void cloneOffset(final String srcGroup, final String destGroup, final String topic) {
-        ConcurrentMap<Integer, Long> offsets = groupMetaManager.getOffsetTable()
-                .get(new ClientGroupAndTopicName(srcGroup, topic));
-        if (offsets != null) {
-            groupMetaManager.getOffsetTable()
-                    .put(new ClientGroupAndTopicName(destGroup, topic), new ConcurrentHashMap<>(offsets));
+        ClientGroupAndTopicName srcGroupAndTopic = new ClientGroupAndTopicName(srcGroup, topic);
+        ClientGroupAndTopicName destGroupAndTopic = new ClientGroupAndTopicName(destGroup, topic);
+
+        groupMetaManager.getOffsetTable().asMap().entrySet().stream().filter((entry) -> {
+            GroupOffsetKey key = entry.getKey();
+            return key.getTopicName().equals(srcGroupAndTopic.getClientTopicName().getPulsarTopicName())
+                    && key.getGroupName().equals(srcGroupAndTopic.getClientGroupName().getPulsarGroupName());
+        }).forEach((srcEntry) -> {
+            GroupOffsetKey key = srcEntry.getKey();
+            GroupOffsetValue value = srcEntry.getValue();
+            groupMetaManager
+                    .commitOffset(key.getTopicName(), destGroupAndTopic.getClientGroupName().getPulsarGroupName(),
+                            key.getQueueId(), value.getOffset());
+        });
+    }
+
+    /**
+     * @param topic rocketmq topic name
+     * @param queueId rocketmq queue id
+     * @return
+     */
+    public long getMinOffsetInQueue(String topic, int queueId) {
+        ClientTopicName clientTopicName = new ClientTopicName(topic);
+        int pulsarPartitionId = brokerController.getRopBrokerProxy()
+                .getPulsarTopicPartitionId(clientTopicName.toPulsarTopicName(), queueId);
+        try {
+            return getMinOffsetInQueue(clientTopicName, pulsarPartitionId);
+        } catch (RopPersistentTopicException e) {
+            return 0L;
         }
     }
 
-    public long getMinOffsetInQueue(ClientTopicName clientTopicName, int partitionId)
+    public long getMinOffsetInQueue(ClientTopicName clientTopicName, int pulsarPartitionId)
             throws RopPersistentTopicException {
-        PersistentTopic persistentTopic = getPulsarPersistentTopic(clientTopicName, partitionId);
-        if (persistentTopic != null) {
-            try {
-                PositionImpl firstPosition = persistentTopic.getFirstPosition();
-                return MessageIdUtils.getOffset(firstPosition.getLedgerId(), firstPosition.getEntryId(), partitionId);
-            } catch (ManagedLedgerException e) {
-                log.warn("getMinOffsetInQueue error, ClientGroupAndTopicName=[{}], partitionId=[{}].", clientTopicName,
-                        partitionId);
-            }
-        }
-        return 0L;
+        PersistentTopic persistentTopic = getPulsarPersistentTopic(clientTopicName, pulsarPartitionId);
+        PositionImpl firstPosition = MessageIdUtils.getFirstPosition(persistentTopic.getManagedLedger());
+        assert firstPosition != null;
+        return MessageIdUtils.getQueueOffsetByPosition(persistentTopic, firstPosition);
     }
 
-    public long getMaxOffsetInQueue(ClientTopicName topicName, int partitionId) throws RopPersistentTopicException {
-        PersistentTopic persistentTopic = getPulsarPersistentTopic(topicName, partitionId);
-        if (persistentTopic != null) {
-            PositionImpl lastPosition = (PositionImpl) persistentTopic.getLastPosition();
-            return MessageIdUtils.getOffset(lastPosition.getLedgerId(), lastPosition.getEntryId(), partitionId);
+    /**
+     * @param topic rocketmq topic name
+     * @param queueId rocketmq queue id
+     * @return
+     */
+    public long getMaxOffsetInQueue(String topic, int queueId) {
+        ClientTopicName clientTopicName = new ClientTopicName(topic);
+        int pulsarPartitionId = brokerController.getRopBrokerProxy()
+                .getPulsarTopicPartitionId(clientTopicName.toPulsarTopicName(), queueId);
+        try {
+            return getMaxOffsetInQueue(clientTopicName, pulsarPartitionId);
+        } catch (RopPersistentTopicException e) {
+            return Long.MAX_VALUE;
         }
-        return 0L;
+    }
+
+    public long getMaxOffsetInQueue(ClientTopicName topicName, int pulsarPartitionId)
+            throws RopPersistentTopicException {
+        PersistentTopic persistentTopic = getPulsarPersistentTopic(topicName, pulsarPartitionId);
+        long lastMessageIndex = MessageIdUtils.getLastMessageIndex(persistentTopic.getManagedLedger());
+        return lastMessageIndex < 0 ? 0L : lastMessageIndex;
     }
 
     public long searchOffsetByTimestamp(ClientGroupAndTopicName groupAndTopic, int partitionId, long timestamp) {
@@ -210,8 +257,8 @@ public class ConsumerOffsetManager {
         return -1L;
     }
 
-    public PersistentTopic getPulsarPersistentTopic(ClientTopicName topicName, int partitionId)
+    public PersistentTopic getPulsarPersistentTopic(ClientTopicName topicName, int pulsarPartitionId)
             throws RopPersistentTopicException {
-        return groupMetaManager.getPulsarPersistentTopic(topicName, partitionId);
+        return groupMetaManager.getPulsarPersistentTopic(topicName, pulsarPartitionId);
     }
 }

@@ -20,11 +20,12 @@ import static org.apache.rocketmq.common.constant.PermName.PERM_WRITE;
 import static org.apache.rocketmq.common.protocol.RequestCode.GET_ROUTEINTO_BY_TOPIC;
 
 import com.google.common.base.Joiner;
+import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import io.netty.channel.ChannelHandlerContext;
-import java.net.InetSocketAddress;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -46,12 +47,15 @@ import org.apache.rocketmq.common.protocol.body.ClusterInfo;
 import org.apache.rocketmq.common.protocol.header.namesrv.GetRouteInfoRequestHeader;
 import org.apache.rocketmq.common.protocol.route.BrokerData;
 import org.apache.rocketmq.common.protocol.route.QueueData;
+import org.apache.rocketmq.common.protocol.route.TopicRouteData;
 import org.apache.rocketmq.remoting.common.RemotingHelper;
 import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.streamnative.pulsar.handlers.rocketmq.RocketMQProtocolHandler;
 import org.streamnative.pulsar.handlers.rocketmq.RocketMQServiceConfiguration;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
+import org.streamnative.pulsar.handlers.rocketmq.inner.proxy.RopBrokerProxy;
+import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopClusterContent;
 import org.streamnative.pulsar.handlers.rocketmq.utils.PulsarUtil;
 import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 import org.testng.collections.Sets;
@@ -71,12 +75,14 @@ public class NameserverProcessor implements NettyRequestProcessor {
     private final RocketMQServiceConfiguration config;
     private final MQTopicManager mqTopicManager;
     private final int servicePort;
+    private final RopBrokerProxy brokerProxy;
 
     public NameserverProcessor(RocketMQBrokerController brokerController) {
         this.brokerController = brokerController;
         this.config = brokerController.getServerConfig();
         this.mqTopicManager = brokerController.getTopicConfigManager();
         this.servicePort = RocketMQProtocolHandler.getListenerPort(config.getRocketmqListeners());
+        this.brokerProxy = brokerController.getRopBrokerProxy();
 
         String rocketmqListenerPortMap = config.getRocketmqListenerPortMap();
         String[] parts = rocketmqListenerPortMap.split(",");
@@ -95,6 +101,8 @@ public class NameserverProcessor implements NettyRequestProcessor {
                     RemotingHelper.parseChannelRemoteAddr(ctx.channel()),
                     request);
         }
+
+        Preconditions.checkArgument(this.brokerController.isRunning(), "RoP broker haven't been started.");
 
         switch (request.getCode()) {
             case RequestCode.PUT_KV_CONFIG:
@@ -144,10 +152,9 @@ public class NameserverProcessor implements NettyRequestProcessor {
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
         final GetRouteInfoRequestHeader requestHeader =
                 (GetRouteInfoRequestHeader) request.decodeCommandCustomHeader(GetRouteInfoRequestHeader.class);
-        RopTopicRouteData topicRouteData = new RopTopicRouteData();
+        TopicRouteData topicRouteData = new TopicRouteData();
         List<BrokerData> brokerDatas = new ArrayList<>();
         List<QueueData> queueDatas = new ArrayList<>();
-        Map<Integer, String> partitionRouteInfos;
         topicRouteData.setBrokerDatas(brokerDatas);
         topicRouteData.setQueueDatas(queueDatas);
 
@@ -157,10 +164,9 @@ public class NameserverProcessor implements NettyRequestProcessor {
         // Here to create a theme operation for compatibility with the client
         if (clusterName.equals(requestHeader.getTopic())) {
             try {
-                PulsarAdmin adminClient = brokerController.getBrokerService().pulsar().getAdminClient();
-                List<String> brokers = adminClient.brokers().getActiveBrokers(clusterName);
+                List<String> brokers = brokerProxy.getActiveBrokers();
                 String randomBroker = brokers.get(new Random().nextInt(brokers.size()));
-                String rmqBrokerAddress = parseBrokerAddress(randomBroker, servicePort);
+                String rmqBrokerAddress = parseBrokerAddress(randomBroker);
                 BrokerData brokerData = new BrokerData();
                 HashMap<Long, String> brokerAddrs = Maps.newHashMap();
                 brokerAddrs.put(0L, rmqBrokerAddress);
@@ -185,40 +191,38 @@ public class NameserverProcessor implements NettyRequestProcessor {
         String requestTopic = requestHeader.getTopic();
         if (Strings.isNotBlank(requestTopic)) {
             RocketMQTopic mqTopic = RocketMQTopic.getRocketMQDefaultTopic(requestTopic);
-            Map<Integer, InetSocketAddress> topicBrokerAddr =
-                    mqTopicManager.getTopicBrokerAddr(mqTopic.getPulsarTopicName(), Strings.EMPTY);
-            partitionRouteInfos = Maps.newHashMapWithExpectedSize(topicBrokerAddr.size());
-            topicRouteData.setPartitionRouteInfos(partitionRouteInfos);
+            Map<String, List<Integer>> topicBrokerAddr = mqTopicManager
+                    .getPulsarTopicRoute(mqTopic.getPulsarTopicName(), listenerName);
             try {
-                if (!topicBrokerAddr.isEmpty()) {
-                    Map<String, String> brokerNames = Maps.newHashMap();
-                    topicBrokerAddr.forEach((partition, addr) -> {
-                        String brokerName = addr.getHostName();
-                        if (!brokerNames.containsKey(brokerName)) {
-                            String advertisAddress = getBrokerAddressByListenerName(brokerName, listenerName);
-                            HashMap<Long, String> brokerAddrs = new HashMap<>(1);
-                            brokerAddrs.put(0L, advertisAddress);
-                            brokerDatas.add(new BrokerData(clusterName, brokerName, brokerAddrs));
+                Preconditions.checkArgument(!topicBrokerAddr.isEmpty(),
+                        String.format("Topic(%s) route can't be found.", requestTopic));
+                topicBrokerAddr.forEach((brokerTag, queueList) -> {
+                    RopClusterContent ropClusterContent = brokerProxy.getRopClusterContent();
+                    Map<String, List<String>> brokerCluster = ropClusterContent.getBrokerCluster();
+                    List<String> brokerList = brokerCluster.get(brokerTag);
+                    Collections.shuffle(brokerList);
+                    String brokerHost = brokerList.get(0);
+                    String advertiseAddress = getBrokerAddressByListenerName(brokerHost, listenerName);
+                    HashMap<Long, String> brokerAddrs = new HashMap<>(1);
+                    brokerAddrs.put(0L, advertiseAddress);
+                    brokerDatas.add(new BrokerData(clusterName, brokerTag, brokerAddrs));
 
-                            QueueData queueData = new QueueData();
-                            queueData.setBrokerName(brokerName);
-                            queueData.setReadQueueNums(topicBrokerAddr.size());
-                            queueData.setWriteQueueNums(topicBrokerAddr.size());
-                            queueData.setPerm(PERM_WRITE | PERM_READ);
-                            queueDatas.add(queueData);
-                            brokerNames.put(addr.getHostName(), advertisAddress);
-                        }
-                        partitionRouteInfos.put(partition, brokerName);
-                    });
+                    QueueData queueData = new QueueData();
+                    queueData.setBrokerName(brokerTag);
+                    queueData.setReadQueueNums(queueList.size());
+                    queueData.setWriteQueueNums(queueList.size());
+                    queueData.setPerm(PERM_WRITE | PERM_READ);
+                    queueDatas.add(queueData);
 
-                    byte[] content = topicRouteData.encode();
-                    response.setBody(content);
-                    response.setCode(ResponseCode.SUCCESS);
-                    response.setRemark(null);
-                    return response;
-                }
+                });
+
+                byte[] content = topicRouteData.encode();
+                response.setBody(content);
+                response.setCode(ResponseCode.SUCCESS);
+                response.setRemark(null);
+                return response;
             } catch (Exception ex) {
-                log.warn("fetch topic address of topic[{}] error.", requestTopic, ex);
+                log.info("Fetch topic route info of topic: [{}] error.", requestTopic, ex);
             }
         }
 
@@ -228,7 +232,7 @@ public class NameserverProcessor implements NettyRequestProcessor {
         return response;
     }
 
-    public String parseBrokerAddress(String brokerAddress, int port) {
+    public String parseBrokerAddress(String brokerAddress) {
         // pulsar://localhost:6650
         if (null == brokerAddress) {
             log.error("The brokerAddress is null, please check.");
@@ -256,7 +260,7 @@ public class NameserverProcessor implements NettyRequestProcessor {
             HashMap<String, BrokerData> brokerAddrTable = Maps.newHashMap();
             Set<String> brokerNames = Sets.newHashSet();
             for (String broker : brokers) {
-                String rmqBrokerAddress = parseBrokerAddress(broker, servicePort);
+                String rmqBrokerAddress = parseBrokerAddress(broker);
                 String brokerName = PulsarUtil.getBrokerHost(broker);
 
                 HashMap<Long, String> brokerAddrs = Maps.newHashMap();
@@ -325,7 +329,6 @@ public class NameserverProcessor implements NettyRequestProcessor {
     }
 
     private ModularLoadManagerImpl getModularLoadManagerImpl() {
-
         return (ModularLoadManagerImpl) ((ModularLoadManagerWrapper) this.brokerController.getBrokerService()
                 .getPulsar().getLoadManager().get()).getLoadManager();
     }

@@ -29,21 +29,26 @@ import java.util.Map;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.bookkeeper.mledger.Entry;
 import org.apache.pulsar.client.api.Message;
 import org.apache.pulsar.client.impl.MessageIdImpl;
 import org.apache.pulsar.client.impl.TopicMessageImpl;
-import org.apache.pulsar.common.api.proto.PulsarApi;
-import org.apache.pulsar.common.api.proto.PulsarApi.MessageIdData;
+import org.apache.pulsar.common.api.proto.BrokerEntryMetadata;
+import org.apache.pulsar.common.api.proto.MessageIdData;
+import org.apache.pulsar.common.api.proto.MessageMetadata;
+import org.apache.pulsar.common.naming.TopicName;
 import org.apache.pulsar.common.protocol.Commands;
 import org.apache.rocketmq.common.UtilAll;
 import org.apache.rocketmq.common.message.MessageConst;
 import org.apache.rocketmq.common.message.MessageDecoder;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageExtBatch;
+import org.apache.rocketmq.common.protocol.NamespaceUtil;
 import org.apache.rocketmq.common.sysflag.MessageSysFlag;
 import org.apache.rocketmq.store.AppendMessageStatus;
 import org.apache.rocketmq.store.CommitLog;
 import org.apache.rocketmq.store.MessageExtBrokerInner;
+import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.CommitLogOffset;
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopEncodeException;
 import org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils;
 
@@ -67,10 +72,6 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
             return CommonUtils.decode(ByteBuffer.wrap(message.getData()),
                     (MessageIdImpl) message.getMessageId(), true, false);
         }
-    }
-
-    public static ByteBuffer decodePulsarMessageResBuffer(Message<byte[]> message) {
-        return CommonUtils.decode(message);
     }
 
     @Override
@@ -104,12 +105,13 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
         return buf;
     }
 
-    private static PulsarApi.MessageMetadata getDefaultMessageMetadata() {
-        final PulsarApi.MessageMetadata.Builder builder = PulsarApi.MessageMetadata.newBuilder();
-        builder.setProducerName("");
-        builder.setSequenceId(0L);
-        builder.setPublishTime(System.currentTimeMillis());
-        return builder.build();
+
+    private static MessageMetadata getDefaultMessageMetadata() {
+        final MessageMetadata messageMetadata = new MessageMetadata();
+        messageMetadata.setProducerName("");
+        messageMetadata.setSequenceId(0L);
+        messageMetadata.setPublishTime(System.currentTimeMillis());
+        return messageMetadata;
     }
 
     private boolean verifyChecksum(ByteBuf headersAndPayload, MessageIdData messageId) {
@@ -130,9 +132,9 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
     }
 
     @Override
-    public List<MessageExt> decodePulsarMessage(List<Message<byte[]>> messages, Predicate predicate) {
+    public List<MessageExt> decodePulsarMessage(List<Message<byte[]>> messages, Predicate<Message> predicate) {
         if (predicate != null) {
-            return messages.stream().filter((Predicate<Message>) predicate).map(RopEntryFormatter::decodePulsarMessage)
+            return messages.stream().filter(predicate).map(RopEntryFormatter::decodePulsarMessage)
                     .collect(Collectors.toList());
         } else {
             return messages.stream().map(RopEntryFormatter::decodePulsarMessage).collect(Collectors.toList());
@@ -140,34 +142,39 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
     }
 
     @Override
-    public List<ByteBuffer> decodePulsarMessageResBuffer(List<Message<byte[]>> messages,
-            Predicate predicate) {//Message in pulsar
-        if (messages == null || messages.isEmpty()) {
-            return Collections.emptyList();
-        }
-        if (predicate != null) {
-            return messages.stream().filter((Predicate<Message>) predicate)
-                    .map(RopEntryFormatter::decodePulsarMessageResBuffer)
-                    .collect(Collectors.toList());
-        } else {
-            return messages.stream().map(RopEntryFormatter::decodePulsarMessageResBuffer).collect(Collectors.toList());
+    public MessageExt decodeMessageByPulsarEntry(TopicName pulsarPartitionedTopic, Entry msgEntry) {
+        ByteBuf msgBuff = decodePulsarMessage(pulsarPartitionedTopic, msgEntry.getDataBuffer(), null);
+        try {
+            return CommonUtils.decode(msgBuff, true, false);
+        } finally {
+            msgBuff.release();
         }
     }
 
-    public ByteBuffer decodePulsarMessage(ByteBuf headersAndPayload, long offset, Predicate<ByteBuf> predicate) {
+    public ByteBuf decodePulsarMessage(TopicName partitionedTopicName, ByteBuf headersAndPayload,
+            Predicate<ByteBuf> predicate) {
+        BrokerEntryMetadata brokerEntryMetadata = Commands.parseBrokerEntryMetadataIfExist(headersAndPayload);
+        long index = (brokerEntryMetadata != null) ? brokerEntryMetadata.getIndex() : -1L;
+        Preconditions.checkArgument(index >= 0, "the version of broker must be > 2.8.0");
         Commands.skipMessageMetadata(headersAndPayload);
+        // check the tag and filter
         if (predicate != null && !predicate.test(headersAndPayload)) {
             return null;
         }
-        // skip tag hash code
+        // read long tag
         headersAndPayload.readLong();
-        ByteBuffer wrap = ByteBuffer.allocate(headersAndPayload.readableBytes());
-        headersAndPayload.readBytes(wrap);
+        ByteBuf slice = headersAndPayload
+                .retainedSlice(headersAndPayload.readerIndex(), headersAndPayload.readableBytes());
         // set offset
-        wrap.putLong(20, offset);
-        wrap.putLong(28, offset);
-        wrap.flip();
-        return wrap;
+        slice.setLong(20, index);
+
+        // calc physicalOffset
+        boolean retryTopic = NamespaceUtil.isRetryTopic(partitionedTopicName.getLocalName());
+        CommitLogOffset commitLogOffset = new CommitLogOffset(retryTopic,
+                partitionedTopicName.getPartitionIndex(),
+                index);
+        slice.setLong(28, commitLogOffset.getCommitLogOffset());
+        return slice;
     }
 
     private List<byte[]> convertRocketmq2Pulsar(final MessageExtBatch messageExtBatch) throws RopEncodeException {

@@ -14,82 +14,137 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.consumer;
 
+import com.google.common.base.Preconditions;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.RemovalNotification;
+import java.io.Closeable;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.logging.log4j.util.Strings;
 import org.apache.rocketmq.common.DataVersion;
+import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.subscription.SubscriptionGroupConfig;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
-import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.metadata.GroupMetaManager;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupName;
+import org.streamnative.pulsar.handlers.rocketmq.inner.proxy.RopZookeeperCacheService;
+import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopGroupContent;
 
 /**
  * Subscription group manager.
  */
 @Slf4j
-public class SubscriptionGroupManager {
+public class SubscriptionGroupManager implements Closeable {
 
+    private final int cacheInitCapacity = 1024;
+    private final int maxCacheTimeInSec = 60;
+    private final RocketMQBrokerController brokerController;
     private final DataVersion dataVersion = new DataVersion();
-    private final GroupMetaManager groupMetaManager;
 
-    public SubscriptionGroupManager(RocketMQBrokerController brokerController, GroupMetaManager groupMetaManager) {
-        this.groupMetaManager = groupMetaManager;
+    private final AtomicReference<RopZookeeperCacheService> zkServiceRef = new AtomicReference<>();
+    private volatile boolean isRunning = false;
+
+
+    private final Cache<ClientGroupName, SubscriptionGroupConfig> subscriptionGroupTableCache = CacheBuilder
+            .newBuilder()
+            .initialCapacity(cacheInitCapacity)
+            .expireAfterAccess(maxCacheTimeInSec, TimeUnit.SECONDS)
+            .removalListener((RemovalNotification<ClientGroupName, SubscriptionGroupConfig> notification) ->
+                    log.info("Remove key [{}] from subscriptionGroupTableCache", notification.getKey().toString()))
+            .build();
+
+    public SubscriptionGroupManager(RocketMQBrokerController brokerController) {
+        this.brokerController = brokerController;
         this.init();
     }
 
     private void init() {
         SubscriptionGroupConfig subscriptionGroupConfig = new SubscriptionGroupConfig();
         subscriptionGroupConfig.setGroupName("TOOLS_CONSUMER");
-        groupMetaManager.getSubscriptionGroupTable()
-                .put(new ClientGroupName("TOOLS_CONSUMER"), subscriptionGroupConfig);
+        subscriptionGroupTableCache.put(new ClientGroupName("TOOLS_CONSUMER"), subscriptionGroupConfig);
 
         subscriptionGroupConfig = new SubscriptionGroupConfig();
         subscriptionGroupConfig.setGroupName("SELF_TEST_C_GROUP");
-        groupMetaManager.getSubscriptionGroupTable()
-                .put(new ClientGroupName("SELF_TEST_C_GROUP"), subscriptionGroupConfig);
+        subscriptionGroupTableCache.put(new ClientGroupName("SELF_TEST_C_GROUP"), subscriptionGroupConfig);
     }
 
     public void start() {
-        log.info("starting SubscriptionGroupManager service...");
-//        Preconditions.checkNotNull(brokerController);
-//        groupMetaManager.getPulsarTopicCache().forEach(((clientTopicName, persistentTopicMap) -> {
-//            persistentTopicMap.values().forEach((topic) -> {
-//                topic.getSubscriptions().forEach((grp, subscription) -> {
-//                    SubscriptionGroupConfig config = new SubscriptionGroupConfig();
-//                    ClientGroupName clientGroupName = new ClientGroupName(TopicName.get(grp));
-//                    config.setGroupName(clientGroupName.getRmqGroupName());
-//                    groupMetaManager.getSubscriptionGroupTable().put(clientGroupName, config);
-//                });
-//            });
-//        }));
+        log.info("starting SubscriptionGroupManager service ...");
+        if (!isRunning) {
+            this.zkServiceRef.set(brokerController.getRopBrokerProxy().getZkService());
+            isRunning = true;
+            log.info("SubscriptionGroupManager has been started.");
+        }
+    }
+
+    @Override
+    public void close() {
+        subscriptionGroupTableCache.cleanUp();
+        zkServiceRef.set(null);
+        isRunning = false;
+        log.info("SubscriptionGroupManager have been closed.");
     }
 
     public void updateSubscriptionGroupConfig(SubscriptionGroupConfig config) {
-        groupMetaManager.updateGroup(config);
-    }
-
-    public void disableConsume(String groupName) {
-        SubscriptionGroupConfig old = groupMetaManager.getSubscriptionGroupTable().get(new ClientGroupName(groupName));
-        if (old != null) {
-            old.setConsumeEnable(false);
-            this.dataVersion.nextVersion();
+        Preconditions.checkArgument(isRunning, "SubscriptionGroupManager hasn't been initialized.");
+        Preconditions.checkArgument(config != null && Strings.isNotBlank(config.getGroupName()),
+                "GroupName in SubscriptionGroupConfig can't be empty.");
+        try {
+            RopGroupContent groupConfigContent = zkServiceRef.get().getGroupConfig(config);
+            SubscriptionGroupConfig oldGroupConfig = groupConfigContent != null ? groupConfigContent.getConfig() : null;
+            if (!config.equals(oldGroupConfig)) {
+                zkServiceRef.get().updateOrCreateGroupConfig(config);
+                subscriptionGroupTableCache.put(new ClientGroupName(config.getGroupName()), config);
+                dataVersion.nextVersion();
+            }
+        } catch (Exception e) {
+            log.error("Update subscription group [{}] config error.", config.getGroupName(), e);
+            throw new RuntimeException("Update subscription group config failed.");
         }
-
     }
 
     public SubscriptionGroupConfig findSubscriptionGroupConfig(String group) {
-        return groupMetaManager.queryGroup(group);
+        ClientGroupName clientGroupName = new ClientGroupName(group);
+
+        SubscriptionGroupConfig subscriptionGroupConfig = subscriptionGroupTableCache.getIfPresent(clientGroupName);
+        if (subscriptionGroupConfig != null) {
+            return subscriptionGroupConfig;
+        }
+
+        try {
+            RopGroupContent groupConfigContent = zkServiceRef.get().getGroupConfig(group);
+            if (Objects.nonNull(groupConfigContent)) {
+                subscriptionGroupTableCache.put(clientGroupName, groupConfigContent.getConfig());
+            } else if (brokerController.getServerConfig().isAutoCreateSubscriptionGroup()
+                    || MixAll.isSysConsumerGroup(group)) {
+                subscriptionGroupConfig = new SubscriptionGroupConfig();
+                subscriptionGroupConfig.setGroupName(group);
+                updateSubscriptionGroupConfig(subscriptionGroupConfig);
+                return subscriptionGroupConfig;
+            }
+            return groupConfigContent.getConfig();
+        } catch (Exception e) {
+            log.error("Find subscription group [{}] config error.", group, e);
+            throw new RuntimeException("Find subscription group config failed.");
+        }
     }
 
     public ConcurrentMap<ClientGroupName, SubscriptionGroupConfig> getSubscriptionGroupTable() {
-        return groupMetaManager.getSubscriptionGroupTable();
+        //return activity subscription group config
+        return subscriptionGroupTableCache.asMap();
+    }
+
+    public void deleteSubscriptionGroupConfig(String group) {
+        ClientGroupName clientGroupName = new ClientGroupName(group);
+        zkServiceRef.get().deleteGroupConfig(clientGroupName.getPulsarGroupName());
+        subscriptionGroupTableCache.invalidate(clientGroupName);
     }
 
     public DataVersion getDataVersion() {
-        return groupMetaManager.getDataVersion();
-    }
-
-    public void deleteSubscriptionGroupConfig(String groupName) {
-        groupMetaManager.deleteGroup(groupName);
+        return dataVersion;
     }
 }
 

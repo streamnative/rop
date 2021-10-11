@@ -14,10 +14,11 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.format;
 
-import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.function.Predicate;
+import org.apache.bookkeeper.mledger.Entry;
 import org.apache.pulsar.client.api.Message;
+import org.apache.pulsar.common.naming.TopicName;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopEncodeException;
 
@@ -35,11 +36,7 @@ public interface EntryFormatter<T> {
      */
     List<byte[]> encode(final T record, final int numMessages) throws RopEncodeException;
 
-    List<MessageExt> decodePulsarMessage(final List<Message<byte[]>> entries, Predicate predicate);
+    List<MessageExt> decodePulsarMessage(final List<Message<byte[]>> entries, Predicate<Message> predicate);
 
-    List<ByteBuffer> decodePulsarMessageResBuffer(final List<Message<byte[]>> entries, Predicate predicate);
-
-    default int parseNumMessages(final T record) {
-        return 1;
-    }
+    MessageExt decodeMessageByPulsarEntry(TopicName pulsarPartitionedTopic, Entry msgEntry);
 }

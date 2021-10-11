@@ -18,7 +18,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.spy;
 
 import com.google.common.util.concurrent.MoreExecutors;
-import com.google.common.util.concurrent.ThreadFactoryBuilder;
+import io.netty.channel.EventLoopGroup;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.net.URI;
@@ -30,8 +30,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
@@ -41,6 +39,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.bookkeeper.client.BookKeeper;
 import org.apache.bookkeeper.client.EnsemblePlacementPolicy;
 import org.apache.bookkeeper.client.PulsarMockBookKeeper;
+import org.apache.bookkeeper.common.util.OrderedExecutor;
+import org.apache.bookkeeper.common.util.OrderedScheduler;
 import org.apache.bookkeeper.stats.StatsLogger;
 import org.apache.bookkeeper.util.ZkUtils;
 import org.apache.pulsar.broker.BookKeeperClientFactory;
@@ -87,7 +87,7 @@ public abstract class RocketMqProtocolHandlerTestBase {
         }
     };
     private SameThreadOrderedSafeExecutor sameThreadOrderedSafeExecutor;
-    private ExecutorService bkExecutor;
+    private OrderedExecutor bkExecutor;
     private int brokerCount = 1;
     @Getter
     private List<PulsarService> pulsarServiceList = new ArrayList<>();
@@ -100,23 +100,22 @@ public abstract class RocketMqProtocolHandlerTestBase {
     private BookKeeperClientFactory mockBookKeeperClientFactory = new BookKeeperClientFactory() {
 
         @Override
-        public BookKeeper create(ServiceConfiguration conf, ZooKeeper zkClient,
+        public BookKeeper create(ServiceConfiguration conf, ZooKeeper zkClient, EventLoopGroup eventLoopGroup,
                 Optional<Class<? extends EnsemblePlacementPolicy>> ensemblePlacementPolicyClass,
-                Map<String, Object> properties) {
-            // Always return the same instance (so that we don't loose the mock BK content on broker restart
+                Map<String, Object> ensemblePlacementPolicyProperties) throws IOException {
+            return mockBookKeeper;
+        }
+
+        @Override
+        public BookKeeper create(ServiceConfiguration conf, ZooKeeper zkClient, EventLoopGroup eventLoopGroup,
+                Optional<Class<? extends EnsemblePlacementPolicy>> ensemblePlacementPolicyClass,
+                Map<String, Object> ensemblePlacementPolicyProperties, StatsLogger statsLogger) throws IOException {
             return mockBookKeeper;
         }
 
         @Override
         public void close() {
             // no-op
-        }
-
-        @Override
-        public BookKeeper create(ServiceConfiguration serviceConfiguration, ZooKeeper zooKeeper,
-                Optional<Class<? extends EnsemblePlacementPolicy>> optional,
-                Map<String, Object> map, StatsLogger statsLogger) throws IOException {
-            return mockBookKeeper;
         }
     };
 
@@ -139,7 +138,7 @@ public abstract class RocketMqProtocolHandlerTestBase {
     }
 
     public static NonClosableMockBookKeeper createMockBookKeeper(ZooKeeper zookeeper,
-            ExecutorService executor) throws Exception {
+            OrderedExecutor executor) throws Exception {
         return spy(new NonClosableMockBookKeeper(zookeeper, executor));
     }
 
@@ -239,10 +238,7 @@ public abstract class RocketMqProtocolHandlerTestBase {
 
     protected final void init() throws Exception {
         sameThreadOrderedSafeExecutor = new SameThreadOrderedSafeExecutor();
-        bkExecutor = Executors.newSingleThreadExecutor(
-                new ThreadFactoryBuilder().setNameFormat("mock-pulsar-bk")
-                        .setUncaughtExceptionHandler((thread, ex) -> log.info("Uncaught exception", ex))
-                        .build());
+        bkExecutor = OrderedScheduler.newSchedulerBuilder().numThreads(2).name("mock-pulsar-bk").build();
 
         mockZooKeeper = createMockZooKeeper();
         mockBookKeeper = createMockBookKeeper(mockZooKeeper, bkExecutor);
@@ -374,8 +370,8 @@ public abstract class RocketMqProtocolHandlerTestBase {
      */
     public static class NonClosableMockBookKeeper extends PulsarMockBookKeeper {
 
-        public NonClosableMockBookKeeper(ZooKeeper zk, ExecutorService executor) throws Exception {
-            super(zk, executor);
+        public NonClosableMockBookKeeper(ZooKeeper zk, OrderedExecutor executor) throws Exception {
+            super(executor);
         }
 
         @Override

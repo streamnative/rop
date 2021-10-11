@@ -14,12 +14,8 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.namesvr;
 
-import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.SLASH_CHAR;
-
-import com.google.common.base.Joiner;
 import com.google.common.base.Splitter;
 import java.util.HashSet;
-import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -27,12 +23,10 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.pulsar.common.naming.TopicName;
 import org.apache.rocketmq.common.DataVersion;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.TopicConfig;
 import org.apache.rocketmq.common.constant.PermName;
-import org.apache.rocketmq.common.protocol.body.KVTable;
 import org.streamnative.pulsar.handlers.rocketmq.RocketMQServiceConfiguration;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
@@ -47,10 +41,9 @@ public abstract class TopicConfigManager {
     protected final transient Lock lockTopicConfigTable = new ReentrantLock();
 
     //key = {tenant}/{ns}/{topic}
-    protected final ConcurrentMap<String, TopicConfig> topicConfigTable = new ConcurrentHashMap<String, TopicConfig>(
-            1024);
+    protected final ConcurrentMap<String, TopicConfig> topicConfigTable = new ConcurrentHashMap<>(1024);
     protected final DataVersion dataVersion = new DataVersion();
-    protected final Set<String> systemTopicList = new HashSet<String>();
+    protected final Set<String> systemTopicList = new HashSet<>();
     protected final RocketMQServiceConfiguration config;
     protected transient RocketMQBrokerController brokerController;
 
@@ -76,11 +69,11 @@ public abstract class TopicConfigManager {
         {
             // MixAll.BENCHMARK_TOPIC
             String topic = RocketMQTopic.getPulsarMetaNoDomainTopic(MixAll.BENCHMARK_TOPIC);
-            TopicConfig topicConfig = new TopicConfig(topic);
             this.systemTopicList.add(topic);
-            topicConfig.setReadQueueNums(defaultPartitionNum);
-            topicConfig.setWriteQueueNums(defaultPartitionNum);
-            this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);
+//            TopicConfig topicConfig = new TopicConfig(topic);
+//            topicConfig.setReadQueueNums(defaultPartitionNum);
+//            topicConfig.setWriteQueueNums(defaultPartitionNum);
+//            this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);
         }
         {
 
@@ -143,20 +136,6 @@ public abstract class TopicConfigManager {
             topicConfig.setReadQueueNums(1);
             topicConfig.setWriteQueueNums(1);
             this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);
-        }
-
-    }
-
-    protected void putPulsarTopic2Config(TopicName pulsarTopic, int partitionNum) {
-        String pulsarTopicName = Joiner.on(SLASH_CHAR).join(pulsarTopic.getNamespace(), pulsarTopic.getLocalName());
-        if (!this.topicConfigTable.containsKey(pulsarTopicName)) {
-            TopicConfig topicConfig = new TopicConfig(pulsarTopicName);
-            if (partitionNum > 0) {
-                topicConfig.setReadQueueNums(partitionNum);
-                topicConfig.setWriteQueueNums(partitionNum);
-            }
-            topicConfig.setPerm(7);
-            this.topicConfigTable.put(pulsarTopicName, topicConfig);
         }
     }
 
@@ -231,9 +210,9 @@ public abstract class TopicConfigManager {
                         log.info("Create new topic by default topic:[{}] config:[{}] producer:[{}]",
                                 defaultTopic, topicConfig, remoteAddress);
 
-                        this.topicConfigTable.put(pulsarTopicName, topicConfig);
                         this.dataVersion.nextVersion();
                         this.createPulsarPartitionedTopic(topicConfig);
+                        this.topicConfigTable.put(pulsarTopicName, topicConfig);
                     }
                 } finally {
                     this.lockTopicConfigTable.unlock();
@@ -275,9 +254,9 @@ public abstract class TopicConfigManager {
                     topicConfig.setTopicSysFlag(topicSysFlag);
 
                     log.info("create new topic {}", topicConfig);
-                    this.topicConfigTable.put(pulsarTopicName, topicConfig);
                     this.dataVersion.nextVersion();
                     this.createPulsarPartitionedTopic(topicConfig);
+                    this.topicConfigTable.put(pulsarTopicName, topicConfig);
                 } finally {
                     this.lockTopicConfigTable.unlock();
                 }
@@ -310,9 +289,9 @@ public abstract class TopicConfigManager {
                     topicConfig.setTopicSysFlag(0);
 
                     log.info("create new topic {}", topicConfig);
-                    this.topicConfigTable.put(MixAll.TRANS_CHECK_MAX_TIME_TOPIC, topicConfig);
                     this.dataVersion.nextVersion();
                     this.createPulsarPartitionedTopic(topicConfig);
+                    this.topicConfigTable.put(MixAll.TRANS_CHECK_MAX_TIME_TOPIC, topicConfig);
                 } finally {
                     this.lockTopicConfigTable.unlock();
                 }
@@ -335,38 +314,6 @@ public abstract class TopicConfigManager {
         this.dataVersion.nextVersion();
     }
 
-    public void updateOrderTopicConfig(final KVTable orderKVTableFromNs) {
-
-        if (orderKVTableFromNs != null && orderKVTableFromNs.getTable() != null) {
-            boolean isChange = false;
-            Set<String> orderTopics = orderKVTableFromNs.getTable().keySet();
-            for (String topic : orderTopics) {
-                TopicConfig topicConfig = this.topicConfigTable.get(topic);
-                if (topicConfig != null && !topicConfig.isOrder()) {
-                    topicConfig.setOrder(true);
-                    isChange = true;
-                    log.info("update order topic config, topic={}, order={}", topic, true);
-                }
-            }
-
-            for (Map.Entry<String, TopicConfig> entry : this.topicConfigTable.entrySet()) {
-                String topic = entry.getKey();
-                if (!orderTopics.contains(topic)) {
-                    TopicConfig topicConfig = entry.getValue();
-                    if (topicConfig.isOrder()) {
-                        topicConfig.setOrder(false);
-                        isChange = true;
-                        log.info("update order topic config, topic={}, order={}", topic, false);
-                    }
-                }
-            }
-
-            if (isChange) {
-                this.dataVersion.nextVersion();
-            }
-        }
-    }
-
     public boolean isOrderTopic(final String topic) {
         TopicConfig topicConfig = this.topicConfigTable.get(topic);
         if (topicConfig == null) {
@@ -384,13 +331,5 @@ public abstract class TopicConfigManager {
         } else {
             log.warn("delete topic config failed, topic: {} not exists", topic);
         }
-    }
-
-    public DataVersion getDataVersion() {
-        return dataVersion;
-    }
-
-    public ConcurrentMap<String, TopicConfig> getTopicConfigTable() {
-        return topicConfigTable;
     }
 }

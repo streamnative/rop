@@ -14,10 +14,12 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.processor;
 
+import io.netty.buffer.ByteBuf;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.FileRegion;
 import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.concurrent.ConcurrentMap;
@@ -37,7 +39,6 @@ import org.apache.rocketmq.common.protocol.header.PullMessageRequestHeader;
 import org.apache.rocketmq.common.protocol.header.PullMessageResponseHeader;
 import org.apache.rocketmq.common.protocol.heartbeat.MessageModel;
 import org.apache.rocketmq.common.protocol.heartbeat.SubscriptionData;
-import org.apache.rocketmq.common.protocol.topic.OffsetMovedEvent;
 import org.apache.rocketmq.common.subscription.SubscriptionGroupConfig;
 import org.apache.rocketmq.common.sysflag.MessageSysFlag;
 import org.apache.rocketmq.common.sysflag.PullSysFlag;
@@ -49,10 +50,12 @@ import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.store.stats.BrokerStatsManager;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RopClientChannelCnx;
+import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.BatchMessageTransfer;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.ConsumerGroupInfo;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.RopGetMessageResult;
 import org.streamnative.pulsar.handlers.rocketmq.inner.format.RopMessageFilter;
 import org.streamnative.pulsar.handlers.rocketmq.inner.pulsar.PulsarMessageStore;
+import org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils;
 
 /**
  * Pull message processor.
@@ -67,8 +70,7 @@ public class PullMessageProcessor implements NettyRequestProcessor {
         this.brokerController = brokerController;
     }
 
-    protected PulsarMessageStore getServerCnxMsgStore(Channel channel, RemotingCommand request,
-            String groupName) {
+    protected PulsarMessageStore getServerCnxMsgStore(Channel channel, String groupName) {
         try {
             ConsumerGroupInfo consumerGroupInfo = this.brokerController.getConsumerManager()
                     .getConsumerGroupInfo(groupName);
@@ -217,12 +219,12 @@ public class PullMessageProcessor implements NettyRequestProcessor {
 
         RopMessageFilter messageFilter = new RopMessageFilter(subscriptionData);
         // Obtain and process the received message data from the message store.
-        PulsarMessageStore serverCnxMsgStore = this
-                .getServerCnxMsgStore(channel, request, requestHeader.getConsumerGroup());
+        PulsarMessageStore pulsarMessageStore = this
+                .getServerCnxMsgStore(channel, requestHeader.getConsumerGroup());
 
         // If obtaining the serverCnxMsgStore object fails, enter the retry phase
         // and wait for the heartbeat request to register.
-        if (null == serverCnxMsgStore) {
+        if (null == pulsarMessageStore) {
             response.setCode(ResponseCode.PULL_RETRY_IMMEDIATELY);
             responseHeader.setMaxOffset(requestHeader.getQueueOffset());
             responseHeader.setNextBeginOffset(requestHeader.getQueueOffset());
@@ -232,8 +234,8 @@ public class PullMessageProcessor implements NettyRequestProcessor {
             return response;
         }
 
-        final RopGetMessageResult ropGetMessageResult = serverCnxMsgStore
-                .getMessage(request, requestHeader, messageFilter);
+        final RopGetMessageResult ropGetMessageResult = pulsarMessageStore
+                .getMessage(CommonUtils.getPulsarPartitionIdByRequest(request), request, requestHeader, messageFilter);
 
         if (ropGetMessageResult != null) {
             response.setRemark(ropGetMessageResult.getStatus().name());
@@ -348,13 +350,38 @@ public class PullMessageProcessor implements NettyRequestProcessor {
                     this.brokerController.getBrokerStatsManager()
                             .incBrokerGetNums(ropGetMessageResult.getMessageCount());
 
-                    final long beginTimeMills = System.currentTimeMillis();
-                    final byte[] r = this.readGetMessageResult(ropGetMessageResult, requestHeader.getConsumerGroup(),
-                            requestHeader.getTopic(), requestHeader.getQueueId());
-                    this.brokerController.getBrokerStatsManager().incGroupGetLatency(requestHeader.getConsumerGroup(),
-                            requestHeader.getTopic(), requestHeader.getQueueId(),
-                            (int) (System.currentTimeMillis() - beginTimeMills));
-                    response.setBody(r);
+                    if (this.brokerController.getServerConfig().isTransferMsgByHeap()) {
+                        try {
+                            final long beginTimeMills = System.currentTimeMillis();
+                            final byte[] r = this
+                                    .readGetMessageResult(ropGetMessageResult, requestHeader.getConsumerGroup(),
+                                            requestHeader.getTopic(), requestHeader.getQueueId());
+                            this.brokerController.getBrokerStatsManager()
+                                    .incGroupGetLatency(requestHeader.getConsumerGroup(),
+                                            requestHeader.getTopic(), requestHeader.getQueueId(),
+                                            (int) (System.currentTimeMillis() - beginTimeMills));
+                            response.setBody(r);
+                        } finally {
+                            ropGetMessageResult.release();
+                        }
+                    } else {
+                        try {
+                            FileRegion fileRegion =
+                                    new BatchMessageTransfer(
+                                            response.encodeHeader(ropGetMessageResult.getBufferTotalSize()),
+                                            ropGetMessageResult);
+                            channel.writeAndFlush(fileRegion).addListener((ChannelFutureListener) future -> {
+                                if (!future.isSuccess()) {
+                                    log.error("transfer many message by pagecache failed, {}", channel.remoteAddress(),
+                                            future.cause());
+                                }
+                            });
+                        } catch (Throwable e) {
+                            log.error("transfer many message by pagecache exception", e);
+                            ropGetMessageResult.release();
+                        }
+                        response = null;
+                    }
                     break;
                 case ResponseCode.PULL_NOT_FOUND:
                     if (brokerAllowSuspend && hasSuspendFlag) {
@@ -420,18 +447,16 @@ public class PullMessageProcessor implements NettyRequestProcessor {
     private byte[] readGetMessageResult(final RopGetMessageResult getMessageResult, final String group,
             final String topic,
             final int queueId) {
-        final ByteBuffer byteBuffer = ByteBuffer.allocate(getMessageResult.getBufferTotalSize());
-
+        ByteBuffer byteBuffer = ByteBuffer.allocate(getMessageResult.getBufferTotalSize());
         long storeTimestamp = 0;
         try {
-            List<ByteBuffer> messageBufferList = getMessageResult.getMessageBufferList();
-            for (ByteBuffer bb : messageBufferList) {
-
-                byteBuffer.put(bb);
+            List<ByteBuf> messageBufferList = getMessageResult.getMessageBufferList();
+            for (ByteBuf bb : messageBufferList) {
+                byteBuffer.put(bb.nioBuffer());
                 int sysFlag = bb.getInt(MessageDecoder.SYSFLAG_POSITION);
-//                bornhost has the IPv4 ip if the MessageSysFlag.BORNHOST_V6_FLAG bit of sysFlag is 0
-//                IPv4 host = ip(4 byte) + port(4 byte); IPv6 host = ip(16 byte) + port(4 byte)
-                int bornhostLength = (sysFlag & MessageSysFlag.BORNHOST_V6_FLAG) == 0 ? 8 : 20;
+                // bornhost has the IPv4 ip if the MessageSysFlag.BORNHOST_V6_FLAG bit of sysFlag is 0
+                // IPv4 host = ip(4 byte) + port(4 byte); IPv6 host = ip(16 byte) + port(4 byte)
+                int bornHostLength = (sysFlag & MessageSysFlag.BORNHOST_V6_FLAG) == 0 ? 8 : 20;
                 int msgStoreTimePos = 4 // 1 TOTALSIZE
                         + 4 // 2 MAGICCODE
                         + 4 // 3 BODYCRC
@@ -441,39 +466,12 @@ public class PullMessageProcessor implements NettyRequestProcessor {
                         + 8 // 7 PHYSICALOFFSET
                         + 4 // 8 SYSFLAG
                         + 8 // 9 BORNTIMESTAMP
-                        + bornhostLength; // 10 BORNHOST
+                        + bornHostLength; // 10 BORNHOST
                 storeTimestamp = bb.getLong(msgStoreTimePos);
             }
         } finally {
         }
         return byteBuffer.array();
-    }
-
-    private void generateOffsetMovedEvent(final OffsetMovedEvent event) {
- /*       try {
-            MessageExtBrokerInner msgInner = new MessageExtBrokerInner();
-            msgInner.setTopic(MixAll.OFFSET_MOVED_EVENT);
-            msgInner.setTags(event.getConsumerGroup());
-            msgInner.setDelayTimeLevel(0);
-            msgInner.setKeys(event.getConsumerGroup());
-            msgInner.setBody(event.encode());
-            msgInner.setFlag(0);
-            msgInner.setPropertiesString(MessageDecoder.messageProperties2String(msgInner.getProperties()));
-            msgInner.setTagsCode(
-                    MessageExtBrokerInner.tagsString2tagsCode(TopicFilterType.SINGLE_TAG, msgInner.getTags()));
-
-            msgInner.setQueueId(0);
-            msgInner.setSysFlag(0);
-            msgInner.setBornTimestamp(System.currentTimeMillis());
-            msgInner.setBornHost(RemotingUtil.string2SocketAddress(this.brokerController.getBrokerAddr()));
-            msgInner.setStoreHost(msgInner.getBornHost());
-
-            msgInner.setReconsumeTimes(0);
-
-            PutMessageResult putMessageResult = this.brokerController.getMessageStore().putMessage(msgInner);
-        } catch (Exception e) {
-            log.warn(String.format("generateOffsetMovedEvent Exception, %s", event.toString()), e);
-        }*/
     }
 
     public void executeRequestWhenWakeup(final Channel channel,

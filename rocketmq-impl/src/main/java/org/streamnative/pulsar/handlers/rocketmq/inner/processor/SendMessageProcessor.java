@@ -17,6 +17,7 @@ package org.streamnative.pulsar.handlers.rocketmq.inner.processor;
 import io.netty.channel.ChannelHandlerContext;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.broker.mqtrace.ConsumeMessageContext;
 import org.apache.rocketmq.broker.mqtrace.ConsumeMessageHook;
@@ -51,6 +52,7 @@ import org.apache.rocketmq.store.PutMessageStatus;
 import org.apache.rocketmq.store.stats.BrokerStatsManager;
 import org.streamnative.pulsar.handlers.rocketmq.inner.PutMessageCallback;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
+import org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils;
 import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 
 /**
@@ -168,12 +170,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         }
 
         MessageExt msgExt = this.getServerCnxMsgStore(ctx, requestHeader.getGroup())
-                .lookMessageByMessageId(MixAll.getRetryTopic(requestHeader.getGroup()), requestHeader.getOffset());
-        if (msgExt == null) {
-            msgExt = this.getServerCnxMsgStore(ctx, requestHeader.getGroup())
-                    .lookMessageByMessageId(requestHeader.getOriginTopic(), requestHeader.getOffset());
-        }
-
+                .lookMessageByCommitLogOffset(requestHeader);
         if (null == msgExt) {
             response.setCode(ResponseCode.SYSTEM_ERROR);
             response.setRemark("look message by offset failed, " + requestHeader.getOffset());
@@ -234,16 +231,16 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         MessageAccessor.setOriginMessageId(msgInner, UtilAll.isBlank(originMsgId) ? msgExt.getMsgId() : originMsgId);
 
         try {
+            CompletableFuture<RemotingCommand> responseFuture = new CompletableFuture<>();
             this.getServerCnxMsgStore(ctx, requestHeader.getGroup())
-                    .putMessage(msgInner, requestHeader.getGroup(),
-                            new SendMessageBackCallback(response, request, ctx, requestHeader, msgExt));
-            return null;
+                    .putSendBackMsg(msgInner, requestHeader.getGroup(), response, responseFuture);
+            return responseFuture.get();
         } catch (Exception e) {
             log.warn("[{}] consumerSendMsgBack failed", pulsarGroupName.getPulsarFullName(), e);
             response.setCode(ResponseCode.SYSTEM_ERROR);
             response.setRemark(e.getMessage());
-            return response;
         }
+        return response;
     }
 
     private boolean handleRetryAndDLQ(SendMessageRequestHeader requestHeader, RemotingCommand response,
@@ -305,7 +302,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
 
         log.debug("receive SendMessage request command, {}", request);
         response.setCode(-1);
-        super.msgCheck(ctx, requestHeader, response);
+        //super.msgCheck(ctx, requestHeader, response);
         if (response.getCode() != -1) {
             return response;
         }
@@ -349,7 +346,9 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         } else {
             try {
                 this.getServerCnxMsgStore(ctx, requestHeader.getProducerGroup())
-                        .putMessage(msgInner, requestHeader.getProducerGroup(),
+                        .putMessage(CommonUtils.getPulsarPartitionIdByRequest(request),
+                                msgInner,
+                                requestHeader.getProducerGroup(),
                                 new SendMessageCallback(response, request, msgInner, responseHeader,
                                         sendMessageContext,
                                         ctx, queueIdInt));
@@ -478,7 +477,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
 
         response.setOpaque(request.getOpaque());
         response.setCode(-1);
-        super.msgCheck(ctx, requestHeader, response);
+        //super.msgCheck(ctx, requestHeader, response);
         if (response.getCode() != -1) {
             return response;
         }
@@ -526,7 +525,9 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
 
         try {
             this.getServerCnxMsgStore(ctx, requestHeader.getProducerGroup())
-                    .putMessages(messageExtBatch, requestHeader.getProducerGroup(),
+                    .putMessages(CommonUtils.getPulsarPartitionIdByRequest(request),
+                            messageExtBatch,
+                            requestHeader.getProducerGroup(),
                             new SendMessageCallback(response, request, messageExtBatch, responseHeader,
                                     sendMessageContext,
                                     ctx, queueIdInt));

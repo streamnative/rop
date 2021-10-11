@@ -23,6 +23,7 @@ import static org.streamnative.pulsar.handlers.rocketmq.inner.consumer.metadata.
 import java.nio.ByteBuffer;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
+import lombok.ToString;
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopDecodeException;
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopEncodeException;
 
@@ -30,6 +31,7 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopEncodeExcept
  * Group offset value.
  */
 @Data
+@ToString
 @EqualsAndHashCode
 public class GroupOffsetValue implements Deserializer<GroupOffsetValue> {
 
@@ -37,6 +39,16 @@ public class GroupOffsetValue implements Deserializer<GroupOffsetValue> {
     private long offset;
     private long commitTimestamp;
     private long expireTimestamp;
+    private transient volatile boolean isUpdated = true;
+
+    public GroupOffsetValue() {
+    }
+
+    public GroupOffsetValue(long offset, long commitTimestamp, long expireTimestamp) {
+        this.offset = offset;
+        this.commitTimestamp = commitTimestamp;
+        this.expireTimestamp = expireTimestamp;
+    }
 
     @Override
     public ByteBuffer encode() throws RopEncodeException {
@@ -68,5 +80,20 @@ public class GroupOffsetValue implements Deserializer<GroupOffsetValue> {
     @Override
     public int estimateSize() {
         return GROUP_OFFSET_VALUE_TOTAL_LEN;
+    }
+
+    public static GroupOffsetValue decodeGroupOffset(ByteBuffer buffer) throws RopDecodeException {
+        GroupOffsetValue offsetValue = new GroupOffsetValue();
+        offsetValue.decode(buffer);
+        return offsetValue;
+    }
+
+    public void refresh(long offset, long commitTimestamp, long expireTimestamp) {
+        if (this.offset != offset) {
+            this.offset = offset;
+            this.commitTimestamp = commitTimestamp;
+        }
+        this.expireTimestamp = expireTimestamp;
+        this.isUpdated = true;
     }
 }

@@ -24,7 +24,7 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopEncodeExcept
  * Group subscription key.
  */
 @Data
-@EqualsAndHashCode
+@EqualsAndHashCode(callSuper = false)
 public class GroupSubscriptionKey extends GroupMetaKey<GroupSubscriptionKey> {
     public GroupSubscriptionKey() {
         this.type = GroupKeyType.GROUP_SUBSCRIPTION;

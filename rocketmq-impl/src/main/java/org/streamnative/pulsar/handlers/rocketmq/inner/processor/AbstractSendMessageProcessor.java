@@ -46,9 +46,12 @@ import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
 import org.apache.rocketmq.remoting.protocol.LanguageCode;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.store.MessageExtBrokerInner;
+import org.streamnative.pulsar.handlers.rocketmq.RocketMQServiceConfiguration;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RopClientChannelCnx;
+import org.streamnative.pulsar.handlers.rocketmq.inner.namesvr.TopicConfigManager;
 import org.streamnative.pulsar.handlers.rocketmq.inner.pulsar.PulsarMessageStore;
+import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 
 /**
  * Abstract send message processor.
@@ -168,10 +171,12 @@ public abstract class AbstractSendMessageProcessor implements NettyRequestProces
         return response;
     }
 
-    protected void msgCheck(final ChannelHandlerContext ctx,
+    public static void msgCheck(final RocketMQServiceConfiguration config,
+            final TopicConfigManager topicManager,
+            final ChannelHandlerContext ctx,
             final SendMessageRequestHeader requestHeader, final RemotingCommand response) {
-        if (!PermName.isWriteable(this.brokerController.getServerConfig().getBrokerPermission())
-                && this.brokerController.getTopicConfigManager().isOrderTopic(requestHeader.getTopic())) {
+        if (!PermName.isWriteable(config.getBrokerPermission())
+                && topicManager.isOrderTopic(requestHeader.getTopic())) {
             response.setCode(ResponseCode.NO_PERMISSION);
             response.setRemark("the broker[" //+ this.brokerController.getBrokerConfig().getBrokerIP1()
                     + "] sending message is forbidden");
@@ -181,9 +186,8 @@ public abstract class AbstractSendMessageProcessor implements NettyRequestProces
         if (!TopicValidator.validateTopic(requestHeader.getTopic(), response)) {
             return;
         }
-
-        TopicConfig topicConfig =
-                this.brokerController.getTopicConfigManager().selectTopicConfig(requestHeader.getTopic());
+        TopicConfig topicConfig = topicManager
+                .selectTopicConfig(RocketMQTopic.getPulsarOrigNoDomainTopic(requestHeader.getTopic()));
         if (null == topicConfig) {
             int topicSysFlag = 0;
             if (requestHeader.isUnitMode()) {
@@ -195,7 +199,7 @@ public abstract class AbstractSendMessageProcessor implements NettyRequestProces
             }
 
             log.warn("the topic {} not exist, producer: {}", requestHeader.getTopic(), ctx.channel().remoteAddress());
-            topicConfig = this.brokerController.getTopicConfigManager().createTopicInSendMessageMethod(
+            topicConfig = topicManager.createTopicInSendMessageMethod(
                     requestHeader.getTopic(),
                     requestHeader.getDefaultTopic(),
                     RemotingHelper.parseChannelRemoteAddr(ctx.channel()),
@@ -203,10 +207,9 @@ public abstract class AbstractSendMessageProcessor implements NettyRequestProces
 
             if (null == topicConfig) {
                 if (requestHeader.getTopic().startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)) {
-                    topicConfig =
-                            this.brokerController.getTopicConfigManager().createTopicInSendMessageBackMethod(
-                                    requestHeader.getTopic(), 1, PermName.PERM_WRITE | PermName.PERM_READ,
-                                    topicSysFlag);
+                    topicConfig = topicManager.createTopicInSendMessageBackMethod(
+                            requestHeader.getTopic(), 1, PermName.PERM_WRITE | PermName.PERM_READ,
+                            topicSysFlag);
                 }
             }
 

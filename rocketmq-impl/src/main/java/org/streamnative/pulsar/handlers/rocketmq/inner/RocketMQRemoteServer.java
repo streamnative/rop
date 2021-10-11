@@ -91,6 +91,19 @@ public class RocketMQRemoteServer extends NettyRemotingAbstract implements Remot
                 return new Thread(r, "NettyServerPublicExecutor_" + this.threadIndex.incrementAndGet());
             }
         });
+
+        this.defaultEventExecutorGroup = new DefaultEventExecutorGroup(
+                config.getServerWorkerThreads(),
+                new ThreadFactory() {
+
+                    private AtomicInteger threadIndex = new AtomicInteger(0);
+
+                    @Override
+                    public Thread newThread(Runnable r) {
+                        return new Thread(r, "NettyServerCodecThread_" + this.threadIndex.incrementAndGet());
+                    }
+                });
+
         prepareSharableHandlers();
     }
 
@@ -212,7 +225,9 @@ public class RocketMQRemoteServer extends NettyRemotingAbstract implements Remot
 
     @ChannelHandler.Sharable
     static class HandshakeHandler extends SimpleChannelInboundHandler<ByteBuf> {
-        HandshakeHandler() {}
+
+        HandshakeHandler() {
+        }
 
         @Override
         protected void channelRead0(ChannelHandlerContext ctx, ByteBuf msg) throws Exception {

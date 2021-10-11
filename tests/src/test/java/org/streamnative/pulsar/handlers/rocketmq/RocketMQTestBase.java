@@ -41,17 +41,25 @@ public class RocketMQTestBase extends RocketMqProtocolHandlerTestBase {
         if (!admin.clusters().getClusters().contains(configClusterName)) {
             // so that clients can test short names
             admin.clusters().createCluster(configClusterName,
-                    new ClusterData("http://127.0.0.1:" + getBrokerWebservicePortList().get(0)));
+                    ClusterData.builder().serviceUrl("http://127.0.0.1:" + getBrokerWebservicePortList().get(0))
+                            .build());
         } else {
             admin.clusters().updateCluster(configClusterName,
-                    new ClusterData("http://127.0.0.1:" + getBrokerWebservicePortList().get(0)));
+                    ClusterData.builder().serviceUrl("http://127.0.0.1:" + getBrokerWebservicePortList().get(0))
+                            .build());
         }
         if (!admin.tenants().getTenants().contains("public")) {
             admin.tenants().createTenant("public",
-                    new TenantInfo(Sets.newHashSet("role1", "role2"), Sets.newHashSet("test-rop")));
+                    TenantInfo.builder()
+                            .adminRoles(Sets.newHashSet("role1", "role2"))
+                            .allowedClusters(Sets.newHashSet("test-rop"))
+                            .build());
         } else {
             admin.tenants().updateTenant("public",
-                    new TenantInfo(Sets.newHashSet("role1", "role2"), Sets.newHashSet("test-rop")));
+                    TenantInfo.builder()
+                            .adminRoles(Sets.newHashSet("role1", "role2"))
+                            .allowedClusters(Sets.newHashSet("test-rop"))
+                            .build());
         }
 
         List<String> ropNamespaceList = Arrays.asList("rocketmq1", "rocketmq2", "rocketmq3");

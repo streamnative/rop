@@ -14,14 +14,17 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.utils;
 
+import com.google.common.base.Preconditions;
 import com.google.common.collect.Sets;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.logging.log4j.util.Strings;
 import org.apache.pulsar.client.admin.Clusters;
@@ -31,15 +34,13 @@ import org.apache.pulsar.client.admin.PulsarAdminException;
 import org.apache.pulsar.client.admin.PulsarAdminException.ConflictException;
 import org.apache.pulsar.client.admin.Tenants;
 import org.apache.pulsar.client.api.MessageId;
-import org.apache.pulsar.client.api.SubscriptionInitialPosition;
-import org.apache.pulsar.client.api.SubscriptionType;
-import org.apache.pulsar.common.api.proto.PulsarApi.CommandSubscribe.InitialPosition;
-import org.apache.pulsar.common.api.proto.PulsarApi.CommandSubscribe.SubType;
-import org.apache.pulsar.common.api.proto.PulsarApi.KeyValue;
+import org.apache.pulsar.common.naming.TopicName;
 import org.apache.pulsar.common.policies.data.ClusterData;
 import org.apache.pulsar.common.policies.data.RetentionPolicies;
 import org.apache.pulsar.common.policies.data.TenantInfo;
+import org.apache.pulsar.common.policies.data.TenantInfoImpl;
 import org.streamnative.pulsar.handlers.rocketmq.RocketMQServiceConfiguration;
+import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopClusterContent;
 
 /**
  * Pulsar utils class.
@@ -49,44 +50,7 @@ public class PulsarUtil {
 
     public static final int MAX_COMPACTION_THRESHOLD = 100 * 1024 * 1024;
     public static final Pattern BROKER_ADDER_PAT = Pattern.compile("([^/:]+):(\\d+)");
-
-    public static InitialPosition parseSubPosition(SubscriptionInitialPosition subPosition) {
-        switch (subPosition) {
-            case Earliest:
-                return InitialPosition.Earliest;
-            case Latest:
-            default:
-                return InitialPosition.Latest;
-        }
-    }
-
-    public static SubType parseSubType(SubscriptionType subType) {
-        switch (subType) {
-            case Shared:
-                return SubType.Shared;
-            case Failover:
-                return SubType.Failover;
-            case Key_Shared:
-                return SubType.Key_Shared;
-            case Exclusive:
-            default:
-                return SubType.Exclusive;
-        }
-    }
-
-    public static List<KeyValue> convertFromStringMap(Map<String, String> stringMap) {
-        List<KeyValue> keyValueList = new ArrayList<>();
-        for (Map.Entry<String, String> entry : stringMap.entrySet()) {
-            KeyValue build = KeyValue.newBuilder()
-                    .setKey(entry.getKey())
-                    .setValue(entry.getValue())
-                    .build();
-
-            keyValueList.add(build);
-        }
-
-        return keyValueList;
-    }
+    private static final String BROKER_TAG_PREFIX = "broker-";
 
     public static String getBrokerHost(String brokerAddress) {
         // eg: pulsar://127.0.0.1:6650
@@ -131,8 +95,8 @@ public class PulsarUtil {
             int partitionNum)
             throws PulsarAdminException {
         String cluster = conf.getClusterName();
-        String ropMetadataTenant = RocketMQTopic.getMetaTenant();
-        String ropMetadataNamespace = RocketMQTopic.getMetaTenant() + "/" + RocketMQTopic.getMetaNamespace();
+        String ropMetadataTenant = conf.getRocketmqMetadataTenant();
+        String ropMetadataNamespace = conf.getRocketmqMetadataTenant() + "/" + conf.getRocketmqMetadataNamespace();
 
         boolean clusterExists = false;
         boolean tenantExists = false;
@@ -163,7 +127,7 @@ public class PulsarUtil {
             if (!tenants.getTenants().contains(ropMetadataTenant)) {
                 log.info("Tenant: {} does not exist, creating it ...", ropMetadataTenant);
                 tenants.createTenant(ropMetadataTenant,
-                        new TenantInfo(conf.getSuperUserRoles(), Collections.singleton(cluster)));
+                        new TenantInfoImpl(conf.getSuperUserRoles(), Collections.singleton(cluster)));
             } else {
                 TenantInfo ropMetadataTenantInfo = tenants.getTenantInfo(ropMetadataTenant);
                 Set<String> allowedClusters = ropMetadataTenantInfo.getAllowedClusters();
@@ -263,5 +227,46 @@ public class PulsarUtil {
             log.info("Resources creating for subscription:{} of topic : {}, caused by : {}", subscriptionName, topic,
                     e.getMessage());
         }
+    }
+
+    public static String getNoDomainTopic(TopicName topicName) {
+        return topicName.getPartitionedTopicName().replace(topicName.getDomain().value() + "://", "");
+    }
+
+    public static Map<String, List<String>> genBrokerGroupData(List<String> brokers, int repFactor) {
+        Preconditions.checkArgument(brokers != null && !brokers.isEmpty());
+        Preconditions.checkArgument(repFactor > 0);
+        int uniqBrokersNum = brokers.size();
+        int groupNum = (uniqBrokersNum - 1) / repFactor;
+        Map<String, List<String>> result = new HashMap<>();
+        for (int i = 0; i <= groupNum; i++) {
+            String brokerTag = BROKER_TAG_PREFIX + i;
+            for (int j = 0; j < repFactor && (j + i * repFactor) < uniqBrokersNum; j++) {
+                List<String> brokerList = result.computeIfAbsent(brokerTag, k -> new ArrayList<>(repFactor));
+                brokerList.add(brokers.get(j + i * repFactor));
+            }
+        }
+        return result;
+    }
+
+    public static boolean autoExpanseBrokerGroupData(RopClusterContent clusterContent,
+            List<String> activeBrokers, int repFactor) {
+        Preconditions.checkNotNull(clusterContent);
+        Preconditions.checkArgument(activeBrokers != null && !activeBrokers.isEmpty());
+        Preconditions.checkArgument(repFactor > 0);
+        Map<String, List<String>> brokerCluster = clusterContent.getBrokerCluster();
+        List<String> brokerTags = brokerCluster.keySet().stream().sorted().collect(Collectors.toList());
+        List<String> allBrokers = new ArrayList<>();
+        for (String brokerTag : brokerTags) {
+            allBrokers.addAll(brokerCluster.get(brokerTag));
+        }
+
+        if (!allBrokers.containsAll(activeBrokers)) {
+            activeBrokers.removeAll(allBrokers);
+            allBrokers.addAll(activeBrokers);
+            clusterContent.setBrokerCluster(genBrokerGroupData(allBrokers, repFactor));
+            return true;
+        }
+        return false;
     }
 }

@@ -15,10 +15,12 @@
 package org.streamnative.pulsar.handlers.rocketmq.inner.consumer.metadata;
 
 import static org.streamnative.pulsar.handlers.rocketmq.inner.consumer.metadata.GroupOffsetConstant.GROUP_OFFSET_KEY_TOTAL_HEAD_LEN;
+
+import com.google.common.base.Objects;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import lombok.Data;
-import lombok.EqualsAndHashCode;
+import lombok.ToString;
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopDecodeException;
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopEncodeException;
 import org.testng.util.Strings;
@@ -27,11 +29,17 @@ import org.testng.util.Strings;
  * Group offset key.
  */
 @Data
-@EqualsAndHashCode
+@ToString
 public class GroupOffsetKey extends GroupMetaKey<GroupOffsetKey> {
 
-    private int partition;
+    private int queueId;
     private String topicName;
+
+    public GroupOffsetKey(String groupName, String topicName, int queueId) {
+        super(GroupKeyType.GROUP_OFFSET, groupName);
+        this.queueId = queueId;
+        this.topicName = topicName;
+    }
 
     public GroupOffsetKey() {
         this.type = GroupKeyType.GROUP_OFFSET;
@@ -47,7 +55,7 @@ public class GroupOffsetKey extends GroupMetaKey<GroupOffsetKey> {
             byte[] topicBytes = topicName.getBytes(StandardCharsets.UTF_8);
             ByteBuffer byteBuffer = ByteBuffer.allocate(estimateSize());
             super.encode(byteBuffer);
-            byteBuffer.putInt(partition);
+            byteBuffer.putInt(queueId);
             byteBuffer.putInt(topicBytes.length);
             byteBuffer.put(topicBytes);
             return byteBuffer;
@@ -59,7 +67,7 @@ public class GroupOffsetKey extends GroupMetaKey<GroupOffsetKey> {
     @Override
     public GroupOffsetKey decode(ByteBuffer buffer) throws RopDecodeException {
         try {
-            this.partition = buffer.getInt();
+            this.queueId = buffer.getInt();
             int topicNameLen = buffer.getInt();
             byte[] topicNameBytes = new byte[topicNameLen];
             buffer.get(topicNameBytes);
@@ -74,5 +82,26 @@ public class GroupOffsetKey extends GroupMetaKey<GroupOffsetKey> {
     public int estimateSize() {
         return super.estimateSize() + GROUP_OFFSET_KEY_TOTAL_HEAD_LEN + topicName
                 .getBytes(StandardCharsets.UTF_8).length;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
+        if (!super.equals(o)) {
+            return false;
+        }
+        GroupOffsetKey that = (GroupOffsetKey) o;
+        return queueId == that.queueId
+                && Objects.equal(topicName, that.topicName);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hashCode(super.hashCode(), queueId, topicName);
     }
 }

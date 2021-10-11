@@ -14,8 +14,10 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.pulsar;
 
+import java.util.concurrent.CompletableFuture;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageExtBatch;
+import org.apache.rocketmq.common.protocol.header.ConsumerSendMsgBackRequestHeader;
 import org.apache.rocketmq.common.protocol.header.PullMessageRequestHeader;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.store.MessageExtBrokerInner;
@@ -28,17 +30,24 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.format.RopMessageFilter;
  */
 public interface PulsarMessageStore {
 
-    void putMessage(MessageExtBrokerInner messageExtBrokerInner, String producerGroup, PutMessageCallback callback)
+    void putMessage(int partition, MessageExtBrokerInner messageExtBrokerInner, String producerGroup,
+            PutMessageCallback callback) throws Exception;
+
+    void putSendBackMsg(MessageExtBrokerInner messageExtBrokerInner, String producerGroup, RemotingCommand response,
+            CompletableFuture<RemotingCommand> cmdFuture)
             throws Exception;
 
-    RopGetMessageResult getMessage(RemotingCommand request, PullMessageRequestHeader requestHeader,
+    RopGetMessageResult getMessage(int partition, RemotingCommand request, PullMessageRequestHeader requestHeader,
             RopMessageFilter messageFilter);
 
-    void putMessages(MessageExtBatch batchMessage, String producerGroup, PutMessageCallback callback) throws Exception;
+    void putMessages(int partitionID, MessageExtBatch batchMessage, String producerGroup, PutMessageCallback callback)
+            throws Exception;
 
     MessageExt lookMessageByMessageId(String topic, String msgId);
 
     MessageExt lookMessageByMessageId(String topic, long offset);
+
+    MessageExt lookMessageByCommitLogOffset(ConsumerSendMsgBackRequestHeader requestHeader);
 
     /**
      * Reset the subscription associated with this reader to a specific message publish time.

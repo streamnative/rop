@@ -105,10 +105,10 @@ public class PullRequestHoldService extends ServiceThread {
                     ClientTopicName clientTopicName = new ClientTopicName(topic);
                     if (this.brokerController.getTopicConfigManager()
                             .isPartitionTopicOwner(clientTopicName.toPulsarTopicName(), queueId)) {
-                        offset = this.brokerController.getConsumerOffsetManager()
-                                .getMaxOffsetInQueue(new ClientTopicName(topic), queueId);
+                       /*TODO offset = this.brokerController.getConsumerOffsetManager()
+                                .getMaxOffsetInQueue(new ClientTopicName(topic), queueId);*/
                     }
-                } catch (RopPersistentTopicException e) {
+                } catch (Exception e) {
                     //
                 }
                 try {
@@ -146,7 +146,7 @@ public class PullRequestHoldService extends ServiceThread {
 
                     if (newestOffset > request.getPullFromThisOffset()) {
                         try {
-                            this.brokerController.getPullMessageProcessor()
+                            this.brokerController.getRopBrokerProxy().getPullMessageProcessor()
                                     .executeRequestWhenWakeup(request.getClientChannel(),
                                             request.getRequestCommand());
                         } catch (Throwable e) {
@@ -157,7 +157,7 @@ public class PullRequestHoldService extends ServiceThread {
 
                     if (System.currentTimeMillis() >= (request.getSuspendTimestamp() + request.getTimeoutMillis())) {
                         try {
-                            this.brokerController.getPullMessageProcessor()
+                            this.brokerController.getRopBrokerProxy().getPullMessageProcessor()
                                     .executeRequestWhenWakeup(request.getClientChannel(),
                                             request.getRequestCommand());
                         } catch (Throwable e) {

@@ -28,5 +28,5 @@ public class PullRequestFilterKey {
 
     private String consumerGroup;
     String topicName;
-    int queueId;
+    int realPartitionID;
 }

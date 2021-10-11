@@ -14,6 +14,7 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner;
 
+import io.netty.buffer.ByteBuf;
 import io.netty.util.Recycler;
 import io.netty.util.Recycler.Handle;
 import java.util.concurrent.CompletableFuture;
@@ -21,8 +22,8 @@ import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.pulsar.broker.service.Topic;
 import org.apache.pulsar.broker.service.Topic.PublishContext;
-import org.apache.pulsar.client.api.MessageId;
-import org.apache.pulsar.client.impl.MessageIdImpl;
+import org.apache.pulsar.common.api.proto.BrokerEntryMetadata;
+import org.apache.pulsar.common.protocol.Commands;
 
 /**
  * Implementation for PublishContext.
@@ -30,21 +31,40 @@ import org.apache.pulsar.client.impl.MessageIdImpl;
 @Slf4j
 public final class RopMessagePublishContext implements PublishContext {
 
-    private CompletableFuture<MessageId> messageIdFuture;
+    private CompletableFuture<Long> offsetFuture;
     private Topic topic;
     private long startTimeNs;
-    private long partitionId;
+    private long baseOffset = -1L;
+
+    @Override
+    public void setMetadataFromEntryData(ByteBuf entryData) {
+        try {
+            final BrokerEntryMetadata brokerEntryMetadata = Commands.peekBrokerEntryMetadataIfExist(entryData);
+            if (brokerEntryMetadata == null) {
+                throw new IllegalStateException("There's no BrokerEntryData, "
+                        + "check if your broker has configured brokerEntryMetadataInterceptors");
+            }
+            if (!brokerEntryMetadata.hasIndex()) {
+                throw new IllegalStateException("The BrokerEntryData has no 'index' field, check if "
+                        + "your broker configured AppendIndexMetadataInterceptor");
+            }
+            baseOffset = brokerEntryMetadata.getIndex();
+        } catch (IllegalStateException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Failed to set metadata from entry", e);
+        }
+    }
 
     /**
      * Executed from managed ledger thread when the message is persisted.
      */
     @Override
     public void completed(Exception exception, long ledgerId, long entryId) {
-
         if (exception != null) {
             log.error("Failed write entry: ledgerId: {}, entryId: {}. triggered send callback.",
                     ledgerId, entryId);
-            messageIdFuture.completeExceptionally(exception);
+            offsetFuture.completeExceptionally(exception);
         } else {
             if (log.isDebugEnabled()) {
                 log.debug("Success write topic: {}, ledgerId: {}, entryId: {}"
@@ -53,23 +73,24 @@ public final class RopMessagePublishContext implements PublishContext {
             }
 
             topic.recordAddLatency(System.nanoTime() - startTimeNs, TimeUnit.MICROSECONDS);
-
-            messageIdFuture.complete(new MessageIdImpl(ledgerId, entryId, (int) partitionId));
+            // setMetadataFromEntryData() was called before completed() is called so that baseOffset could be set
+            if (baseOffset < 0) {
+                log.error("Failed to get offset for ({}, {})", ledgerId, entryId);
+            }
+            offsetFuture.complete(baseOffset);
         }
 
         recycle();
     }
 
     // recycler
-    public static RopMessagePublishContext get(CompletableFuture<MessageId> messageIdFuture,
+    public static RopMessagePublishContext get(CompletableFuture<Long> offsetFuture,
             Topic topic,
-            long startTimeNs,
-            long partitionId) {
+            long startTimeNs) {
         RopMessagePublishContext callback = RECYCLER.get();
-        callback.messageIdFuture = messageIdFuture;
+        callback.offsetFuture = offsetFuture;
         callback.topic = topic;
         callback.startTimeNs = startTimeNs;
-        callback.partitionId = partitionId;
         return callback;
     }
 
@@ -87,7 +108,7 @@ public final class RopMessagePublishContext implements PublishContext {
     };
 
     public void recycle() {
-        messageIdFuture = null;
+        offsetFuture = null;
         topic = null;
         startTimeNs = -1;
         recyclerHandle.recycle(this);

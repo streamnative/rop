@@ -112,9 +112,13 @@ public class RocketMQProtocolHandler implements ProtocolHandler {
 
         try {
             PulsarAdmin pulsarAdmin = brokerService.getPulsar().getAdminClient();
-            ClusterData clusterData = new ClusterData(brokerService.getPulsar().getWebServiceAddress()
-                    , brokerService.getPulsar().getWebServiceAddressTls(), brokerService.getPulsar()
-                    .getBrokerServiceUrl(), brokerService.getPulsar().getBrokerServiceUrlTls());
+
+            ClusterData clusterData = ClusterData.builder()
+                    .serviceUrl(brokerService.getPulsar().getWebServiceAddress())
+                    .serviceUrlTls(brokerService.getPulsar().getWebServiceAddressTls())
+                    .brokerServiceUrl(brokerService.getPulsar().getBrokerServiceUrl())
+                    .brokerServiceUrlTls(brokerService.getPulsar().getBrokerServiceUrlTls())
+                    .build();
             PulsarUtil.createOffsetMetadataIfMissing(pulsarAdmin, clusterData, rocketmqConfig);
             rocketmqBroker.start();
         } catch (PulsarAdminException | PulsarServerException e) {

@@ -32,6 +32,7 @@ import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.ConsumerGroupInfo;
+import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.ConsumerOffsetManager;
 
 /**
  * Consumer manage processor.
@@ -124,10 +125,10 @@ public class ConsumerManageProcessor implements NettyRequestProcessor {
         final QueryConsumerOffsetRequestHeader requestHeader =
                 (QueryConsumerOffsetRequestHeader) request
                         .decodeCommandCustomHeader(QueryConsumerOffsetRequestHeader.class);
+        ConsumerOffsetManager consumerOffsetManager = this.brokerController.getConsumerOffsetManager();
 
-        long offset =
-                this.brokerController.getConsumerOffsetManager().queryOffset(
-                        requestHeader.getConsumerGroup(), requestHeader.getTopic(), requestHeader.getQueueId());
+        long offset = consumerOffsetManager.queryOffset(
+                requestHeader.getConsumerGroup(), requestHeader.getTopic(), requestHeader.getQueueId());
 
         if (offset >= 0) {
             responseHeader.setOffset(offset);

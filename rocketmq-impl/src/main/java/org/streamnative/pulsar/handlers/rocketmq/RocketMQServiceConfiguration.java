@@ -14,6 +14,9 @@
 
 package org.streamnative.pulsar.handlers.rocketmq;
 
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Set;
 import lombok.Data;
 import org.apache.pulsar.broker.ServiceConfiguration;
 import org.apache.pulsar.common.configuration.Category;
@@ -145,11 +148,18 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
             doc = "The capacity of heartbeat thread pool queue.\n"
     )
     private int heartbeatThreadPoolQueueCapacity = 50000;
+
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
             doc = "The capacity of end transaction pool queue.\n"
     )
     private int endTransactionPoolQueueCapacity = 100000;
+
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
+            doc = "The capacity of end transaction pool queue.\n"
+    )
+    private int ropBrokerRequestThreadPoolCapacity = 1000000;
 
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
@@ -418,11 +428,32 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
             doc = "Offsets retention check interval in millicseconds. default is 600000 ms.\n"
     )
     private long offsetsRetentionCheckIntervalMs = DefaultOffsetsRetentionCheckIntervalMs;
+
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
             required = true,
-            doc = "Rop delay message max delay time."
+            doc = "Rop delay message max delay time, Default: 40d."
     )
     private long ropMaxDelayTime = 1000 * 60 * 60 * 24 * 40L;
 
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
+            required = true,
+            doc = "Rop broker replication num."
+    )
+    private int ropBrokerReplicationNum = 2;
+
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
+            doc = "create Rop cluster metadata automatically, and backup broker num is ropBrokerReplicationNum."
+    )
+    private boolean autoCreateRopClusterMeta = true;
+
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
+            required = true,
+            doc = "broker entry metadata interceptors."
+    )
+    private Set<String> brokerEntryMetadataInterceptors = new HashSet<>(
+            Collections.singletonList("org.apache.pulsar.common.intercept.AppendIndexMetadataInterceptor"));
 }

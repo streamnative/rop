@@ -17,7 +17,9 @@ package org.streamnative.pulsar.handlers.rocketmq.utils;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.apache.rocketmq.common.message.MessageDecoder.CHARSET_UTF8;
 
+import com.google.common.base.Preconditions;
 import com.google.common.base.Splitter;
+import io.netty.buffer.ByteBuf;
 import java.io.IOException;
 import java.net.Inet4Address;
 import java.net.InetAddress;
@@ -29,17 +31,14 @@ import java.util.List;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.logging.log4j.util.Strings;
-import org.apache.pulsar.client.api.Message;
 import org.apache.pulsar.client.impl.MessageIdImpl;
 import org.apache.pulsar.common.util.Murmur3_32Hash;
-import org.apache.rocketmq.common.TopicFilterType;
 import org.apache.rocketmq.common.UtilAll;
 import org.apache.rocketmq.common.message.MessageAccessor;
-import org.apache.rocketmq.common.message.MessageConst;
 import org.apache.rocketmq.common.message.MessageDecoder;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.sysflag.MessageSysFlag;
-import org.apache.rocketmq.store.MessageExtBrokerInner;
+import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 
 /**
  * Common utils class.
@@ -51,8 +50,13 @@ public class CommonUtils {
     public static final String PERCENTAGE_CHAR = "%";
     public static final String VERTICAL_LINE_CHAR = "|";
     public static final String SLASH_CHAR = "/";
+    public static final String COLO_CHAR = ":";
     private static final int ROP_QUEUE_OFFSET_INDEX = 8 + 4 + 4 + 4 + 4 + 4;
     private static final int ROP_PHYSICAL_OFFSET_INDEX = 8 + 4 + 4 + 4 + 4 + 4 + 8;
+    public static final String PULSAR_REAL_PARTITION_ID_TAG = "prpi";
+    public static final int ROP_CACHE_INITIAL_SIZE = 1024;
+    public static final int ROP_CACHE_MAX_SIZE = 1024 << 8;
+    public static final int ROP_CACHE_EXPIRE_TIME_MS = 360 * 1000;
 
     /**
      * @param pulsarTopicName => [tenant/ns/topicName]
@@ -150,40 +154,119 @@ public class CommonUtils {
                 2 + (Math.max(propertiesLength, 0));
     }
 
-    public static MessageExtBrokerInner messageTimeup(MessageExt msgExt) {
-        MessageExtBrokerInner msgInner = new MessageExtBrokerInner();
-        msgInner.setBody(msgExt.getBody());
-        msgInner.setFlag(msgExt.getFlag());
-        MessageAccessor.setProperties(msgInner, msgExt.getProperties());
-
-        TopicFilterType topicFilterType = MessageExt.parseTopicFilterType(msgInner.getSysFlag());
-        long tagsCodeValue =
-                MessageExtBrokerInner.tagsString2tagsCode(topicFilterType, msgInner.getTags());
-        msgInner.setTagsCode(tagsCodeValue);
-        msgInner.setPropertiesString(MessageDecoder.messageProperties2String(msgExt.getProperties()));
-
-        msgInner.setSysFlag(msgExt.getSysFlag());
-        msgInner.setBornTimestamp(msgExt.getBornTimestamp());
-        msgInner.setBornHost(msgExt.getBornHost());
-        msgInner.setStoreHost(msgExt.getStoreHost());
-        msgInner.setReconsumeTimes(msgExt.getReconsumeTimes());
-
-        msgInner.setWaitStoreMsgOK(false);
-        MessageAccessor.clearProperty(msgInner, MessageConst.PROPERTY_DELAY_TIME_LEVEL);
-
-        msgInner.setTopic(msgInner.getProperty(MessageConst.PROPERTY_REAL_TOPIC));
-
-        String queueIdStr = msgInner.getProperty(MessageConst.PROPERTY_REAL_QUEUE_ID);
-        int queueId = Integer.parseInt(queueIdStr);
-        msgInner.setQueueId(queueId);
-
-        return msgInner;
+    public static MessageExt decode(
+            ByteBuffer byteBuffer, MessageIdImpl messageId, boolean readBody,
+            boolean deCompressBody) {
+        return decode(byteBuffer, messageId, readBody, deCompressBody, false);
     }
 
     public static MessageExt decode(
-            ByteBuffer byteBuffer, final MessageIdImpl messageId, final boolean readBody,
+            ByteBuf byteBuf, boolean readBody,
             final boolean deCompressBody) {
-        return decode(byteBuffer, messageId, readBody, deCompressBody, false);
+        Preconditions.checkArgument(byteBuf != null && byteBuf.readableBytes() > 0);
+        try {
+            MessageExt msgExt = new MessageExt();
+
+            // 1 TOTALSIZE
+            int storeSize = byteBuf.readInt();
+            msgExt.setStoreSize(storeSize);
+
+            // 2 MAGICCODE
+            byteBuf.readInt();
+
+            // 3 BODYCRC
+            int bodyCRC = byteBuf.readInt();
+            msgExt.setBodyCRC(bodyCRC);
+
+            // 4 QUEUEID
+            int queueId = byteBuf.readInt();
+            msgExt.setQueueId(queueId);
+
+            // 5 FLAG
+            int flag = byteBuf.readInt();
+            msgExt.setFlag(flag);
+
+            // 6 QUEUEOFFSET
+            long queueOffset = byteBuf.readLong();
+            msgExt.setQueueOffset(queueOffset);
+
+            // 7 PHYSICALOFFSET
+            long physicOffset = byteBuf.readLong();
+            msgExt.setCommitLogOffset(physicOffset);
+
+            // 8 SYSFLAG
+            int sysFlag = byteBuf.readInt();
+            msgExt.setSysFlag(sysFlag);
+
+            // 9 BORNTIMESTAMP
+            long bornTimeStamp = byteBuf.readLong();
+            msgExt.setBornTimestamp(bornTimeStamp);
+
+            // 10 BORNHOST
+            int bornhostIPLength = (sysFlag & MessageSysFlag.BORNHOST_V6_FLAG) == 0 ? 4 : 16;
+            byte[] bornHost = new byte[bornhostIPLength];
+            byteBuf.readBytes(bornHost, 0, bornhostIPLength);
+            int port = byteBuf.readInt();
+            msgExt.setBornHost(new InetSocketAddress(InetAddress.getByAddress(bornHost), port));
+
+            // 11 STORETIMESTAMP
+            long storeTimestamp = byteBuf.readLong();
+            msgExt.setStoreTimestamp(storeTimestamp);
+
+            // 12 STOREHOST
+            int storehostIPLength = (sysFlag & MessageSysFlag.STOREHOSTADDRESS_V6_FLAG) == 0 ? 4 : 16;
+            byte[] storeHost = new byte[storehostIPLength];
+            byteBuf.readBytes(storeHost, 0, storehostIPLength);
+            port = byteBuf.readInt();
+            msgExt.setStoreHost(new InetSocketAddress(InetAddress.getByAddress(storeHost), port));
+
+            // 13 RECONSUMETIMES
+            int reconsumeTimes = byteBuf.readInt();
+            msgExt.setReconsumeTimes(reconsumeTimes);
+
+            // 14 Prepared Transaction Offset
+            long preparedTransactionOffset = byteBuf.readLong();
+            msgExt.setPreparedTransactionOffset(preparedTransactionOffset);
+
+            // 15 BODY
+            int bodyLen = byteBuf.readInt();
+            if (bodyLen > 0) {
+                if (readBody) {
+                    byte[] body = new byte[bodyLen];
+                    byteBuf.readBytes(body);
+
+                    // uncompress body
+                    if (deCompressBody
+                            && (sysFlag & MessageSysFlag.COMPRESSED_FLAG) == MessageSysFlag.COMPRESSED_FLAG) {
+                        body = UtilAll.uncompress(body);
+                    }
+
+                    msgExt.setBody(body);
+                } else {
+                    byteBuf.readerIndex(byteBuf.readerIndex() + bodyLen);
+                }
+            }
+
+            // 16 TOPIC
+            byte topicLen = byteBuf.readByte();
+            byte[] topic = new byte[(int) topicLen];
+            byteBuf.readBytes(topic);
+            msgExt.setTopic(new String(topic, CHARSET_UTF8));
+
+            // 17 properties
+            short propertiesLength = byteBuf.readShort();
+            if (propertiesLength > 0) {
+                byte[] properties = new byte[propertiesLength];
+                byteBuf.readBytes(properties);
+                String propertiesString = new String(properties, CHARSET_UTF8);
+                Map<String, String> map = MessageDecoder.string2messageProperties(propertiesString);
+                MessageAccessor.setProperties(msgExt, map);
+            }
+            return msgExt;
+        } catch (IOException ex) {
+            log.warn("Decode message error.", ex);
+        }
+        return null;
     }
 
     public static MessageExt decode(
@@ -311,15 +394,11 @@ public class CommonUtils {
         return null;
     }
 
-    public static ByteBuffer decode(Message<byte[]> message) {
-        ByteBuffer wrap = ByteBuffer.wrap(message.getData());
-        MessageIdImpl messageId = (MessageIdImpl) message.getMessageId();
-        long physicalOffset = MessageIdUtils
-                .getOffset(messageId.getLedgerId(), messageId.getEntryId(), messageId.getPartitionIndex());
-
-        wrap.putLong(ROP_QUEUE_OFFSET_INDEX, physicalOffset);
-        wrap.putLong(ROP_PHYSICAL_OFFSET_INDEX, physicalOffset);
-        wrap.getLong();
-        return wrap.slice();
+    public static int getPulsarPartitionIdByRequest(RemotingCommand request) {
+        String partitionId = request.getExtFields().get(PULSAR_REAL_PARTITION_ID_TAG);
+        if (partitionId == null) {
+            throw new RuntimeException("Not found partitionId from RemotingCommand extFields.");
+        }
+        return Integer.parseInt(partitionId);
     }
 }

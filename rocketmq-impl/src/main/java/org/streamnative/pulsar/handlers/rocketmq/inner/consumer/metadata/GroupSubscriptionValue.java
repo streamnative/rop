@@ -100,12 +100,11 @@ public class GroupSubscriptionValue extends SubscriptionGroupConfig implements D
         return (short) tag;
     }
 
-    private SubscriptionGroupConfig parseSubscriptionTag(short tag) {
+    private void parseSubscriptionTag(short tag) {
         this.setConsumeEnable((tag & 0x01) == 0x01);
         this.setConsumeFromMinEnable((tag & 0x02) == 0x02);
         this.setConsumeBroadcastEnable((tag & 0x04) == 0x04);
         this.setConsumeBroadcastEnable((tag & 0x08) == 0x08);
-        return this;
     }
 
     public String toString() {

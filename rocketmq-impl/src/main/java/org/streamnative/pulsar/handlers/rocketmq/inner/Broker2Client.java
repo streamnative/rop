@@ -15,7 +15,6 @@
 package org.streamnative.pulsar.handlers.rocketmq.inner;
 
 import io.netty.channel.Channel;
-import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -50,7 +49,6 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.ConsumerGroupInf
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopPersistentTopicException;
 import org.streamnative.pulsar.handlers.rocketmq.inner.namesvr.MQTopicManager;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupAndTopicName;
-import org.streamnative.pulsar.handlers.rocketmq.utils.ConfigurationUtils;
 import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 
 /**
@@ -127,16 +125,15 @@ public class Broker2Client {
 
         Map<MessageQueue, Long> offsetTable = new HashMap<>();
         String lookupTopic = RocketMQTopic.getPulsarOrigNoDomainTopic(topic);
-        Map<Integer, InetSocketAddress> topicBrokerAddr = topicManager
-                .getTopicBrokerAddr(TopicName.get(lookupTopic),
-                        ConfigurationUtils.getDefaultListenerName(brokerController.getServerConfig()));
+        Map<String, List<Integer>> topicBrokerAddr = null;
+                // TODO: topicManager.getTopicRoute(TopicName.get(lookupTopic), Strings.EMPTY);
 
         for (int i = 0; i < topicConfig.getWriteQueueNums(); i++) {
             if (!brokerController.getTopicConfigManager().isPartitionTopicOwner(TopicName.get(lookupTopic), i)) {
                 continue;
             }
             MessageQueue mq = new MessageQueue();
-            mq.setBrokerName(topicBrokerAddr.get(i).getHostName());
+            mq.setBrokerName(brokerController.getBrokerHost());
             mq.setTopic(topic);
             mq.setQueueId(i);
 
@@ -261,8 +258,7 @@ public class Broker2Client {
                 RemotingCommand.createRequestCommand(RequestCode.GET_CONSUMER_STATUS_FROM_CLIENT,
                         requestHeader);
 
-        Map<String, Map<MessageQueue, Long>> consumerStatusTable =
-                new HashMap<String, Map<MessageQueue, Long>>();
+        Map<String, Map<MessageQueue, Long>> consumerStatusTable = new HashMap<>();
         ConcurrentMap<Channel, ClientChannelInfo> channelInfoTable =
                 this.brokerController.getConsumerManager().getConsumerGroupInfo(group).getChannelInfoTable();
         if (null == channelInfoTable || channelInfoTable.isEmpty()) {

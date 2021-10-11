@@ -40,6 +40,7 @@ import org.apache.rocketmq.remoting.common.Pair;
 import org.apache.rocketmq.remoting.common.RemotingHelper;
 import org.apache.rocketmq.remoting.common.SemaphoreReleaseOnlyOnce;
 import org.apache.rocketmq.remoting.common.ServiceThread;
+import org.apache.rocketmq.remoting.exception.RemotingCommandException;
 import org.apache.rocketmq.remoting.exception.RemotingSendRequestException;
 import org.apache.rocketmq.remoting.exception.RemotingTimeoutException;
 import org.apache.rocketmq.remoting.exception.RemotingTooMuchRequestException;
@@ -181,7 +182,8 @@ public abstract class NettyRemotingAbstract {
      * @param ctx channel handler context.
      * @param cmd request command.
      */
-    public void processRequestCommand(final ChannelHandlerContext ctx, final RemotingCommand cmd) {
+    public void processRequestCommand(final ChannelHandlerContext ctx, final RemotingCommand cmd)
+            throws RemotingCommandException {
         if (log.isDebugEnabled()) {
             log.debug("Processing [{}] command ing", cmd);
         }
@@ -218,8 +220,7 @@ public abstract class NettyRemotingAbstract {
                             }
                         }
                     } catch (Throwable e) {
-                        log.error("process request exception", e);
-                        log.error(cmd.toString());
+                        log.error("process request[{}] exception", cmd, e);
 
                         if (!cmd.isOnewayRPC()) {
                             final RemotingCommand response = RemotingCommand.createResponseCommand(

@@ -14,7 +14,6 @@
 package org.streamnative.pulsar.handlers.rocketmq.inner.bean;
 
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.Map.Entry;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.remoting.protocol.RemotingSerializable;
@@ -29,9 +28,7 @@ public class RopConsumeStats extends RemotingSerializable {
     public long computeTotalDiff() {
         long diffTotal = 0L;
 
-        Iterator<Entry<MessageQueue, RopOffsetWrapper>> it = this.offsetTable.entrySet().iterator();
-        while (it.hasNext()) {
-            Entry<MessageQueue, RopOffsetWrapper> next = it.next();
+        for (Entry<MessageQueue, RopOffsetWrapper> next : this.offsetTable.entrySet()) {
             long diff = next.getValue().getBrokerOffset() - next.getValue().getConsumerOffset();
             diffTotal += diff;
         }
