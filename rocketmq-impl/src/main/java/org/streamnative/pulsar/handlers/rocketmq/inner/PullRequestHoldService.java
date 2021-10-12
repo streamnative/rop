@@ -117,7 +117,8 @@ public class PullRequestHoldService extends ServiceThread {
 
     public void notifyMessageArriving(final String topic, final int queueId, final long maxOffset, final Long tagsCode,
             long msgStoreTime, byte[] filterBitMap, Map<String, String> properties) {
-        log.debug("notifyMessageArriving ==========> (topic={} and queueId={} and maxoffset={})", topic, queueId, maxOffset);
+        log.debug("notifyMessageArriving ==========> (topic={} and queueId={} and maxoffset={})", topic, queueId,
+                maxOffset);
         String key = this.buildKey(topic, queueId);
         ManyPullRequest mpr = this.pullRequestTable.get(key);
         if (mpr != null) {

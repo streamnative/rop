@@ -93,7 +93,6 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.processor.SendMessageProc
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientTopicName;
 import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopClusterContent;
 import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkUtils;
-import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 
 /**
  * Rop broker proxy is a rocketmq request simulator

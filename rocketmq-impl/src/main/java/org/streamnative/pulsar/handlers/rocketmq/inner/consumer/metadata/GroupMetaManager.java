@@ -276,7 +276,8 @@ public class GroupMetaManager {
                                 .getPositionForOffset(persistentTopic.getManagedLedger(), offset - 1);
                         PositionImpl lastPosition = (PositionImpl) persistentTopic.getLastPosition();
 
-                        if (commitPosition.compareTo(markDeletedPosition) > 0 && commitPosition.compareTo(lastPosition) < 0) {
+                        if (commitPosition.compareTo(markDeletedPosition) > 0
+                                && commitPosition.compareTo(lastPosition) < 0) {
                             try {
                                 cursor.markDelete(commitPosition);
                                 log.debug("[{}] [{}] Mark delete [position = {}] successfully.",
