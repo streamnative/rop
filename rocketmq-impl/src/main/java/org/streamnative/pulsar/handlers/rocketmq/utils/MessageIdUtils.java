@@ -195,9 +195,18 @@ public class MessageIdUtils {
     public static PositionImpl getPositionForOffset(ManagedLedger managedLedger, Long offset) {
         try {
             return (PositionImpl) managedLedger.asyncFindPosition(new OffsetSearchPredicate(offset)).get();
-        } catch (InterruptedException | ExecutionException e) {
+        } catch (Exception e) {
             log.error("[{}] Failed to find position for offset {}", managedLedger.getName(), offset);
             throw new RuntimeException(managedLedger.getName() + " failed to find position for offset " + offset);
+        }
+    }
+
+    public static PositionImpl getPreviousPosition(ManagedLedger managedLedger, PositionImpl position) {
+        try {
+            return ((ManagedLedgerImpl) managedLedger).getPreviousPosition(position);
+        } catch (Exception e) {
+            log.error("[{}] Failed to find position for offset {}", managedLedger.getName(), position);
+            throw new RuntimeException(managedLedger.getName() + " failed to find position for offset " + position);
         }
     }
 

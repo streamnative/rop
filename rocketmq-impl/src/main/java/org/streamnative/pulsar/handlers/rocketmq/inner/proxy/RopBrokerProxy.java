@@ -90,6 +90,7 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.processor.EndTransactionP
 import org.streamnative.pulsar.handlers.rocketmq.inner.processor.PullMessageProcessor;
 import org.streamnative.pulsar.handlers.rocketmq.inner.processor.QueryMessageProcessor;
 import org.streamnative.pulsar.handlers.rocketmq.inner.processor.SendMessageProcessor;
+import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientTopicName;
 import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopClusterContent;
 import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkUtils;
 import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
@@ -159,9 +160,9 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
             case PULL_MESSAGE:
                 PullMessageRequestHeader pullMsgHeader =
                         (PullMessageRequestHeader) cmd.decodeCommandCustomHeader(PullMessageRequestHeader.class);
-                RocketMQTopic rmqTopic = new RocketMQTopic(pullMsgHeader.getTopic());
-                TopicName pulsarTopicName = rmqTopic.getPulsarTopicName();
-                boolean isOwnedBroker = checkTopicOwnerBroker(cmd, rmqTopic.getPulsarTopicName(),
+                ClientTopicName rmqTopic = new ClientTopicName(pullMsgHeader.getTopic());
+                TopicName pulsarTopicName = rmqTopic.toPulsarTopicName();
+                boolean isOwnedBroker = checkTopicOwnerBroker(cmd, pulsarTopicName,
                         pullMsgHeader.getQueueId());
                 if (isOwnedBroker) {
                     super.processRequestCommand(ctx, cmd);
@@ -185,8 +186,8 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                 }
                 String topic = sendHeader.getTopic();
                 int queueId = sendHeader.getQueueId();
-                rmqTopic = new RocketMQTopic(topic);
-                pulsarTopicName = rmqTopic.getPulsarTopicName();
+                rmqTopic = new ClientTopicName(topic);
+                pulsarTopicName = rmqTopic.toPulsarTopicName();
                 isOwnedBroker = checkTopicOwnerBroker(cmd, pulsarTopicName, queueId);
                 if (isOwnedBroker) {
                     super.processRequestCommand(ctx, cmd);
@@ -202,8 +203,8 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                 topic = commitLogOffset.isRetryTopic() ? MixAll.getRetryTopic(requestHeader.getGroup())
                         : requestHeader.getOriginTopic();
                 int pulsarPartitionId = commitLogOffset.getPartitionId();
-                rmqTopic = new RocketMQTopic(topic);
-                pulsarTopicName = rmqTopic.getPulsarTopicName();
+                rmqTopic = new ClientTopicName(topic);
+                pulsarTopicName = rmqTopic.toPulsarTopicName();
                 isOwnedBroker = mqTopicManager.isPartitionTopicOwner(pulsarTopicName, pulsarPartitionId);
                 if (isOwnedBroker) {
                     super.processRequestCommand(ctx, cmd);

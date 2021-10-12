@@ -92,8 +92,12 @@ public class GroupOffsetValue implements Deserializer<GroupOffsetValue> {
         if (this.offset != offset) {
             this.offset = offset;
             this.commitTimestamp = commitTimestamp;
+            this.isUpdated = true;
         }
         this.expireTimestamp = expireTimestamp;
-        this.isUpdated = true;
+    }
+
+    public boolean isValid() {
+        return offset > 0L && isUpdated;
     }
 }
