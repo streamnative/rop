@@ -100,18 +100,9 @@ public class PullRequestHoldService extends ServiceThread {
             if (2 == kArray.length) {
                 String topic = kArray[0];
                 int queueId = Integer.parseInt(kArray[1]);
-                long offset = Long.MAX_VALUE;
                 try {
-                    ClientTopicName clientTopicName = new ClientTopicName(topic);
-                    if (this.brokerController.getTopicConfigManager()
-                            .isPartitionTopicOwner(clientTopicName.toPulsarTopicName(), queueId)) {
-                       /*TODO offset = this.brokerController.getConsumerOffsetManager()
-                                .getMaxOffsetInQueue(new ClientTopicName(topic), queueId);*/
-                    }
-                } catch (Exception e) {
-                    //
-                }
-                try {
+                    long offset = this.brokerController.getConsumerOffsetManager()
+                            .getMaxOffsetInQueue(new ClientTopicName(topic), queueId);
                     this.notifyMessageArriving(topic, queueId, offset);
                 } catch (Throwable th) {
                     log.warn("check hold request failed. topic: {}, queueId: {} ", topic, queueId, th);
