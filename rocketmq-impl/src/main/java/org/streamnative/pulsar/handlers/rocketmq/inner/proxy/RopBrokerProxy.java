@@ -115,6 +115,7 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
     private final OrderedExecutor orderedExecutor;
     private final List<ProcessorProxyRegister> processorProxyRegisters = new ArrayList<>();
     private final BrokerNetworkAPI brokerNetworkClients = new BrokerNetworkAPI(this);
+    @Getter
     private volatile String brokerTag = Strings.EMPTY;
     private final String clusterName;
     @Getter
@@ -399,20 +400,6 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
             log.error("RoP cluster metadata is missing, service can't run correctly.");
             return null;
         }
-    }
-
-    public String getOwnBrokerName() {
-        String brokerHost = brokerController.getBrokerHost();
-        RopClusterContent clusterContent = getRopClusterContent();
-        if (clusterContent != null) {
-            Map<String, List<String>> brokerCluster = clusterContent.getBrokerCluster();
-            for (Entry<String, List<String>> entry : brokerCluster.entrySet()) {
-                if (entry.getValue().contains(brokerHost)) {
-                    return entry.getKey();
-                }
-            }
-        }
-        return "";
     }
 
     private String setBrokerTagListener() {
