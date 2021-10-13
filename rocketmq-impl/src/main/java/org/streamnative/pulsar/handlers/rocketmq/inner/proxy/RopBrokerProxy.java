@@ -115,7 +115,6 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
     private final OrderedExecutor orderedExecutor;
     private final List<ProcessorProxyRegister> processorProxyRegisters = new ArrayList<>();
     private final BrokerNetworkAPI brokerNetworkClients = new BrokerNetworkAPI(this);
-    @Getter
     private volatile String brokerTag = Strings.EMPTY;
     private final String clusterName;
     @Getter
