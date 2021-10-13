@@ -236,7 +236,8 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                     } else {
                         //maybe partitioned topic have transfer to other broker, invalidate cache at once.
                         ownedBrokerCache.invalidate(partitionedTopicName);
-                        log.info("processNonOwnedBrokerConsumerSendBackRequest failed and retry, {} {}", response.getCode(),
+                        log.info("processNonOwnedBrokerConsumerSendBackRequest failed and retry, {} {}",
+                                response.getCode(),
                                 response.getRemark());
                         long curTime = System.currentTimeMillis();
                         if (curTime < timeoutTime) {

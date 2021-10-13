@@ -14,6 +14,7 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner;
 
+import com.google.common.collect.Maps;
 import io.netty.channel.Channel;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -22,6 +23,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentMap;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.tuple.Pair;
 import org.apache.logging.log4j.util.Strings;
 import org.apache.pulsar.common.naming.TopicName;
 import org.apache.rocketmq.broker.client.ClientChannelInfo;
@@ -110,36 +112,45 @@ public class Broker2Client {
         return resetOffset(topic, group, timeStamp, isForce, false);
     }
 
-    public RemotingCommand resetOffset(String topic, String group, long timeStamp, boolean isForce,
-            boolean isC) {
+    public RemotingCommand resetOffset(String rmqTopic, String group, long timeStamp, boolean isForce, boolean isC) {
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
 
         MQTopicManager topicManager = brokerController.getTopicConfigManager();
-        TopicConfig topicConfig = topicManager.selectTopicConfig(topic);
+        TopicConfig topicConfig = topicManager.selectTopicConfig(rmqTopic);
         if (null == topicConfig) {
-            log.error("[reset-offset] reset offset failed, no topic in this broker. topic={}", topic);
+            log.error("[reset-offset] reset offset failed, no topic in this broker. topic={}", rmqTopic);
             response.setCode(ResponseCode.SYSTEM_ERROR);
-            response.setRemark("[reset-offset] reset offset failed, no topic in this broker. topic=" + topic);
+            response.setRemark("[reset-offset] reset offset failed, no topic in this broker. topic=" + rmqTopic);
             return response;
         }
 
         Map<MessageQueue, Long> offsetTable = new HashMap<>();
-        String lookupTopic = RocketMQTopic.getPulsarOrigNoDomainTopic(topic);
-        Map<String, List<Integer>> topicBrokerAddr = null;
-                // TODO: topicManager.getTopicRoute(TopicName.get(lookupTopic), Strings.EMPTY);
+        TopicName topicName = new RocketMQTopic(rmqTopic).getPulsarTopicName();
 
-        for (int i = 0; i < topicConfig.getWriteQueueNums(); i++) {
-            if (!brokerController.getTopicConfigManager().isPartitionTopicOwner(TopicName.get(lookupTopic), i)) {
+        /*
+         * partitionId -> [queueId, brokerName]
+         */
+        Map<Integer, Pair<Integer, String>> partitionMap = Maps.newHashMap();
+        Map<String, List<Integer>> topicRoute = this.brokerController.getTopicConfigManager()
+                .getPulsarTopicRoute(topicName, Strings.EMPTY);
+        topicRoute.forEach((s, integers) -> {
+            for (int i = 0; i < integers.size(); i++) {
+                partitionMap.put(integers.get(i), Pair.of(i, s));
+            }
+        });
+
+        for (int partitionId = 0; partitionId < topicConfig.getWriteQueueNums(); partitionId++) {
+            if (!brokerController.getTopicConfigManager().isPartitionTopicOwner(topicName, partitionId)) {
                 continue;
             }
             MessageQueue mq = new MessageQueue();
-            mq.setBrokerName(brokerController.getBrokerHost());
-            mq.setTopic(topic);
-            mq.setQueueId(i);
+            mq.setTopic(rmqTopic);
+            mq.setBrokerName(partitionMap.get(partitionId).getRight());
+            mq.setQueueId(partitionMap.get(partitionId).getLeft());
 
             // current consume offset
             long consumeOffset =
-                    this.brokerController.getConsumerOffsetManager().queryOffset(group, topic, i);
+                    this.brokerController.getConsumerOffsetManager().queryOffset(group, rmqTopic, partitionId);
             if (-1 == consumeOffset) {
                 response.setCode(ResponseCode.SYSTEM_ERROR);
                 response.setRemark(String.format("THe consumer group <%s> not exist", group));
@@ -147,14 +158,14 @@ public class Broker2Client {
             }
 
             long timeStampOffset;
-            ClientGroupAndTopicName groupAndTopicName = new ClientGroupAndTopicName(Strings.EMPTY, topic);
+            ClientGroupAndTopicName groupAndTopicName = new ClientGroupAndTopicName(Strings.EMPTY, rmqTopic);
             if (timeStamp != -1) {
                 timeStampOffset = this.brokerController.getConsumerOffsetManager()
-                        .searchOffsetByTimestamp(groupAndTopicName, i, timeStamp);
+                        .searchOffsetByTimestamp(groupAndTopicName, partitionId, timeStamp);
             } else {
                 try {
                     timeStampOffset = this.brokerController.getConsumerOffsetManager()
-                            .getMaxOffsetInQueue(groupAndTopicName.getClientTopicName(), i);
+                            .getMaxOffsetInQueue(groupAndTopicName.getClientTopicName(), partitionId);
                 } catch (RopPersistentTopicException e) {
                     timeStampOffset = -1L;
                 }
@@ -162,7 +173,7 @@ public class Broker2Client {
 
             if (timeStampOffset < 0) {
                 log.warn("reset offset is invalid. topic={}, queueId={}, timeStampOffset={}",
-                        topic, i, timeStampOffset);
+                        rmqTopic, partitionId, timeStampOffset);
                 timeStampOffset = 0;
             }
 
@@ -175,7 +186,7 @@ public class Broker2Client {
         }
 
         ResetOffsetRequestHeader requestHeader = new ResetOffsetRequestHeader();
-        requestHeader.setTopic(topic);
+        requestHeader.setTopic(rmqTopic);
         requestHeader.setGroup(group);
         requestHeader.setTimestamp(timeStamp);
         RemotingCommand request =
@@ -205,10 +216,10 @@ public class Broker2Client {
                     try {
                         this.brokerController.getRemotingServer().invokeOneway(entry.getKey(), request, 5000);
                         log.info("[reset-offset] reset offset success. topic={}, group={}, clientId={}",
-                                topic, group, entry.getValue().getClientId());
+                                rmqTopic, group, entry.getValue().getClientId());
                     } catch (Exception e) {
                         log.error("[reset-offset] reset offset exception. topic={}, group={}",
-                                new Object[]{topic, group}, e);
+                                new Object[]{rmqTopic, group}, e);
                     }
                 } else {
                     response.setCode(ResponseCode.SYSTEM_ERROR);
