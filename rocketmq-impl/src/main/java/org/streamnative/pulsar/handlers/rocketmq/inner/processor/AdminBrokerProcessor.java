@@ -741,9 +741,12 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
                 }
             }
 
+            /*
+             * partitionId -> [queueId, brokerName]
+             */
+            Map<Integer, Pair<Integer, String>> partitionMap = Maps.newHashMap();
             Map<String, List<Integer>> topicRoute = this.brokerController.getTopicConfigManager()
                     .getPulsarTopicRoute(topicName, Strings.EMPTY);
-            Map<Integer, Pair<Integer, String>> partitionMap = Maps.newHashMap();
             topicRoute.forEach((s, integers) -> {
                 for (int i = 0; i < integers.size(); i++) {
                     partitionMap.put(integers.get(i), Pair.of(i, s));

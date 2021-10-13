@@ -31,7 +31,6 @@ import org.apache.bookkeeper.mledger.ManagedLedgerException;
 import org.apache.bookkeeper.mledger.Position;
 import org.apache.bookkeeper.mledger.impl.ManagedLedgerImpl;
 import org.apache.bookkeeper.mledger.impl.PositionImpl;
-import org.apache.pulsar.broker.intercept.ManagedLedgerInterceptorImpl;
 import org.apache.pulsar.broker.service.persistent.PersistentTopic;
 import org.apache.pulsar.client.impl.MessageImpl;
 import org.apache.pulsar.common.naming.TopicName;
@@ -259,7 +258,8 @@ public class ConsumerOffsetManager {
         }
         if (persistentTopic != null) {
             // find with real wanted timestamp
-            OffsetFinder offsetFinder = new OffsetFinder((ManagedLedgerImpl) persistentTopic.getManagedLedger());
+            ManagedLedgerImpl managedLedger = (ManagedLedgerImpl) persistentTopic.getManagedLedger();
+            OffsetFinder offsetFinder = new OffsetFinder(managedLedger);
 
             CompletableFuture<Long> finalOffset = new CompletableFuture<>();
             offsetFinder.findMessages(timestamp, new AsyncCallbacks.FindEntryCallback() {
@@ -268,8 +268,15 @@ public class ConsumerOffsetManager {
                     if (position == null) {
                         finalOffset.complete(-1L);
                     } else {
-                        long offset = MessageIdUtils.getQueueOffsetByPosition(persistentTopic, position);
-                        finalOffset.complete(offset);
+                        MessageIdUtils.getOffsetOfPosition(managedLedger,
+                                (PositionImpl) position, true, -1).whenComplete((offset, throwable) -> {
+                            if (throwable != null) {
+                                log.error("[{}] Failed to get offset for position {}", persistentTopic.getName(),
+                                        position, throwable);
+                                return;
+                            }
+                            finalOffset.complete(offset);
+                        });
                     }
                 }
 
