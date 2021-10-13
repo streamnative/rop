@@ -17,7 +17,6 @@ package org.streamnative.pulsar.handlers.rocketmq.utils;
 import com.google.common.base.Preconditions;
 import io.netty.buffer.ByteBuf;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bookkeeper.mledger.AsyncCallbacks;
 import org.apache.bookkeeper.mledger.Entry;
@@ -195,9 +194,18 @@ public class MessageIdUtils {
     public static PositionImpl getPositionForOffset(ManagedLedger managedLedger, Long offset) {
         try {
             return (PositionImpl) managedLedger.asyncFindPosition(new OffsetSearchPredicate(offset)).get();
-        } catch (InterruptedException | ExecutionException e) {
+        } catch (Exception e) {
             log.error("[{}] Failed to find position for offset {}", managedLedger.getName(), offset);
             throw new RuntimeException(managedLedger.getName() + " failed to find position for offset " + offset);
+        }
+    }
+
+    public static PositionImpl getPreviousPosition(ManagedLedger managedLedger, PositionImpl position) {
+        try {
+            return ((ManagedLedgerImpl) managedLedger).getPreviousPosition(position);
+        } catch (Exception e) {
+            log.error("[{}] Failed to find position for offset {}", managedLedger.getName(), position);
+            throw new RuntimeException(managedLedger.getName() + " failed to find position for offset " + position);
         }
     }
 

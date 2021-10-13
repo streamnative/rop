@@ -60,7 +60,7 @@ public class BatchMessageTransfer extends AbstractReferenceCounted implements Fi
 
     @Override
     public long count() {
-        return 0;
+        return byteBufferHeader.limit() + this.getMessageResult.getBufferTotalSize();
     }
 
     @Override
