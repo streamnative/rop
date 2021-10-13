@@ -15,23 +15,22 @@
 package org.streamnative.pulsar.handlers.rocketmq.inner.consumer;
 
 import com.google.common.base.Preconditions;
-import com.google.common.cache.Cache;
-import com.google.common.cache.CacheBuilder;
-import com.google.common.cache.RemovalNotification;
 import java.io.Closeable;
-import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.logging.log4j.util.Strings;
 import org.apache.rocketmq.common.DataVersion;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.subscription.SubscriptionGroupConfig;
+import org.apache.rocketmq.remoting.exception.RemotingCommandException;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupName;
 import org.streamnative.pulsar.handlers.rocketmq.inner.proxy.RopZookeeperCacheService;
 import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopGroupContent;
+import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkUtils;
 
 /**
  * Subscription group manager.
@@ -39,8 +38,6 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopGroupContent
 @Slf4j
 public class SubscriptionGroupManager implements Closeable {
 
-    private final int cacheInitCapacity = 1024;
-    private final int maxCacheTimeInSec = 60;
     private final RocketMQBrokerController brokerController;
     private final DataVersion dataVersion = new DataVersion();
 
@@ -48,27 +45,8 @@ public class SubscriptionGroupManager implements Closeable {
     private volatile boolean isRunning = false;
 
 
-    private final Cache<ClientGroupName, SubscriptionGroupConfig> subscriptionGroupTableCache = CacheBuilder
-            .newBuilder()
-            .initialCapacity(cacheInitCapacity)
-            .expireAfterAccess(maxCacheTimeInSec, TimeUnit.SECONDS)
-            .removalListener((RemovalNotification<ClientGroupName, SubscriptionGroupConfig> notification) ->
-                    log.info("Remove key [{}] from subscriptionGroupTableCache", notification.getKey().toString()))
-            .build();
-
     public SubscriptionGroupManager(RocketMQBrokerController brokerController) {
         this.brokerController = brokerController;
-        this.init();
-    }
-
-    private void init() {
-        SubscriptionGroupConfig subscriptionGroupConfig = new SubscriptionGroupConfig();
-        subscriptionGroupConfig.setGroupName("TOOLS_CONSUMER");
-        subscriptionGroupTableCache.put(new ClientGroupName("TOOLS_CONSUMER"), subscriptionGroupConfig);
-
-        subscriptionGroupConfig = new SubscriptionGroupConfig();
-        subscriptionGroupConfig.setGroupName("SELF_TEST_C_GROUP");
-        subscriptionGroupTableCache.put(new ClientGroupName("SELF_TEST_C_GROUP"), subscriptionGroupConfig);
     }
 
     public void start() {
@@ -78,11 +56,18 @@ public class SubscriptionGroupManager implements Closeable {
             isRunning = true;
             log.info("SubscriptionGroupManager has been started.");
         }
+
+        SubscriptionGroupConfig subscriptionGroupConfig = new SubscriptionGroupConfig();
+        subscriptionGroupConfig.setGroupName("TOOLS_CONSUMER");
+        updateSubscriptionGroupConfig(subscriptionGroupConfig);
+
+        subscriptionGroupConfig = new SubscriptionGroupConfig();
+        subscriptionGroupConfig.setGroupName("SELF_TEST_C_GROUP");
+        updateSubscriptionGroupConfig(subscriptionGroupConfig);
     }
 
     @Override
     public void close() {
-        subscriptionGroupTableCache.cleanUp();
         zkServiceRef.set(null);
         isRunning = false;
         log.info("SubscriptionGroupManager have been closed.");
@@ -97,7 +82,6 @@ public class SubscriptionGroupManager implements Closeable {
             SubscriptionGroupConfig oldGroupConfig = groupConfigContent != null ? groupConfigContent.getConfig() : null;
             if (!config.equals(oldGroupConfig)) {
                 zkServiceRef.get().updateOrCreateGroupConfig(config);
-                subscriptionGroupTableCache.put(new ClientGroupName(config.getGroupName()), config);
                 dataVersion.nextVersion();
             }
         } catch (Exception e) {
@@ -107,40 +91,54 @@ public class SubscriptionGroupManager implements Closeable {
     }
 
     public SubscriptionGroupConfig findSubscriptionGroupConfig(String group) {
-        ClientGroupName clientGroupName = new ClientGroupName(group);
-
-        SubscriptionGroupConfig subscriptionGroupConfig = subscriptionGroupTableCache.getIfPresent(clientGroupName);
-        if (subscriptionGroupConfig != null) {
-            return subscriptionGroupConfig;
-        }
-
         try {
             RopGroupContent groupConfigContent = zkServiceRef.get().getGroupConfig(group);
-            if (Objects.nonNull(groupConfigContent)) {
-                subscriptionGroupTableCache.put(clientGroupName, groupConfigContent.getConfig());
-            } else if (brokerController.getServerConfig().isAutoCreateSubscriptionGroup()
+            if (groupConfigContent != null) {
+                return groupConfigContent.getConfig();
+            }
+
+            if (brokerController.getServerConfig().isAutoCreateSubscriptionGroup()
                     || MixAll.isSysConsumerGroup(group)) {
-                subscriptionGroupConfig = new SubscriptionGroupConfig();
+                SubscriptionGroupConfig subscriptionGroupConfig = new SubscriptionGroupConfig();
                 subscriptionGroupConfig.setGroupName(group);
                 updateSubscriptionGroupConfig(subscriptionGroupConfig);
                 return subscriptionGroupConfig;
             }
-            return groupConfigContent.getConfig();
         } catch (Exception e) {
             log.error("Find subscription group [{}] config error.", group, e);
             throw new RuntimeException("Find subscription group config failed.");
         }
+        return null;
     }
 
-    public ConcurrentMap<ClientGroupName, SubscriptionGroupConfig> getSubscriptionGroupTable() {
-        //return activity subscription group config
-        return subscriptionGroupTableCache.asMap();
+    public ConcurrentMap<ClientGroupName, SubscriptionGroupConfig> getSubscriptionGroupTable()
+            throws RemotingCommandException {
+        ConcurrentMap<ClientGroupName, SubscriptionGroupConfig> result = new ConcurrentHashMap<>();
+        try {
+            Set<String> tenants = zkServiceRef.get().getCache().getChildren(RopZkUtils.GROUP_BASE_PATH);
+            for (String tenant : tenants) {
+                String tenantNodePath = String.format(RopZkUtils.GROUP_BASE_PATH_MATCH, tenant);
+                Set<String> namespaces = zkServiceRef.get().getCache().getChildren(tenantNodePath);
+                for (String namespace : namespaces) {
+                    String namespaceNodePath = String
+                            .format(RopZkUtils.GROUP_BASE_PATH_MATCH, tenant + "/" + namespace);
+                    Set<String> groups = zkServiceRef.get().getCache().getChildren(namespaceNodePath);
+                    for (String group : groups) {
+                        String fullGroupName = tenant + "|" + namespace + "%" + group;
+                        ClientGroupName clientGroupName = new ClientGroupName(fullGroupName);
+                        result.put(clientGroupName, findSubscriptionGroupConfig(fullGroupName));
+                    }
+                }
+            }
+            return result;
+        } catch (Exception e) {
+            throw new RemotingCommandException(e.getMessage(), e);
+        }
     }
 
     public void deleteSubscriptionGroupConfig(String group) {
         ClientGroupName clientGroupName = new ClientGroupName(group);
         zkServiceRef.get().deleteGroupConfig(clientGroupName.getPulsarGroupName());
-        subscriptionGroupTableCache.invalidate(clientGroupName);
     }
 
     public DataVersion getDataVersion() {
