@@ -42,7 +42,6 @@ import org.apache.pulsar.client.api.SubscriptionMode;
 import org.apache.pulsar.client.api.SubscriptionType;
 import org.apache.pulsar.client.impl.PulsarClientImpl;
 import org.apache.rocketmq.common.MixAll;
-import org.apache.rocketmq.common.ServiceThread;
 import org.apache.rocketmq.common.TopicFilterType;
 import org.apache.rocketmq.common.message.MessageAccessor;
 import org.apache.rocketmq.common.message.MessageConst;
@@ -62,17 +61,16 @@ import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 @Slf4j
 public class ScheduleMessageService {
 
+    private static final long ADVANCE_TIME_INTERVAL = 100L;
     private static final long FIRST_DELAY_TIME = 200L;
     private static final long DELAY_FOR_A_WHILE = 500L;
-    private static final long DELAY_FOR_A_PERIOD = 10000L;
     private static final int MAX_FETCH_MESSAGE_NUM = 100;
     /*  key is delayed level  value is delay timeMillis */
     private final Map<Integer, Long> delayLevelTable;
     private final AtomicBoolean started = new AtomicBoolean(false);
     private final RocketMQServiceConfiguration config;
     private final RocketMQBrokerController rocketBroker;
-    private final ServiceThread expirationReaper;
-    private final ScheduledExecutorService timer = Executors.newSingleThreadScheduledExecutor();
+    private final ScheduledExecutorService timer = Executors.newScheduledThreadPool(4);
     private final Map<String, Producer<byte[]>> sendBackProducers;
     private final String scheduleTopicPrefix;
     private String[] delayLevelArray;
@@ -83,26 +81,8 @@ public class ScheduleMessageService {
         this.rocketBroker = rocketBroker;
         this.scheduleTopicPrefix = config.getRmqScheduleTopic();
         this.delayLevelTable = new HashMap<>(config.getMaxDelayLevelNum());
-        this.parseDelayLevel();
         this.sendBackProducers = new ConcurrentHashMap<>();
-        this.expirationReaper = new ServiceThread() {
-            private static final long advanceTimeInterval = 100L;
-
-            @Override
-            public String getServiceName() {
-                return "ScheduleMessageService-expirationReaper-thread";
-            }
-
-            @Override
-            public void run() {
-                log.info(getServiceName() + " service started.");
-                Preconditions.checkNotNull(deliverDelayedMessageManager);
-                while (!this.isStopped()) {
-                    deliverDelayedMessageManager.parallelStream().forEach((i) -> i.advanceClock(advanceTimeInterval));
-                }
-            }
-        };
-        this.expirationReaper.setDaemon(true);
+        this.parseDelayLevel();
     }
 
     public String getDelayedTopicName(int timeDelayedLevel) {
@@ -141,15 +121,17 @@ public class ScheduleMessageService {
                         arr.add(new DeliverDelayedMessageTimerTask(level));
                     }, ArrayList::addAll);
             this.deliverDelayedMessageManager
-                    .forEach((i) -> this.timer
-                            .scheduleWithFixedDelay(i, FIRST_DELAY_TIME, DELAY_FOR_A_WHILE, TimeUnit.MILLISECONDS));
-            this.expirationReaper.start();
+                    .forEach((i) -> {
+                        this.timer
+                                .scheduleWithFixedDelay(i, FIRST_DELAY_TIME, DELAY_FOR_A_WHILE, TimeUnit.MILLISECONDS);
+                        this.timer.scheduleWithFixedDelay(() -> i.advanceClock(ADVANCE_TIME_INTERVAL), FIRST_DELAY_TIME,
+                                ADVANCE_TIME_INTERVAL, TimeUnit.MILLISECONDS);
+                    });
         }
     }
 
     public void shutdown() {
         if (this.started.compareAndSet(true, false)) {
-            expirationReaper.shutdown();
             deliverDelayedMessageManager.forEach(DeliverDelayedMessageTimerTask::close);
             sendBackProducers.values().forEach(Producer::closeAsync);
             timer.shutdownNow();
