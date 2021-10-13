@@ -116,16 +116,6 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
         shuttingDown.set(true);
     }
 
-    public int getPartitionIdFromQueueId(String pulsarTopic, int queueId) {
-        Map<String, List<Integer>> topicRoute = getPulsarTopicRoute(TopicName.get(pulsarTopic), Strings.EMPTY);
-        String brokerTag = brokerController.getRopBrokerProxy().getBrokerTag();
-        List<Integer> partitions = topicRoute.get(brokerTag);
-        if (partitions == null || queueId >= partitions.size()) {
-            throw new RuntimeException("Not found queueId.");
-        }
-        return partitions.get(queueId);
-    }
-
     public Map<String, List<Integer>> getPulsarTopicRoute(TopicName topicName, String listenerName) {
         try {
             String topicConfigKey = joinPath(topicName.getNamespace(), topicName.getLocalName());
