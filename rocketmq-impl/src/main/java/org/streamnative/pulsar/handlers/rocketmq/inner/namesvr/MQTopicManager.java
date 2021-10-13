@@ -406,7 +406,10 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
 
             // partition can not be shrink
             if (currentPartitionNum > tc.getWriteQueueNums()) {
+                log.info("Rop not allow shrink queue number, current: [{}] target: [{}].", currentPartitionNum,
+                        tc.getWriteQueueNums());
                 tc.setWriteQueueNums(currentPartitionNum);
+                tc.setReadQueueNums(currentPartitionNum);
             }
             Map<String, List<Integer>> topicRouteMap = clusterBrokers.createTopicRouteMap(currentPartitionNum);
             // Create or update zk topic node

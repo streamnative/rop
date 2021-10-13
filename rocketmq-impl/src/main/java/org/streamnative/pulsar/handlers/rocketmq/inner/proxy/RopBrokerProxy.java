@@ -189,8 +189,10 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                 pulsarTopicName = rmqTopic.toPulsarTopicName();
                 isOwnedBroker = checkTopicOwnerBroker(cmd, pulsarTopicName, queueId);
                 if (isOwnedBroker) {
+                    log.info("process owned broker send request[{}].", cmd);
                     super.processRequestCommand(ctx, cmd);
                 } else {
+                    log.info("process unowned broker send request[{}].", cmd);
                     processNonOwnedBrokerSendRequest(ctx, cmd, pulsarTopicName, INTERNAL_REDIRECT_TIMEOUT_MS);
                 }
                 break;
@@ -236,7 +238,8 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                     } else {
                         //maybe partitioned topic have transfer to other broker, invalidate cache at once.
                         ownedBrokerCache.invalidate(partitionedTopicName);
-                        log.info("processNonOwnedBrokerConsumerSendBackRequest failed and retry, {} {}", response.getCode(),
+                        log.info("processNonOwnedBrokerConsumerSendBackRequest failed and retry, {} {}",
+                                response.getCode(),
                                 response.getRemark());
                         long curTime = System.currentTimeMillis();
                         if (curTime < timeoutTime) {
@@ -270,30 +273,25 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
         int pulsarPartitionId = Integer.parseInt(cmd.getExtFields().get(PULSAR_REAL_PARTITION_ID_TAG));
         TopicName partitionedTopicName = pulsarTopicName.getPartition(pulsarPartitionId);
         String address = lookupPulsarTopicBroker(partitionedTopicName);
+        log.debug("processNonOwnedBrokerSendRequest [topic={},pid={}] and address=[{}].", pulsarTopicName,
+                pulsarPartitionId, address);
         try {
-            long timeoutTime = System.currentTimeMillis() + timeout;
             brokerNetworkClients.invokeAsync(address, cmd, timeout, (responseFuture) -> {
-                RemotingCommand sendResponse = responseFuture.getResponseCommand();
-                if (sendResponse != null) {
+                try {
+                    RemotingCommand sendResponse = responseFuture.getResponseCommand();
                     if (sendResponse.getCode() == ResponseCode.SUCCESS) {
                         ctx.writeAndFlush(sendResponse);
                     } else {
                         //maybe partitioned topic have transfer to other broker, invalidate cache at once.
-                        ownedBrokerCache.invalidate(partitionedTopicName);
                         log.info("processNonOwnedBrokerSendRequest failed and retry, {} {}", sendResponse.getCode(),
                                 sendResponse.getRemark());
-                        long curTime = System.currentTimeMillis();
-                        if (curTime < timeoutTime) {
-                            processNonOwnedBrokerSendRequest(ctx, cmd, pulsarTopicName,
-                                    timeoutTime - curTime);
-                        } else {
-                            ctx.writeAndFlush(sendResponse);
-                        }
+                        ownedBrokerCache.invalidate(partitionedTopicName);
+                        ctx.writeAndFlush(sendResponse);
                     }
-                } else {
+                } catch (Exception ex) {
                     log.warn("getSendResponseCommand return null");
                     ownedBrokerCache.invalidate(partitionedTopicName);
-                    sendResponse = sendResponseThreadLocal.get();
+                    RemotingCommand sendResponse = sendResponseThreadLocal.get();
                     sendResponse.setCode(ResponseCode.SYSTEM_ERROR);
                     sendResponse.setRemark("getSendResponseCommand return null");
                     ctx.writeAndFlush(sendResponse);
@@ -403,6 +401,20 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
         }
     }
 
+    public String getOwnBrokerName() {
+        String brokerHost = brokerController.getBrokerHost();
+        RopClusterContent clusterContent = getRopClusterContent();
+        if (clusterContent != null) {
+            Map<String, List<String>> brokerCluster = clusterContent.getBrokerCluster();
+            for (Entry<String, List<String>> entry : brokerCluster.entrySet()) {
+                if (entry.getValue().contains(brokerHost)) {
+                    return entry.getKey();
+                }
+            }
+        }
+        return "";
+    }
+
     private String setBrokerTagListener() {
         String brokerHost = brokerController.getBrokerHost();
         RopClusterContent clusterContent = zkService.getClusterContent();
@@ -419,6 +431,7 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                 for (Entry<String, List<String>> entry : data.getBrokerCluster().entrySet()) {
                     if (entry.getValue().contains(host)) {
                         brokerTag = entry.getKey();
+                        log.info("current broker tag = {}.", brokerTag);
                     }
                 }
             }
@@ -426,6 +439,7 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
         if (this.brokerTag.equals(Strings.EMPTY)) {
             log.warn("host[{}] isn't belong to current cluster[{}].", brokerHost, getConfig().getClusterName());
         }
+        log.info("current broker tag = {}.", brokerTag);
         return brokerTag;
     }
 

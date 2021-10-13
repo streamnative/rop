@@ -231,4 +231,8 @@ public class MessageIdUtils {
     public static long getMockOffset(long ledgerId, long entryId) {
         return ledgerId + entryId;
     }
+
+    public static long peekTimestampFromEntry(Entry entry) {
+        return Commands.peekBrokerEntryMetadataIfExist(entry.getDataBuffer()).getBrokerTimestamp();
+    }
 }

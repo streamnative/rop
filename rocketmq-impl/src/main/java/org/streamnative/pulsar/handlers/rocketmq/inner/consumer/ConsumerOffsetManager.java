@@ -32,6 +32,8 @@ import org.apache.bookkeeper.mledger.Position;
 import org.apache.bookkeeper.mledger.impl.ManagedLedgerImpl;
 import org.apache.bookkeeper.mledger.impl.PositionImpl;
 import org.apache.pulsar.broker.service.persistent.PersistentTopic;
+import org.apache.pulsar.client.impl.MessageImpl;
+import org.apache.pulsar.common.naming.TopicName;
 import org.apache.rocketmq.common.UtilAll;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.metadata.GroupMetaManager;
@@ -69,11 +71,11 @@ public class ConsumerOffsetManager {
 
     public Set<String> whichTopicByConsumer(final String group) {
         Set<String> topics = new HashSet<>();
-        for (Entry<GroupOffsetKey, GroupOffsetValue> next : groupMetaManager.getOffsetTable()
-                .asMap().entrySet()) {
-            ClientGroupName clientGroupName = new ClientGroupName(next.getKey().getGroupName());
-            if (group.equals(clientGroupName.getRmqGroupName())) {
-                topics.add(next.getKey().getTopicName());
+        ClientGroupName clientGroupName = new ClientGroupName(group);
+        for (Entry<GroupOffsetKey, GroupOffsetValue> next : groupMetaManager.getOffsetTable().asMap().entrySet()) {
+            if (clientGroupName.getPulsarGroupName().equals(next.getKey().getGroupName())) {
+                ClientTopicName clientTopicName = new ClientTopicName(TopicName.get(next.getKey().getTopicName()));
+                topics.add(clientTopicName.getRmqTopicName());
             }
         }
         return topics;
@@ -210,6 +212,43 @@ public class ConsumerOffsetManager {
         return lastMessageIndex < 0 ? 0L : lastMessageIndex;
     }
 
+    public long getLastTimestamp(ClientTopicName topicName, int pulsarPartitionId) {
+        try {
+            PersistentTopic persistentTopic = getPulsarPersistentTopic(topicName, pulsarPartitionId);
+            ManagedLedgerImpl managedLedger = (ManagedLedgerImpl) persistentTopic.getManagedLedger();
+
+            final CompletableFuture<Long> future = new CompletableFuture<>();
+            managedLedger.asyncReadEntry((PositionImpl) managedLedger.getLastConfirmedEntry(),
+                    new AsyncCallbacks.ReadEntryCallback() {
+                        @Override
+                        public void readEntryFailed(ManagedLedgerException exception, Object ctx) {
+                            future.completeExceptionally(exception);
+                        }
+
+                        @Override
+                        public void readEntryComplete(org.apache.bookkeeper.mledger.Entry entry, Object ctx) {
+                            MessageImpl msg = null;
+                            try {
+                                msg = MessageImpl.deserialize(entry.getDataBuffer());
+                                future.complete(msg.getPublishTime());
+                            } catch (Exception e) {
+                                future.completeExceptionally(e);
+                            } finally {
+                                entry.release();
+                                if (msg != null) {
+                                    msg.recycle();
+                                }
+                            }
+                        }
+                    }, null);
+            return future.get(5, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            log.warn("[{}] partition [{}] getLastTimestamp error", topicName, pulsarPartitionId, e);
+        }
+        return 0;
+    }
+
+
     public long searchOffsetByTimestamp(ClientGroupAndTopicName groupAndTopic, int partitionId, long timestamp) {
         PersistentTopic persistentTopic;
         try {
@@ -219,7 +258,8 @@ public class ConsumerOffsetManager {
         }
         if (persistentTopic != null) {
             // find with real wanted timestamp
-            OffsetFinder offsetFinder = new OffsetFinder((ManagedLedgerImpl) persistentTopic.getManagedLedger());
+            ManagedLedgerImpl managedLedger = (ManagedLedgerImpl) persistentTopic.getManagedLedger();
+            OffsetFinder offsetFinder = new OffsetFinder(managedLedger);
 
             CompletableFuture<Long> finalOffset = new CompletableFuture<>();
             offsetFinder.findMessages(timestamp, new AsyncCallbacks.FindEntryCallback() {
@@ -228,10 +268,15 @@ public class ConsumerOffsetManager {
                     if (position == null) {
                         finalOffset.complete(-1L);
                     } else {
-                        PositionImpl finalPosition = (PositionImpl) position;
-                        long offset = MessageIdUtils
-                                .getOffset(finalPosition.getLedgerId(), finalPosition.getEntryId(), partitionId);
-                        finalOffset.complete(offset);
+                        MessageIdUtils.getOffsetOfPosition(managedLedger,
+                                (PositionImpl) position, true, -1).whenComplete((offset, throwable) -> {
+                            if (throwable != null) {
+                                log.error("[{}] Failed to get offset for position {}", persistentTopic.getName(),
+                                        position, throwable);
+                                return;
+                            }
+                            finalOffset.complete(offset);
+                        });
                     }
                 }
 

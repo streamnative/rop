@@ -14,11 +14,11 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.processor;
 
+import com.google.common.collect.Maps;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -28,14 +28,12 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.tuple.Pair;
 import org.apache.logging.log4j.util.Strings;
 import org.apache.pulsar.broker.PulsarServerException;
 import org.apache.pulsar.client.admin.PulsarAdmin;
 import org.apache.pulsar.client.admin.PulsarAdminException;
-import org.apache.pulsar.client.api.Message;
-import org.apache.pulsar.client.api.Reader;
 import org.apache.pulsar.common.naming.TopicName;
 import org.apache.pulsar.common.policies.data.PartitionedTopicStats;
 import org.apache.pulsar.common.policies.data.TopicStats;
@@ -108,7 +106,6 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.ConsumerGroupInf
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopPersistentTopicException;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupAndTopicName;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupName;
-import org.streamnative.pulsar.handlers.rocketmq.utils.MessageIdUtils;
 import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 
 /**
@@ -709,9 +706,8 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
             return response;
         }
 
-        for (String topic : topics) {
-            RocketMQTopic rmqTopic = new RocketMQTopic(topic);
-            TopicName topicName = rmqTopic.getPulsarTopicName();
+        for (String rmqTopic : topics) {
+            TopicName topicName = new RocketMQTopic(rmqTopic).getPulsarTopicName();
             String pulsarGroupName = new ClientGroupName(rmqGroupName).getPulsarGroupName();
 
             try {
@@ -725,54 +721,56 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
                 continue;
             }
 
-            TopicConfig topicConfig = this.brokerController.getTopicConfigManager().selectTopicConfig(topic);
+            TopicConfig topicConfig = this.brokerController.getTopicConfigManager().selectTopicConfig(rmqTopic);
             if (null == topicConfig) {
-                log.warn("consumeStats, topic config not exist, {}", topic);
+                log.warn("consumeStats, rmqTopic config not exist, {}", rmqTopic);
                 continue;
             }
 
             /*
-             * If consumer group not subscribe to this topic, skip it.
+             * If consumer group not subscribe to this rmqTopic, skip it.
              */
             {
                 SubscriptionData findSubscriptionData =
-                        this.brokerController.getConsumerManager().findSubscriptionData(rmqGroupName, topic);
+                        this.brokerController.getConsumerManager().findSubscriptionData(rmqGroupName, rmqTopic);
 
                 if (null == findSubscriptionData
                         && this.brokerController.getConsumerManager().findSubscriptionDataCount(rmqGroupName) > 0) {
-                    log.info("consumeStats, the consumer group[{}], topic[{}] not exist", rmqGroupName, topic);
+                    log.info("consumeStats, the consumer group[{}], rmqTopic[{}] not exist", rmqGroupName, rmqTopic);
                     continue;
                 }
             }
 
-            // TODO: please set topicBrokerAddr
-            Map<String, List<Integer>> topicBrokerAddr =
-                    brokerController.getTopicConfigManager().getPulsarTopicRoute(topicName, Strings.EMPTY);
-            List<Integer> queueList = topicBrokerAddr.get(brokerController.getBrokerHost());
+            /*
+             * partitionId -> [queueId, brokerName]
+             */
+            Map<Integer, Pair<Integer, String>> partitionMap = Maps.newHashMap();
+            Map<String, List<Integer>> topicRoute = this.brokerController.getTopicConfigManager()
+                    .getPulsarTopicRoute(topicName, Strings.EMPTY);
+            topicRoute.forEach((s, integers) -> {
+                for (int i = 0; i < integers.size(); i++) {
+                    partitionMap.put(integers.get(i), Pair.of(i, s));
+                }
+            });
 
-            if (queueList == null) {
-                log.warn("getConsumeStats not found this queue, topic: {}", topic);
-                queueList = Collections.emptyList();
-            }
+            for (int partitionId = 0; partitionId < topicConfig.getWriteQueueNums(); partitionId++) {
 
-            for (int i = 0; i < queueList.size(); i++) {
-
-                // skip this queue if this broker not owner for the request queueId topic
-                if (!this.brokerController.getTopicConfigManager().isPartitionTopicOwner(topicName, i)) {
-                    log.debug("getConsumeStats the broker is not the partition topic owner, "
-                            + "topic: {}, queue: {}", topic, i);
+                // skip this queue if this broker not owner for the request queueId rmqTopic
+                if (!this.brokerController.getTopicConfigManager().isPartitionTopicOwner(topicName, partitionId)) {
+                    log.debug("getConsumeStats the broker is not the partition rmqTopic owner, "
+                            + "rmqTopic: {}, queue: {}", rmqTopic, partitionId);
                     continue;
                 }
 
                 MessageQueue mq = new MessageQueue();
-                mq.setTopic(topic);
-                mq.setBrokerName(brokerController.getBrokerHost());
-                mq.setQueueId(i);
+                mq.setTopic(rmqTopic);
+                mq.setBrokerName(partitionMap.get(partitionId).getRight());
+                mq.setQueueId(partitionMap.get(partitionId).getLeft());
 
                 RopOffsetWrapper offsetWrapper = new RopOffsetWrapper();
 
                 // fetch msg backlog
-                String pulsarTopicName = topicName.getPartition(i).toString();
+                String pulsarTopicName = topicName.getPartition(partitionId).toString();
                 try {
                     TopicStats topicStats = pulsarAdmin.topics().getStats(pulsarTopicName);
                     if (topicStats.getSubscriptions().containsKey(pulsarGroupName)) {
@@ -785,11 +783,11 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
                     log.warn("getConsumeStats found msgBacklog error", e);
                 }
 
-                ClientGroupAndTopicName clientGroupName = new ClientGroupAndTopicName(rmqGroupName, topic);
+                ClientGroupAndTopicName clientGroupName = new ClientGroupAndTopicName(rmqGroupName, rmqTopic);
                 long brokerOffset = 0L;
                 try {
                     brokerOffset = this.brokerController.getConsumerOffsetManager()
-                            .getMaxOffsetInQueue(clientGroupName.getClientTopicName(), i);
+                            .getMaxOffsetInQueue(clientGroupName.getClientTopicName(), partitionId);
                 } catch (RopPersistentTopicException e) {
                     log.warn("GetConsumeStats not found persistentTopic", e);
                 }
@@ -799,8 +797,8 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
 
                 long consumerOffset = this.brokerController.getConsumerOffsetManager().queryOffset(
                         rmqGroupName,
-                        topic,
-                        i);
+                        rmqTopic,
+                        partitionId);
                 if (consumerOffset < 0) {
                     consumerOffset = 0;
                 }
@@ -809,32 +807,15 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
                 offsetWrapper.setConsumerOffset(consumerOffset);
 
                 if (consumerOffset >= 1) {
-                    long lastTimestamp = 0L;
-                    org.apache.pulsar.client.api.MessageId messageId = MessageIdUtils.getMessageId(consumerOffset);
-                    try (Reader<byte[]> reader = this.brokerController.getBrokerService().pulsar().getClient()
-                            .newReader()
-                            .topic(pulsarTopicName)
-                            .receiverQueueSize(1)
-                            .startMessageId(messageId)
-                            .startMessageIdInclusive()
-                            .create()) {
-                        Message message = reader.readNext(1000, TimeUnit.MILLISECONDS);
-                        if (message != null) {
-                            lastTimestamp = message.getPublishTime();
-                        } else {
-                            log.info("getConsumeStats not found message on messageId: {}", messageId);
-                        }
-                    } catch (Exception e) {
-                        log.warn("Retrieve message error, topic = [{}]. Exception:", topic, e);
-                    }
-
+                    long lastTimestamp = this.brokerController.getConsumerOffsetManager()
+                            .getLastTimestamp(clientGroupName.getClientTopicName(), partitionId);
                     offsetWrapper.setLastTimestamp(lastTimestamp);
                 }
 
                 consumeStats.getOffsetTable().put(mq, offsetWrapper);
             }
 
-            double consumeTps = this.brokerController.getBrokerStatsManager().tpsGroupGetNums(rmqGroupName, topic);
+            double consumeTps = this.brokerController.getBrokerStatsManager().tpsGroupGetNums(rmqGroupName, rmqTopic);
 
             consumeTps += consumeStats.getConsumeTps();
             consumeStats.setConsumeTps(consumeTps);
