@@ -152,7 +152,7 @@ public class GroupMetaManager {
             }, 1000 * 10, brokerController.getServerConfig().getFlushConsumerOffsetInterval(), TimeUnit.MILLISECONDS);
         } catch (Exception e) {
             isRunning = false;
-            throw new RopServerException("GroupMetaManager failed to start.");
+            throw new RopServerException("GroupMetaManager failed to start.", e);
         }
         log.info("Start GroupMetaManager service finish.");
     }
