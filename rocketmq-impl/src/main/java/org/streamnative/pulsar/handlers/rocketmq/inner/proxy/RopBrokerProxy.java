@@ -403,6 +403,20 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
         }
     }
 
+    public String getOwnBrokerName() {
+        String brokerHost = brokerController.getBrokerHost();
+        RopClusterContent clusterContent = getRopClusterContent();
+        if (clusterContent != null) {
+            Map<String, List<String>> brokerCluster = clusterContent.getBrokerCluster();
+            for (Entry<String, List<String>> entry : brokerCluster.entrySet()) {
+                if (entry.getValue().contains(brokerHost)) {
+                    return entry.getKey();
+                }
+            }
+        }
+        return "";
+    }
+
     private String setBrokerTagListener() {
         String brokerHost = brokerController.getBrokerHost();
         RopClusterContent clusterContent = zkService.getClusterContent();
