@@ -59,10 +59,10 @@ public class RopCoordinator implements AutoCloseable {
     }
 
     public void start() {
-        checkState(stopped);
-        stopped = false;
-        log.info("RopCoordinator started");
-        elect();
+//        checkState(stopped);
+//        stopped = false;
+//        log.info("RopCoordinator started");
+//        elect();
     }
 
     private void elect() {
@@ -158,14 +158,14 @@ public class RopCoordinator implements AutoCloseable {
 
     @Override
     public void close() throws Exception {
-        log.info("Shutdown RopCoordinator");
-        if (isCoordinator()) {
-            try {
-                ZookeeperUtils.deleteData(pulsar.getLocalZkCache().getZooKeeper(), RopZkUtils.COORDINATOR_PATH);
-            } catch (Exception ex) {
-                log.error("Delete rop coordinator zk node error", ex);
-                throw ex;
-            }
-        }
+//        log.info("Shutdown RopCoordinator");
+//        if (isCoordinator()) {
+//            try {
+//                ZookeeperUtils.deleteData(pulsar.getLocalZkCache().getZooKeeper(), RopZkUtils.COORDINATOR_PATH);
+//            } catch (Exception ex) {
+//                log.error("Delete rop coordinator zk node error", ex);
+//                throw ex;
+//            }
+//        }
     }
 }

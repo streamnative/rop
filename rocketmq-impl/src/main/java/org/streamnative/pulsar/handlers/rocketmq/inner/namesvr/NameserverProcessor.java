@@ -200,7 +200,7 @@ public class NameserverProcessor implements NettyRequestProcessor {
                     RopClusterContent ropClusterContent = brokerProxy.getRopClusterContent();
                     Map<String, List<String>> brokerCluster = ropClusterContent.getBrokerCluster();
                     List<String> brokerList = brokerCluster.get(brokerTag);
-                    Collections.shuffle(brokerList);
+//                    Collections.shuffle(brokerList);
                     String brokerHost = brokerList.get(0);
                     String advertiseAddress = getBrokerAddressByListenerName(brokerHost, listenerName);
                     HashMap<Long, String> brokerAddrs = new HashMap<>(1);
