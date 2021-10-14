@@ -116,10 +116,6 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
         shuttingDown.set(true);
     }
 
-    public void getTopicBrokerAddr(TopicName topicName) {
-        //TODO:getTopicRoute(topicName, Strings.EMPTY);
-    }
-
     public Map<String, List<Integer>> getPulsarTopicRoute(TopicName topicName, String listenerName) {
         try {
             String topicConfigKey = joinPath(topicName.getNamespace(), topicName.getLocalName());

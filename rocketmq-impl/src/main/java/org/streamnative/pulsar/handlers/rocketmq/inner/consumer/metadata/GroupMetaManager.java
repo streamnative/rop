@@ -186,7 +186,10 @@ public class GroupMetaManager {
         ClientGroupAndTopicName groupAndTopicName = new ClientGroupAndTopicName(group, topic);
         String pulsarGroupName = groupAndTopicName.getClientGroupName().getPulsarGroupName();
         String pulsarTopicName = groupAndTopicName.getClientTopicName().getPulsarTopicName();
-        GroupOffsetKey groupOffsetKey = new GroupOffsetKey(pulsarGroupName, pulsarTopicName, queueId);
+        int partitionId = brokerController.getRopBrokerProxy()
+                .getPulsarTopicPartitionId(TopicName.get(pulsarTopicName), queueId);
+
+        GroupOffsetKey groupOffsetKey = new GroupOffsetKey(pulsarGroupName, pulsarTopicName, partitionId);
         GroupOffsetValue offsetValue = offsetTable.getIfPresent(groupOffsetKey);
         if (Objects.nonNull(offsetValue)) {
             return offsetValue.getOffset();
@@ -225,7 +228,10 @@ public class GroupMetaManager {
         ClientGroupAndTopicName groupAndTopicName = new ClientGroupAndTopicName(group, topic);
         String pulsarGroupName = groupAndTopicName.getClientGroupName().getPulsarGroupName();
         String pulsarTopicName = groupAndTopicName.getClientTopicName().getPulsarTopicName();
-        GroupOffsetKey groupOffsetKey = new GroupOffsetKey(pulsarGroupName, pulsarTopicName, queueId);
+        int partitionId = brokerController.getRopBrokerProxy()
+                .getPulsarTopicPartitionId(TopicName.get(pulsarTopicName), queueId);
+
+        GroupOffsetKey groupOffsetKey = new GroupOffsetKey(pulsarGroupName, pulsarTopicName, partitionId);
         GroupOffsetValue oldGroupOffset = offsetTable.getIfPresent(groupOffsetKey);
         long commitTimestamp = System.currentTimeMillis();
         long expireTimestamp = System.currentTimeMillis() + offsetsRetentionMs;
