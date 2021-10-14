@@ -17,6 +17,8 @@ package org.streamnative.pulsar.handlers.rocketmq.inner.proxy;
 import com.google.common.base.Preconditions;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.logging.log4j.util.Strings;
 import org.apache.rocketmq.remoting.InvokeCallback;
@@ -37,6 +39,7 @@ public class BrokerNetworkAPI implements AutoCloseable {
 
     private final RopBrokerProxy ropBrokerProxy;
     private final Map<String, RemotingClient> innerClients = new ConcurrentHashMap<>();
+    private final Map<String, AtomicInteger> innerOpaques = new ConcurrentHashMap<>();
 
     public BrokerNetworkAPI(RopBrokerProxy ropBrokerProxy) {
         this.ropBrokerProxy = ropBrokerProxy;
@@ -62,7 +65,14 @@ public class BrokerNetworkAPI implements AutoCloseable {
     public void invokeAsync(String conn, RemotingCommand remotingCommand, long timeout, InvokeCallback invokeCallback)
             throws InterruptedException, RemotingConnectException, RemotingTooMuchRequestException,
             RemotingTimeoutException, RemotingSendRequestException {
+        int opaque = getOpaques(conn);
+        remotingCommand.setOpaque(opaque);
         getRemoteClientByConn(conn).invokeAsync(conn, remotingCommand, timeout, invokeCallback);
+    }
+
+    private int getOpaques(String conn) {
+        AtomicInteger atomicLong = innerOpaques.computeIfAbsent(conn, k -> new AtomicInteger());
+        return atomicLong.getAndIncrement();
     }
 
     @Override
