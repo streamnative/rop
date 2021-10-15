@@ -14,8 +14,6 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.coordinator;
 
-import static com.google.common.base.Preconditions.checkState;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -32,7 +30,6 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import org.streamnative.pulsar.handlers.rocketmq.inner.proxy.RopZookeeperCacheService;
 import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopCoordinatorContent;
 import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkUtils;
-import org.streamnative.pulsar.handlers.rocketmq.utils.ZookeeperUtils;
 
 /**
  * Rop coordinator.
