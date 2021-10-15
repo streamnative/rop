@@ -199,13 +199,13 @@ public class ConsumerOffsetManager {
         int pulsarPartitionId = brokerController.getRopBrokerProxy()
                 .getPulsarTopicPartitionId(clientTopicName.toPulsarTopicName(), queueId);
         try {
-            return getMaxOffsetInQueue(clientTopicName, pulsarPartitionId);
+            return getMaxOffsetInPulsarPartition(clientTopicName, pulsarPartitionId);
         } catch (RopPersistentTopicException e) {
             return Long.MAX_VALUE;
         }
     }
 
-    public long getMaxOffsetInQueue(ClientTopicName topicName, int pulsarPartitionId)
+    public long getMaxOffsetInPulsarPartition(ClientTopicName topicName, int pulsarPartitionId)
             throws RopPersistentTopicException {
         PersistentTopic persistentTopic = getPulsarPersistentTopic(topicName, pulsarPartitionId);
         long lastMessageIndex = MessageIdUtils.getLastMessageIndex(persistentTopic.getManagedLedger());

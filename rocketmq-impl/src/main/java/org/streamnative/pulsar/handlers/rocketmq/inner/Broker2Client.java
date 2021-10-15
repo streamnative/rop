@@ -165,7 +165,7 @@ public class Broker2Client {
             } else {
                 try {
                     timeStampOffset = this.brokerController.getConsumerOffsetManager()
-                            .getMaxOffsetInQueue(groupAndTopicName.getClientTopicName(), partitionId);
+                            .getMaxOffsetInPulsarPartition(groupAndTopicName.getClientTopicName(), partitionId);
                 } catch (RopPersistentTopicException e) {
                     timeStampOffset = -1L;
                 }

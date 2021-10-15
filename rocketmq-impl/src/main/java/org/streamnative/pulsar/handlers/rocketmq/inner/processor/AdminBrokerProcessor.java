@@ -787,7 +787,7 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
                 long brokerOffset = 0L;
                 try {
                     brokerOffset = this.brokerController.getConsumerOffsetManager()
-                            .getMaxOffsetInQueue(clientGroupName.getClientTopicName(), partitionId);
+                            .getMaxOffsetInPulsarPartition(clientGroupName.getClientTopicName(), partitionId);
                 } catch (RopPersistentTopicException e) {
                     log.warn("GetConsumeStats not found persistentTopic", e);
                 }
