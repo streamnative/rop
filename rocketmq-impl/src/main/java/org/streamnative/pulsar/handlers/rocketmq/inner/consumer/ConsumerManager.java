@@ -86,17 +86,13 @@ public class ConsumerManager {
         ConcurrentMap<Channel, ClientChannelInfo> channelInfoTable = consumerGroupInfo.getChannelInfoTable();
         ClientChannelInfo clientChannelInfo = channelInfoTable.get(ctx.channel());
         if (clientChannelInfo == null) {
-            synchronized (channelInfoTable) {
-                if (channelInfoTable.get(ctx.channel()) == null) {
-                    String clientId =
-                            ctx.channel().remoteAddress().toString() + "@" + System.currentTimeMillis();
-                    clientChannelInfo = new RopClientChannelCnx(brokerController, ctx, clientId,
-                            LanguageCode.JAVA, 0);
-                    channelInfoTable.putIfAbsent(ctx.channel(), clientChannelInfo);
-                }
-            }
+            String clientId =
+                    ctx.channel().remoteAddress().toString() + "@" + System.currentTimeMillis();
+            clientChannelInfo = new RopClientChannelCnx(brokerController, ctx, clientId,
+                    LanguageCode.JAVA, 0);
+            channelInfoTable.putIfAbsent(ctx.channel(), clientChannelInfo);
         }
-        return clientChannelInfo != null;
+        return channelInfoTable.get(ctx.channel()) != null;
     }
 
     public int findSubscriptionDataCount(String group) {
