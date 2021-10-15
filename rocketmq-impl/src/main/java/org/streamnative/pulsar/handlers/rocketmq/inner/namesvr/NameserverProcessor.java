@@ -25,7 +25,6 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import io.netty.channel.ChannelHandlerContext;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -55,7 +54,6 @@ import org.streamnative.pulsar.handlers.rocketmq.RocketMQProtocolHandler;
 import org.streamnative.pulsar.handlers.rocketmq.RocketMQServiceConfiguration;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import org.streamnative.pulsar.handlers.rocketmq.inner.proxy.RopBrokerProxy;
-import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopClusterContent;
 import org.streamnative.pulsar.handlers.rocketmq.utils.PulsarUtil;
 import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 import org.testng.collections.Sets;
@@ -197,11 +195,7 @@ public class NameserverProcessor implements NettyRequestProcessor {
                 Preconditions.checkArgument(!topicBrokerAddr.isEmpty(),
                         String.format("Topic(%s) route can't be found.", requestTopic));
                 topicBrokerAddr.forEach((brokerTag, queueList) -> {
-                    RopClusterContent ropClusterContent = brokerProxy.getRopClusterContent();
-                    Map<String, List<String>> brokerCluster = ropClusterContent.getBrokerCluster();
-                    List<String> brokerList = brokerCluster.get(brokerTag);
-//                    Collections.shuffle(brokerList);
-                    String brokerHost = brokerList.get(0);
+                    String brokerHost = brokerProxy.getActiveBrokerByBrokerTag(brokerTag);
                     String advertiseAddress = getBrokerAddressByListenerName(brokerHost, listenerName);
                     HashMap<Long, String> brokerAddrs = new HashMap<>(1);
                     brokerAddrs.put(0L, advertiseAddress);

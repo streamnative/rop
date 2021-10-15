@@ -51,9 +51,11 @@ public class CommonUtils {
     public static final String VERTICAL_LINE_CHAR = "|";
     public static final String SLASH_CHAR = "/";
     public static final String COLO_CHAR = ":";
+    public static final String DOT_CHAR = ".";
     private static final int ROP_QUEUE_OFFSET_INDEX = 8 + 4 + 4 + 4 + 4 + 4;
     private static final int ROP_PHYSICAL_OFFSET_INDEX = 8 + 4 + 4 + 4 + 4 + 4 + 8;
     public static final String PULSAR_REAL_PARTITION_ID_TAG = "prpi";
+    public static final String ROP_INNER_REMOTE_CLIENT_TAG = "rirc";
     public static final int ROP_CACHE_INITIAL_SIZE = 1024;
     public static final int ROP_CACHE_MAX_SIZE = 1024 << 8;
     public static final int ROP_CACHE_EXPIRE_TIME_MS = 360 * 1000;
@@ -400,5 +402,10 @@ public class CommonUtils {
             throw new RuntimeException("Not found partitionId from RemotingCommand extFields.");
         }
         return Integer.parseInt(partitionId);
+    }
+
+    public static String getInnerRemoteClientTag(RemotingCommand remotingCommand) {
+        String tag = remotingCommand.getExtFields().get(ROP_INNER_REMOTE_CLIENT_TAG);
+        return tag == null ? Strings.EMPTY : tag;
     }
 }

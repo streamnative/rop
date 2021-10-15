@@ -14,11 +14,15 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.proxy;
 
+import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.DOT_CHAR;
+import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.getInnerRemoteClientTag;
+
+import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.logging.log4j.util.Strings;
 import org.apache.rocketmq.remoting.InvokeCallback;
@@ -38,36 +42,52 @@ import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 public class BrokerNetworkAPI implements AutoCloseable {
 
     private final RopBrokerProxy ropBrokerProxy;
-    private final Map<String, RemotingClient> innerClients = new ConcurrentHashMap<>();
+    private final Map<String, RemotingClient[]> innerClients = new ConcurrentHashMap<>();
     private final Map<String, AtomicInteger> innerOpaques = new ConcurrentHashMap<>();
+    private final int clientCapacity;
 
-    public BrokerNetworkAPI(RopBrokerProxy ropBrokerProxy) {
+
+    public BrokerNetworkAPI(RopBrokerProxy ropBrokerProxy, int capacity) {
         this.ropBrokerProxy = ropBrokerProxy;
+        this.clientCapacity = capacity > 0 ? capacity : 1;
     }
 
-    private RemotingClient getRemoteClientByConn(String conn) {
+    private RemotingClient getRemoteClientByConn(String conn, String... requestTag) {
         Preconditions.checkArgument(Strings.isNotBlank(conn), "BrokerNetworkApi conn can't be null or empty");
-        return innerClients.computeIfAbsent(conn, k -> {
-            NettyClientConfig clientConfig = new NettyClientConfig();
-            NettyRemotingClient remotingClient = new NettyRemotingClient(clientConfig);
-            remotingClient.start();
-            log.info("BrokerNetworkAPI internal client[{}] started.", conn);
-            return remotingClient;
-        });
+        String requestHashStr =
+                (requestTag == null || requestTag.length == 0) ? Strings.EMPTY : Joiner.on(DOT_CHAR).join(requestTag);
+        int index = Math.abs(requestHashStr.hashCode()) % clientCapacity;
+        innerClients.putIfAbsent(conn, new RemotingClient[this.clientCapacity]);
+        RemotingClient[] remotingClients = innerClients.get(conn);
+        RemotingClient remotingClient = remotingClients[index];
+        if (remotingClient == null) {
+            synchronized (remotingClients) {
+                if (remotingClients[index] == null) {
+                    NettyClientConfig clientConfig = new NettyClientConfig();
+                    remotingClient = new NettyRemotingClient(clientConfig);
+                    remotingClient.start();
+                    remotingClients[index] = remotingClient;
+                    log.info("BrokerNetworkAPI internal client[{}] started.", conn);
+                }
+            }
+        }
+        return remotingClient;
     }
 
     public RemotingCommand invokeSync(String conn, RemotingCommand remotingCommand, long timeout)
             throws InterruptedException, RemotingConnectException,
             RemotingSendRequestException, RemotingTimeoutException {
-        return getRemoteClientByConn(conn).invokeSync(conn, remotingCommand, timeout);
+        String innerRemoteClientTag = getInnerRemoteClientTag(remotingCommand);
+        return getRemoteClientByConn(conn, innerRemoteClientTag).invokeSync(conn, remotingCommand, timeout);
     }
 
     public void invokeAsync(String conn, RemotingCommand remotingCommand, long timeout, InvokeCallback invokeCallback)
             throws InterruptedException, RemotingConnectException, RemotingTooMuchRequestException,
             RemotingTimeoutException, RemotingSendRequestException {
+        String innerRemoteClientTag = getInnerRemoteClientTag(remotingCommand);
         int opaque = getOpaques(conn);
         remotingCommand.setOpaque(opaque);
-        getRemoteClientByConn(conn).invokeAsync(conn, remotingCommand, timeout, invokeCallback);
+        getRemoteClientByConn(conn, innerRemoteClientTag).invokeAsync(conn, remotingCommand, timeout, invokeCallback);
     }
 
     private int getOpaques(String conn) {
@@ -77,6 +97,15 @@ public class BrokerNetworkAPI implements AutoCloseable {
 
     @Override
     public void close() throws Exception {
-        innerClients.values().forEach(RemotingClient::shutdown);
+        innerClients.values().stream().flatMap(t -> Arrays.stream(t)).forEach((i) -> {
+            if (i != null) {
+                try {
+                    i.shutdown();
+                } catch (Exception e) {
+                    log.warn("BrokerNetworkAPI shutdown remote client[{}] error.", i, e);
+                }
+            }
+        });
+        innerClients.clear();
     }
 }

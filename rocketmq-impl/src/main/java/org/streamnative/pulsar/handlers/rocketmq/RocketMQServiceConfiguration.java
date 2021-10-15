@@ -456,4 +456,10 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
     )
     private Set<String> brokerEntryMetadataInterceptors = new HashSet<>(
             Collections.singletonList("org.apache.pulsar.common.intercept.AppendIndexMetadataInterceptor"));
+
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
+            doc = "internal remoting client cache pool size."
+    )
+    private int ropRemotingClientPoolSize = 4;
 }
