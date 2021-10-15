@@ -14,10 +14,8 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.proxy;
 
-import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.DOT_CHAR;
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.getInnerRemoteClientTag;
 
-import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
 import java.util.Arrays;
 import java.util.Map;
@@ -52,10 +50,10 @@ public class BrokerNetworkAPI implements AutoCloseable {
         this.clientCapacity = capacity > 0 ? capacity : 1;
     }
 
-    private RemotingClient getRemoteClientByConn(String conn, String... requestTag) {
+    private RemotingClient getRemoteClientByConn(String conn, String requestTag) {
         Preconditions.checkArgument(Strings.isNotBlank(conn), "BrokerNetworkApi conn can't be null or empty");
         String requestHashStr =
-                (requestTag == null || requestTag.length == 0) ? Strings.EMPTY : Joiner.on(DOT_CHAR).join(requestTag);
+                (requestTag == null) ? Strings.EMPTY : requestTag;
         int index = Math.abs(requestHashStr.hashCode()) % clientCapacity;
         innerClients.putIfAbsent(conn, new RemotingClient[this.clientCapacity]);
         RemotingClient[] remotingClients = innerClients.get(conn);

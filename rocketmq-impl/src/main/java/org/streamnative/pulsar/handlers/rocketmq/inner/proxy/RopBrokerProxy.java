@@ -221,10 +221,10 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                 pulsarTopicName = rmqTopic.toPulsarTopicName();
                 isOwnedBroker = checkTopicOwnerBroker(cmd, pulsarTopicName, queueId);
                 if (isOwnedBroker) {
-                    log.info("process owned broker send request[{}].", cmd);
+                    log.trace("process owned broker send request[{}].", cmd);
                     super.processRequestCommand(ctx, cmd);
                 } else {
-                    log.info("process unowned broker send request[{}].", cmd);
+                    log.trace("process unowned broker send request[{}].", cmd);
                     processNonOwnedBrokerSendRequest(ctx, cmd, sendHeader, pulsarTopicName,
                             INTERNAL_REDIRECT_TIMEOUT_MS);
                 }
