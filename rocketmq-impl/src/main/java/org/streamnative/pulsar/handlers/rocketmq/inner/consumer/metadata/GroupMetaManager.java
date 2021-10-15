@@ -173,8 +173,7 @@ public class GroupMetaManager {
                     Uninterruptibles.sleepUninterruptibly(200, TimeUnit.MILLISECONDS);
                 }
             } catch (Exception e) {
-                log.warn("Rop load offset failed.", e);
-                Uninterruptibles.sleepUninterruptibly(200, TimeUnit.MILLISECONDS);
+                log.warn("groupOffsetReader read offset failed.", e);
             }
         }
     }
@@ -186,15 +185,15 @@ public class GroupMetaManager {
         ClientGroupAndTopicName groupAndTopicName = new ClientGroupAndTopicName(group, topic);
         String pulsarGroupName = groupAndTopicName.getClientGroupName().getPulsarGroupName();
         String pulsarTopicName = groupAndTopicName.getClientTopicName().getPulsarTopicName();
-        int partitionId = brokerController.getRopBrokerProxy()
+        int pulsarPartitionId = brokerController.getRopBrokerProxy()
                 .getPulsarTopicPartitionId(TopicName.get(pulsarTopicName), queueId);
 
-        GroupOffsetKey groupOffsetKey = new GroupOffsetKey(pulsarGroupName, pulsarTopicName, partitionId);
+        GroupOffsetKey groupOffsetKey = new GroupOffsetKey(pulsarGroupName, pulsarTopicName, pulsarPartitionId);
         GroupOffsetValue offsetValue = offsetTable.getIfPresent(groupOffsetKey);
         if (Objects.nonNull(offsetValue)) {
             return offsetValue.getOffset();
         } else {//query in pulsar, if exists store it into cache
-            long groupOffset = getGroupOffsetFromPulsar(groupAndTopicName, queueId);
+            long groupOffset = getGroupOffsetFromPulsar(groupAndTopicName, pulsarPartitionId);
             if (groupOffset > -1) {
                 commitOffset(group, topic, queueId, groupOffset);
             }
@@ -202,12 +201,10 @@ public class GroupMetaManager {
         }
     }
 
-    private long getGroupOffsetFromPulsar(ClientGroupAndTopicName groupAndTopic, int queueId) {
+    private long getGroupOffsetFromPulsar(ClientGroupAndTopicName groupAndTopic, int pulsarPartitionId) {
         try {
-            int pulsarTopicPartitionId = brokerController.getRopBrokerProxy()
-                    .getPulsarTopicPartitionId(groupAndTopic.getClientTopicName().toPulsarTopicName(), queueId);
             PersistentTopic persistentTopic = getPulsarPersistentTopic(groupAndTopic.getClientTopicName(),
-                    pulsarTopicPartitionId);
+                    pulsarPartitionId);
             String pulsarGroup = groupAndTopic.getClientGroupName().getPulsarGroupName();
             PersistentSubscription subscription = persistentTopic.getSubscription(pulsarGroup);
             if (subscription != null) {
@@ -228,10 +225,10 @@ public class GroupMetaManager {
         ClientGroupAndTopicName groupAndTopicName = new ClientGroupAndTopicName(group, topic);
         String pulsarGroupName = groupAndTopicName.getClientGroupName().getPulsarGroupName();
         String pulsarTopicName = groupAndTopicName.getClientTopicName().getPulsarTopicName();
-        int partitionId = brokerController.getRopBrokerProxy()
+        int pulsarPartitionId = brokerController.getRopBrokerProxy()
                 .getPulsarTopicPartitionId(TopicName.get(pulsarTopicName), queueId);
 
-        GroupOffsetKey groupOffsetKey = new GroupOffsetKey(pulsarGroupName, pulsarTopicName, partitionId);
+        GroupOffsetKey groupOffsetKey = new GroupOffsetKey(pulsarGroupName, pulsarTopicName, pulsarPartitionId);
         GroupOffsetValue oldGroupOffset = offsetTable.getIfPresent(groupOffsetKey);
         long commitTimestamp = System.currentTimeMillis();
         long expireTimestamp = System.currentTimeMillis() + offsetsRetentionMs;
@@ -251,22 +248,20 @@ public class GroupMetaManager {
             String pulsarGroup = groupOffsetKey.getGroupName();
             if (groupOffsetValue.isValid() && !isSystemGroup(pulsarGroup)) {
                 String pulsarTopicName = groupOffsetKey.getTopicName();
-                int queueId = groupOffsetKey.getQueueId();
+                int pulsarPartitionId = groupOffsetKey.getPulsarPartitionId();
                 long offset = groupOffsetValue.getOffset();
                 try {
                     //persist to compact topic[__consumer_offsets]
                     storeOffset(groupOffsetKey, groupOffsetValue);
 
-                    int pulsarTopicPartitionId = brokerController.getRopBrokerProxy()
-                            .getPulsarTopicPartitionId(TopicName.get(pulsarTopicName), queueId);
                     if (!this.brokerController.getTopicConfigManager().isPartitionTopicOwner(
-                            TopicName.get(pulsarTopicName), pulsarTopicPartitionId)) {
+                            TopicName.get(pulsarTopicName), pulsarPartitionId)) {
                         continue;
                     }
 
                     PersistentTopic persistentTopic = getPulsarPersistentTopic(
                             new ClientTopicName(TopicName.get(pulsarTopicName)),
-                            pulsarTopicPartitionId);
+                            pulsarPartitionId);
                     if (persistentTopic != null) {
                         PersistentSubscription subscription = persistentTopic.getSubscription(pulsarGroup);
                         if (subscription == null) {

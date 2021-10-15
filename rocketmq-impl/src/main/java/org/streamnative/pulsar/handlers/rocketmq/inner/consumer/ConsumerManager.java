@@ -15,6 +15,7 @@
 package org.streamnative.pulsar.handlers.rocketmq.inner.consumer;
 
 import io.netty.channel.Channel;
+import io.netty.channel.ChannelHandlerContext;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map.Entry;
@@ -31,6 +32,9 @@ import org.apache.rocketmq.common.protocol.heartbeat.MessageModel;
 import org.apache.rocketmq.common.protocol.heartbeat.SubscriptionData;
 import org.apache.rocketmq.remoting.common.RemotingHelper;
 import org.apache.rocketmq.remoting.common.RemotingUtil;
+import org.apache.rocketmq.remoting.protocol.LanguageCode;
+import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
+import org.streamnative.pulsar.handlers.rocketmq.inner.RopClientChannelCnx;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupName;
 
 /**
@@ -65,6 +69,30 @@ public class ConsumerManager {
     public ConsumerGroupInfo getConsumerGroupInfo(String group) {
         ClientGroupName clientGroupName = new ClientGroupName(group);
         return this.consumerTable.get(clientGroupName);
+    }
+
+    public boolean registerProxyRequestConsumer(String proxyConsumerGroup, String ropConsumerGroup,
+            RocketMQBrokerController brokerController, ChannelHandlerContext ctx) {
+        ClientGroupName clientGroupName = new ClientGroupName(proxyConsumerGroup);
+        ConsumerGroupInfo consumerGroupInfo = consumerTable.get(clientGroupName);
+        if (null == consumerGroupInfo) {
+            ConsumerGroupInfo tmp = new ConsumerGroupInfo(ropConsumerGroup,
+                    ConsumeType.CONSUME_PASSIVELY, MessageModel.CLUSTERING,
+                    ConsumeFromWhere.CONSUME_FROM_LAST_OFFSET);
+            ConsumerGroupInfo prev = consumerTable.putIfAbsent(clientGroupName, tmp);
+            consumerGroupInfo = prev != null ? prev : tmp;
+        }
+
+        ConcurrentMap<Channel, ClientChannelInfo> channelInfoTable = consumerGroupInfo.getChannelInfoTable();
+        ClientChannelInfo clientChannelInfo = channelInfoTable.get(ctx.channel());
+        if (clientChannelInfo == null) {
+            String clientId =
+                    ctx.channel().remoteAddress().toString() + "@" + System.currentTimeMillis();
+            clientChannelInfo = new RopClientChannelCnx(brokerController, ctx, clientId,
+                    LanguageCode.JAVA, 0);
+            channelInfoTable.putIfAbsent(ctx.channel(), clientChannelInfo);
+        }
+        return channelInfoTable.get(ctx.channel()) != null;
     }
 
     public int findSubscriptionDataCount(String group) {

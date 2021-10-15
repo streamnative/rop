@@ -32,12 +32,12 @@ import org.testng.util.Strings;
 @ToString
 public class GroupOffsetKey extends GroupMetaKey<GroupOffsetKey> {
 
-    private int queueId;
+    private int pulsarPartitionId;
     private String topicName;
 
-    public GroupOffsetKey(String groupName, String topicName, int queueId) {
+    public GroupOffsetKey(String groupName, String topicName, int pulsarPartitionId) {
         super(GroupKeyType.GROUP_OFFSET, groupName);
-        this.queueId = queueId;
+        this.pulsarPartitionId = pulsarPartitionId;
         this.topicName = topicName;
     }
 
@@ -55,7 +55,7 @@ public class GroupOffsetKey extends GroupMetaKey<GroupOffsetKey> {
             byte[] topicBytes = topicName.getBytes(StandardCharsets.UTF_8);
             ByteBuffer byteBuffer = ByteBuffer.allocate(estimateSize());
             super.encode(byteBuffer);
-            byteBuffer.putInt(queueId);
+            byteBuffer.putInt(pulsarPartitionId);
             byteBuffer.putInt(topicBytes.length);
             byteBuffer.put(topicBytes);
             return byteBuffer;
@@ -67,7 +67,7 @@ public class GroupOffsetKey extends GroupMetaKey<GroupOffsetKey> {
     @Override
     public GroupOffsetKey decode(ByteBuffer buffer) throws RopDecodeException {
         try {
-            this.queueId = buffer.getInt();
+            this.pulsarPartitionId = buffer.getInt();
             int topicNameLen = buffer.getInt();
             byte[] topicNameBytes = new byte[topicNameLen];
             buffer.get(topicNameBytes);
@@ -96,12 +96,12 @@ public class GroupOffsetKey extends GroupMetaKey<GroupOffsetKey> {
             return false;
         }
         GroupOffsetKey that = (GroupOffsetKey) o;
-        return queueId == that.queueId
+        return pulsarPartitionId == that.pulsarPartitionId
                 && Objects.equal(topicName, that.topicName);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hashCode(super.hashCode(), queueId, topicName);
+        return Objects.hashCode(super.hashCode(), pulsarPartitionId, topicName);
     }
 }

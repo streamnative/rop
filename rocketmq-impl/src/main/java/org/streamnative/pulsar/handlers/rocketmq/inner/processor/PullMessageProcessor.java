@@ -14,6 +14,8 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.processor;
 
+import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_INNER_REMOTE_CLIENT_TAG;
+
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
@@ -22,9 +24,7 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.FileRegion;
 import java.nio.ByteBuffer;
 import java.util.List;
-import java.util.concurrent.ConcurrentMap;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.rocketmq.broker.client.ClientChannelInfo;
 import org.apache.rocketmq.broker.longpolling.PullRequest;
 import org.apache.rocketmq.broker.mqtrace.ConsumeMessageContext;
 import org.apache.rocketmq.broker.mqtrace.ConsumeMessageHook;
@@ -70,18 +70,26 @@ public class PullMessageProcessor implements NettyRequestProcessor {
         this.brokerController = brokerController;
     }
 
-    protected PulsarMessageStore getServerCnxMsgStore(Channel channel, String groupName) {
+    private boolean isBrokerProxyRequest(RemotingCommand request) {
+        return request.getExtFields() != null && request.getExtFields().containsKey(ROP_INNER_REMOTE_CLIENT_TAG);
+    }
+
+    protected PulsarMessageStore getServerCnxMsgStore(Channel channel, PullMessageRequestHeader requestHeader,
+            RemotingCommand request) {
         try {
+            String groupName = isBrokerProxyRequest(request) ? request.getExtFields().get(ROP_INNER_REMOTE_CLIENT_TAG)
+                    : requestHeader.getConsumerGroup();
             ConsumerGroupInfo consumerGroupInfo = this.brokerController.getConsumerManager()
                     .getConsumerGroupInfo(groupName);
-            ConcurrentMap<Channel, ClientChannelInfo> channelInfoConcurrentMap = consumerGroupInfo
-                    .getChannelInfoTable();
-            RopClientChannelCnx channelCnx = (RopClientChannelCnx) channelInfoConcurrentMap.get(channel);
+            RopClientChannelCnx channelCnx = (RopClientChannelCnx) consumerGroupInfo
+                    .getChannelInfoTable().get(channel);
             return channelCnx.getServerCnx();
-        } catch (Exception e) {
+        } catch (
+                Exception e) {
             log.info("PullMessageProcessor get client channel context error, wait client register consumer info.");
             return null;
         }
+
     }
 
     @Override
@@ -89,6 +97,12 @@ public class PullMessageProcessor implements NettyRequestProcessor {
             RemotingCommand request) throws RemotingCommandException {
         final PullMessageRequestHeader requestHeader =
                 (PullMessageRequestHeader) request.decodeCommandCustomHeader(PullMessageRequestHeader.class);
+        if (isBrokerProxyRequest(request)) {
+            String brokerProxyGroupName = request.getExtFields().get(ROP_INNER_REMOTE_CLIENT_TAG);
+            this.brokerController.getConsumerManager()
+                    .registerProxyRequestConsumer(brokerProxyGroupName, requestHeader.getConsumerGroup(),
+                            this.brokerController, ctx);
+        }
         return this.processRequest(ctx.channel(), requestHeader, request, true);
     }
 
@@ -220,7 +234,7 @@ public class PullMessageProcessor implements NettyRequestProcessor {
         RopMessageFilter messageFilter = new RopMessageFilter(subscriptionData);
         // Obtain and process the received message data from the message store.
         PulsarMessageStore pulsarMessageStore = this
-                .getServerCnxMsgStore(channel, requestHeader.getConsumerGroup());
+                .getServerCnxMsgStore(channel, requestHeader, request);
 
         // If obtaining the serverCnxMsgStore object fails, enter the retry phase
         // and wait for the heartbeat request to register.

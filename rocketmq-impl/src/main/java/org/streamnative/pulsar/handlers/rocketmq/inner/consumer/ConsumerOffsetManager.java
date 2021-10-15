@@ -61,12 +61,12 @@ public class ConsumerOffsetManager {
     }
 
     //restore topic cache from pulsar and offset info from pulsar
-    public void putPulsarTopic(ClientTopicName clientTopicName, int partitionId, PersistentTopic pulsarTopic) {
-        groupMetaManager.putPulsarTopic(clientTopicName, partitionId, pulsarTopic);
+    public void putPulsarTopic(ClientTopicName clientTopicName, int pulsarPartitionId, PersistentTopic pulsarTopic) {
+        groupMetaManager.putPulsarTopic(clientTopicName, pulsarPartitionId, pulsarTopic);
     }
 
-    public void removePulsarTopic(ClientTopicName clientTopicName, int partitionId) {
-        groupMetaManager.removePulsarTopic(clientTopicName, partitionId);
+    public void removePulsarTopic(ClientTopicName clientTopicName, int pulsarPartitionId) {
+        groupMetaManager.removePulsarTopic(clientTopicName, pulsarPartitionId);
     }
 
     public Set<String> whichTopicByConsumer(final String group) {
@@ -120,14 +120,14 @@ public class ConsumerOffsetManager {
                 long minOffset = 0L;
                 try {
                     int pulsarPartitionId = brokerController.getRopBrokerProxy()
-                            .getPulsarTopicPartitionId(searchTopic.toPulsarTopicName(), key.getQueueId());
+                            .getPulsarTopicPartitionId(searchTopic.toPulsarTopicName(), key.getPulsarPartitionId());
                     minOffset = getMinOffsetInQueue(searchTopic, pulsarPartitionId);
                 } catch (Exception ex) {
                     log.warn("get Pulsar Topic PartitionId error: ", ex);
                 }
                 for (Map.Entry<GroupOffsetKey, GroupOffsetValue> entry : groupOffsetMap.entrySet()) {
                     if (entry.getValue().getOffset() >= minOffset) {
-                        queueMinOffset.merge(entry.getKey().getQueueId(),
+                        queueMinOffset.merge(entry.getKey().getPulsarPartitionId(),
                                 entry.getValue().getOffset(), (a, b) -> Math.min(b, a));
                     }
                 }
@@ -145,7 +145,7 @@ public class ConsumerOffsetManager {
             GroupOffsetKey key = entry.getKey();
             return key.getTopicName().equals(groupAndTopicName.getClientTopicName().getPulsarTopicName())
                     && key.getGroupName().equals(groupAndTopicName.getClientGroupName().getPulsarGroupName());
-        }).collect(toMap(entry -> entry.getKey().getQueueId()
+        }).collect(toMap(entry -> entry.getKey().getPulsarPartitionId()
                 , entry -> entry.getValue().getOffset()));
     }
 
@@ -162,7 +162,7 @@ public class ConsumerOffsetManager {
             GroupOffsetValue value = srcEntry.getValue();
             groupMetaManager
                     .commitOffset(key.getTopicName(), destGroupAndTopic.getClientGroupName().getPulsarGroupName(),
-                            key.getQueueId(), value.getOffset());
+                            key.getPulsarPartitionId(), value.getOffset());
         });
     }
 
@@ -199,13 +199,13 @@ public class ConsumerOffsetManager {
         int pulsarPartitionId = brokerController.getRopBrokerProxy()
                 .getPulsarTopicPartitionId(clientTopicName.toPulsarTopicName(), queueId);
         try {
-            return getMaxOffsetInQueue(clientTopicName, pulsarPartitionId);
+            return getMaxOffsetInPulsarPartition(clientTopicName, pulsarPartitionId);
         } catch (RopPersistentTopicException e) {
             return Long.MAX_VALUE;
         }
     }
 
-    public long getMaxOffsetInQueue(ClientTopicName topicName, int pulsarPartitionId)
+    public long getMaxOffsetInPulsarPartition(ClientTopicName topicName, int pulsarPartitionId)
             throws RopPersistentTopicException {
         PersistentTopic persistentTopic = getPulsarPersistentTopic(topicName, pulsarPartitionId);
         long lastMessageIndex = MessageIdUtils.getLastMessageIndex(persistentTopic.getManagedLedger());
