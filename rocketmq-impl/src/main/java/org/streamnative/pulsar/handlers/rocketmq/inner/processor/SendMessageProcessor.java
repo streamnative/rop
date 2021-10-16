@@ -124,7 +124,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         RocketMQTopic pulsarGroupName = new RocketMQTopic(requestHeader.getGroup());
         SubscriptionGroupConfig subscriptionGroupConfig =
                 this.brokerController.getSubscriptionGroupManager()
-                        .findSubscriptionGroupConfig(pulsarGroupName.getOrigNoDomainTopicName());
+                        .findSubscriptionGroupConfig(requestHeader.getGroup());
         if (null == subscriptionGroupConfig) {
             response.setCode(ResponseCode.SUBSCRIPTION_GROUP_NOT_EXIST);
             response.setRemark("subscription group not exist, " + requestHeader.getGroup() + " "

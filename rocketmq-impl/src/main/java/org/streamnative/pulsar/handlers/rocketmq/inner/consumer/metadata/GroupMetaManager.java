@@ -36,6 +36,7 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bookkeeper.mledger.ManagedCursor;
 import org.apache.bookkeeper.mledger.impl.PositionImpl;
+import org.apache.pulsar.broker.PulsarService;
 import org.apache.pulsar.broker.service.Topic;
 import org.apache.pulsar.broker.service.persistent.PersistentSubscription;
 import org.apache.pulsar.broker.service.persistent.PersistentTopic;
@@ -65,6 +66,7 @@ public class GroupMetaManager {
     private volatile boolean isRunning = false;
     private final RocketMQBrokerController brokerController;
     private final long offsetsRetentionMs;
+    private volatile PulsarService pulsarService;
 
     /**
      * group offset producer\reader.
@@ -161,6 +163,7 @@ public class GroupMetaManager {
         log.info("Starting GroupMetaManager service...");
         try {
             isRunning = true;
+            pulsarService = this.brokerController.getBrokerService().pulsar();
             offsetReaderExecutor.execute(this::loadOffsets);
 
             persistOffsetExecutor.scheduleAtFixedRate(() -> {
@@ -385,7 +388,14 @@ public class GroupMetaManager {
     public PersistentTopic getPulsarPersistentTopic(ClientTopicName topicName, int pulsarPartitionId)
             throws RopPersistentTopicException {
         if (isPulsarTopicCached(topicName, pulsarPartitionId)) {
-            return this.pulsarTopicCache.get(topicName).get(pulsarPartitionId);
+            boolean isOwnedTopic = pulsarService.getNamespaceService()
+                    .isServiceUnitActive(topicName.toPulsarTopicName().getPartition(pulsarPartitionId));
+            if (isOwnedTopic) {
+                return this.pulsarTopicCache.get(topicName).get(pulsarPartitionId);
+            } else {
+                pulsarTopicCache.get(topicName).remove(pulsarPartitionId);
+                throw new RopPersistentTopicException("topic[{}] and partition[{}] isn't owned by current broker.");
+            }
         }
 
         try {
@@ -421,11 +431,13 @@ public class GroupMetaManager {
                 + brokerController.getServerConfig().getRocketmqMetadataNamespace());
     }
 
-    private boolean isPulsarTopicCached(ClientTopicName topicName, int partitionId) {
-        if (Objects.isNull(topicName) || partitionId < 0) {
+    private boolean isPulsarTopicCached(ClientTopicName topicName, int pulsarPartitionId) {
+        if (Objects.isNull(topicName) || pulsarPartitionId < 0) {
             return false;
         }
-        return pulsarTopicCache.containsKey(topicName) && pulsarTopicCache.get(topicName).containsKey(partitionId);
+
+        return pulsarTopicCache.containsKey(topicName) && pulsarTopicCache.get(topicName)
+                .containsKey(pulsarPartitionId);
     }
 
 }

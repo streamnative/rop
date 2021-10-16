@@ -90,22 +90,22 @@ public class SubscriptionGroupManager implements Closeable {
         }
     }
 
-    public SubscriptionGroupConfig findSubscriptionGroupConfig(String group) {
+    public SubscriptionGroupConfig findSubscriptionGroupConfig(String ropGroup) {
         try {
-            RopGroupContent groupConfigContent = zkServiceRef.get().getGroupConfig(group);
+            RopGroupContent groupConfigContent = zkServiceRef.get().getGroupConfig(ropGroup);
             if (groupConfigContent != null) {
                 return groupConfigContent.getConfig();
             }
 
             if (brokerController.getServerConfig().isAutoCreateSubscriptionGroup()
-                    || MixAll.isSysConsumerGroup(group)) {
+                    || MixAll.isSysConsumerGroup(ropGroup)) {
                 SubscriptionGroupConfig subscriptionGroupConfig = new SubscriptionGroupConfig();
-                subscriptionGroupConfig.setGroupName(group);
+                subscriptionGroupConfig.setGroupName(ropGroup);
                 updateSubscriptionGroupConfig(subscriptionGroupConfig);
                 return subscriptionGroupConfig;
             }
         } catch (Exception e) {
-            log.error("Find subscription group [{}] config error.", group, e);
+            log.error("Find subscription group [{}] config error.", ropGroup, e);
             throw new RuntimeException("Find subscription group config failed.");
         }
         return null;
