@@ -62,7 +62,6 @@ import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 @Slf4j
 public class GroupMetaManager {
 
-    private static final long ROP_OFFSET_CACHE_EXPIRE_TIME_MS = 60 * 60 * 1000L;
     private volatile boolean isRunning = false;
     private final RocketMQBrokerController brokerController;
     private final long offsetsRetentionMs;
@@ -109,7 +108,7 @@ public class GroupMetaManager {
                     if (System.currentTimeMillis() >= value.getExpireTimestamp()) {
                         log.info("Begin to remove GroupOffsetKey[{}] with GroupOffsetValue[{}].", key, value);
                         try {
-                            Producer<ByteBuffer> producer = GroupMetaManager.this.groupOffsetProducer;
+                            Producer<ByteBuffer> producer = getGroupOffsetProducer();
                             if (producer != null && producer.isConnected()) {
                                 producer.newMessage().keyBytes(key.encode().array())
                                         .value(null).sendAsync();
@@ -122,25 +121,46 @@ public class GroupMetaManager {
                 }).build();
     }
 
+    private Producer<ByteBuffer> getGroupOffsetProducer() {
+        if (isRunning && groupOffsetProducer == null) {
+            try {
+                PulsarClient pulsarClient = brokerController.getBrokerService().getPulsar().getClient();
+                groupOffsetProducer = pulsarClient.newProducer(Schema.BYTEBUFFER)
+                        .sendTimeout(3, TimeUnit.SECONDS)
+                        .compressionType(CompressionType.SNAPPY)
+                        .enableBatching(true)
+                        .blockIfQueueFull(false)
+                        .topic(RocketMQTopic.getGroupMetaOffsetTopic().getPulsarFullName())
+                        .create();
+            } catch (Exception e) {
+                log.warn("getGroupOffsetProducer error.", e);
+                throw new RuntimeException("Get group offset producer exception");
+            }
+        }
+        return groupOffsetProducer;
+    }
+
+    private Reader<ByteBuffer> getGroupOffsetReader() {
+        if (isRunning && groupOffsetReader == null) {
+            try {
+                PulsarClient pulsarClient = brokerController.getBrokerService().getPulsar().getClient();
+                groupOffsetReader = pulsarClient.newReader(Schema.BYTEBUFFER)
+                        .topic(RocketMQTopic.getGroupMetaOffsetTopic().getPulsarFullName())
+                        .startMessageId(MessageId.earliest)
+                        .readCompacted(true)
+                        .create();
+            } catch (Exception e) {
+                log.warn("getGroupOffsetReader error.", e);
+                throw new RuntimeException("Get group offset reader exception");
+            }
+        }
+        return groupOffsetReader;
+    }
+
     public void start() throws Exception {
         log.info("Starting GroupMetaManager service...");
         try {
             isRunning = true;
-            PulsarClient pulsarClient = brokerController.getBrokerService().getPulsar().getClient();
-            this.groupOffsetProducer = pulsarClient.newProducer(Schema.BYTEBUFFER)
-                    .sendTimeout(3, TimeUnit.SECONDS)
-                    .compressionType(CompressionType.SNAPPY)
-                    .enableBatching(true)
-                    .blockIfQueueFull(false)
-                    .topic(RocketMQTopic.getGroupMetaOffsetTopic().getPulsarFullName())
-                    .create();
-
-            this.groupOffsetReader = pulsarClient.newReader(Schema.BYTEBUFFER)
-                    .topic(RocketMQTopic.getGroupMetaOffsetTopic().getPulsarFullName())
-                    .startMessageId(MessageId.earliest)
-                    .readCompacted(true)
-                    .create();
-
             offsetReaderExecutor.execute(this::loadOffsets);
 
             persistOffsetExecutor.scheduleAtFixedRate(() -> {
@@ -154,7 +174,7 @@ public class GroupMetaManager {
             isRunning = false;
             throw new RopServerException("GroupMetaManager failed to start.", e);
         }
-        log.info("Start GroupMetaManager service finish.");
+        log.info("Start GroupMetaManager service successfully.");
     }
 
     /**
@@ -164,16 +184,15 @@ public class GroupMetaManager {
         log.info("Start load group offset.");
         while (isRunning) {
             try {
-                Message<ByteBuffer> message = groupOffsetReader.readNext(1, TimeUnit.SECONDS);
+                Message<ByteBuffer> message = getGroupOffsetReader().readNext(1, TimeUnit.SECONDS);
                 if (Objects.nonNull(message)) {
                     GroupOffsetKey groupOffsetKey = GroupMetaKey.decodeKey(ByteBuffer.wrap(message.getKeyBytes()));
                     GroupOffsetValue groupOffsetValue = GroupOffsetValue.decodeGroupOffset(message.getValue());
                     offsetTable.put(groupOffsetKey, groupOffsetValue);
-                } else {
-                    Uninterruptibles.sleepUninterruptibly(200, TimeUnit.MILLISECONDS);
                 }
             } catch (Exception e) {
                 log.warn("groupOffsetReader read offset failed.", e);
+                Uninterruptibles.sleepUninterruptibly(200, TimeUnit.MILLISECONDS);
             }
         }
     }
@@ -311,7 +330,7 @@ public class GroupMetaManager {
                 return;
             }
             if (groupOffsetValue.isUpdated()) {
-                groupOffsetProducer.newMessage()
+                getGroupOffsetProducer().newMessage()
                         .keyBytes(groupOffsetKey.encode().array())
                         .value(groupOffsetValue.encode())
                         .sendAsync()
@@ -330,12 +349,18 @@ public class GroupMetaManager {
 
     public void shutdown() {
         if (isRunning) {
-            isRunning = false;
             persistOffsetExecutor.shutdown();
+
             offsetReaderExecutor.shutdown();
 
-            groupOffsetProducer.closeAsync();
-            groupOffsetReader.closeAsync();
+            if (Objects.nonNull(groupOffsetProducer)) {
+                groupOffsetProducer.closeAsync();
+            }
+
+            if (Objects.nonNull(groupOffsetReader)) {
+                groupOffsetReader.closeAsync();
+            }
+            isRunning = false;
         }
     }
 

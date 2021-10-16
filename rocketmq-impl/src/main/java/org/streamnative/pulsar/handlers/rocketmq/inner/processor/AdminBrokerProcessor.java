@@ -106,7 +106,6 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.ConsumerGroupInf
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopPersistentTopicException;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupAndTopicName;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupName;
-import org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils;
 import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 
 /**
@@ -398,13 +397,8 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
         final GetMaxOffsetRequestHeader requestHeader =
                 (GetMaxOffsetRequestHeader) request.decodeCommandCustomHeader(GetMaxOffsetRequestHeader.class);
 
-        long offset = Long.MAX_VALUE;
-        try {
-            offset = this.brokerController.getConsumerOffsetManager()
-                    .getMaxOffsetInQueue(requestHeader.getTopic(), CommonUtils.getPulsarPartitionIdByRequest(request));
-        } catch (Exception e) {
-            log.warn("Rop getMaxOffset error", e);
-        }
+        long offset = this.brokerController.getConsumerOffsetManager()
+                .getMaxOffsetInQueue(requestHeader.getTopic(), requestHeader.getQueueId());
         responseHeader.setOffset(offset);
         response.setCode(ResponseCode.SUCCESS);
         return response;
@@ -421,10 +415,8 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
         long offset = 0L;
         try {
             offset = this.brokerController.getConsumerOffsetManager()
-                    .getMinOffsetInQueue(clientGroupName.getClientTopicName(),
-                            CommonUtils.getPulsarPartitionIdByRequest(request));
-        } catch (Exception e) {
-            log.warn("Rop getMinOffset error", e);
+                    .getMinOffsetInQueue(clientGroupName.getClientTopicName(), requestHeader.getQueueId());
+        } catch (RopPersistentTopicException e) {
         }
 
         responseHeader.setOffset(offset);
