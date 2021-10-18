@@ -44,8 +44,8 @@ public class PullRequestHoldService extends ServiceThread {
         this.brokerController = brokerController;
     }
 
-    public void suspendPullRequest(final String topic, final int queueId, final PullRequest pullRequest) {
-        String key = this.buildKey(topic, queueId);
+    public void suspendPullRequest(final String topic, final int partitionId, final PullRequest pullRequest) {
+        String key = this.buildKey(topic, partitionId);
 
         ManyPullRequest mpr = this.pullRequestTable.get(key);
         if (null == mpr) {
@@ -59,8 +59,8 @@ public class PullRequestHoldService extends ServiceThread {
         mpr.addPullRequest(pullRequest);
     }
 
-    private String buildKey(final String topic, final int queueId) {
-        return topic + TOPIC_QUEUEID_SEPARATOR + queueId;
+    private String buildKey(final String topic, final int partitionId) {
+        return topic + TOPIC_QUEUEID_SEPARATOR + partitionId;
     }
 
     @Override
@@ -98,30 +98,31 @@ public class PullRequestHoldService extends ServiceThread {
             String[] kArray = key.split(TOPIC_QUEUEID_SEPARATOR);
             if (2 == kArray.length) {
                 String topic = kArray[0];
-                int queueId = Integer.parseInt(kArray[1]);
+                int partitionId = Integer.parseInt(kArray[1]);
                 try {
                     long offset = this.brokerController.getConsumerOffsetManager()
-                            .getMaxOffsetInQueue(topic, queueId);
-                    this.notifyMessageArriving(topic, queueId, offset);
+                            .getMaxOffsetInPartitionId(topic, partitionId);
+                    this.notifyMessageArriving(topic, partitionId, offset);
                 } catch (RopPersistentTopicException ex) {
                     log.info("unowned-broker topic and remove the hold request.");
                     this.pullRequestTable.remove(key);
                 } catch (Throwable th) {
-                    log.warn("check hold request failed. topic: {}, queueId: {} ", topic, queueId, th);
+                    log.warn("check hold request failed. topic: {}, partitionId: {} ", topic, partitionId, th);
                 }
             }
         }
     }
 
-    public void notifyMessageArriving(final String topic, final int queueId, final long maxOffset) {
-        notifyMessageArriving(topic, queueId, maxOffset, null, 0, null, null);
+    public void notifyMessageArriving(final String topic, final int partitionId, final long maxOffset) {
+        notifyMessageArriving(topic, partitionId, maxOffset, null, 0, null, null);
     }
 
-    public void notifyMessageArriving(final String topic, final int queueId, final long maxOffset, final Long tagsCode,
-            long msgStoreTime, byte[] filterBitMap, Map<String, String> properties) {
-        log.debug("notifyMessageArriving ==========> (topic={} and queueId={} and maxoffset={})", topic, queueId,
+    public void notifyMessageArriving(final String topic, final int partitionId, final long maxOffset,
+            final Long tagsCode, long msgStoreTime, byte[] filterBitMap, Map<String, String> properties) {
+        log.debug("notifyMessageArriving ==========> (topic={} and partitionId={} and maxoffset={})", topic,
+                partitionId,
                 maxOffset);
-        String key = this.buildKey(topic, queueId);
+        String key = this.buildKey(topic, partitionId);
         ManyPullRequest mpr = this.pullRequestTable.get(key);
         if (mpr != null) {
             List<PullRequest> requestList = mpr.cloneListAndClear();
@@ -134,7 +135,7 @@ public class PullRequestHoldService extends ServiceThread {
                     if (newestOffset <= request.getPullFromThisOffset()) {
                         try {
                             newestOffset = this.brokerController.getConsumerOffsetManager()
-                                    .getMaxOffsetInQueue(topic, queueId);
+                                    .getMaxOffsetInPartitionId(topic, partitionId);
                         } catch (RopPersistentTopicException e) {
                             log.info("unowned-broker topic and remove the hold request. "
                                     + "remove the request from request-hold-service");

@@ -249,10 +249,10 @@ public class ScheduleMessageService {
                                                     .sendAsync()
                                                     .whenCompleteAsync((msgId, ex) -> {
                                                         if (ex == null) {
-                                                            rocketBroker.getMessageArrivingListener()
-                                                                    .arriving(msgInner.getTopic(),
-                                                                            msgInner.getQueueId(), -1, 0, 0,
-                                                                            null, null);
+//                                                            rocketBroker.getMessageArrivingListener()
+//                                                                    .arriving(msgInner.getTopic(),
+//                                                                            msgInner.getQueueId(), -1, 0, 0,
+//                                                                            null, null);
                                                             delayedConsumer.acknowledgeAsync(message);
                                                         } else {
                                                             delayedConsumer.negativeAcknowledge(message);
