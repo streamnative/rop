@@ -205,49 +205,55 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             List<byte[]> body = this.entryFormatter.encode(messageInner, 1);
             CompletableFuture<Long> offsetFuture = null;
 
+            long producerId = buildPulsarProducerId(producerGroup, pTopic,
+                    ctx.channel().remoteAddress().toString());
+            Producer<byte[]> producer = this.producers.get(producerId);
+            if (producer == null) {
+                synchronized (this.producers) {
+                    log.info("[{}] PutMessage creating producer[id={}] and channel=[{}].",
+                            rmqTopic.getPulsarFullName(), producerId, ctx.channel());
+                    if (this.producers.get(producerId) == null) {
+                        producer = createNewProducer(pTopic, producerGroup, producerId);
+                        Producer<byte[]> oldProducer = this.producers.put(producerId, producer);
+                        if (oldProducer != null) {
+                            oldProducer.closeAsync();
+                        }
+                    }
+                }
+            }
+
             /*
              * Optimize the production performance of publish messages.
              * If the broker is the owner of the current partitioned topic, directly use the PersistentTopic interface
              * for publish message.
-             *
-             * For SCHEDULE_TOPIC messages, we still use publish topic to send msg, the
-             * `pTopic.contains("SCHEDULE_TOPIC")` check will process RECONSUME_LATER failed case.
              */
-            if (!isDelayMessage(deliverAtTime) && pTopic.contains("SCHEDULE_TOPIC")) {
+            if (!isDelayMessage(deliverAtTime)) {
                 ClientTopicName clientTopicName = new ClientTopicName(messageInner.getTopic());
-                PersistentTopic persistentTopic = this.brokerController.getConsumerOffsetManager()
-                        .getPulsarPersistentTopic(clientTopicName, partitionId);
-                // if persistentTopic is null, throw SYSTEM_ERROR to rop proxy and retry send request.
-                if (persistentTopic != null) {
-                    offsetFuture = publishMessage(body.get(0), persistentTopic, pTopic);
-
+                // For SCHEDULE_TOPIC messages, we still use producer to send msg, the
+                // `messageInner.getDelayTimeLevel() > 0` check will process RECONSUME_LATER failed case.
+                // In here, we don't need to process the return value(MessageID)
+                if (messageInner.getDelayTimeLevel() > 0) {
+                    this.producers.get(producerId).newMessage()
+                            .value((body.get(0)))
+                            .sendAsync();
                 } else {
-                    AppendMessageResult temp = new AppendMessageResult(AppendMessageStatus.UNKNOWN_ERROR);
-                    PutMessageResult putMessageResult = new PutMessageResult(PutMessageStatus.UNKNOWN_ERROR, temp);
-                    callback.callback(putMessageResult);
-                    return;
+                    PersistentTopic persistentTopic = this.brokerController.getConsumerOffsetManager()
+                            .getPulsarPersistentTopic(clientTopicName, partitionId);
+                    // if persistentTopic is null, throw SYSTEM_ERROR to rop proxy and retry send request.
+                    if (persistentTopic != null) {
+                        offsetFuture = publishMessage(body.get(0), persistentTopic, pTopic);
+
+                    } else {
+                        AppendMessageResult temp = new AppendMessageResult(AppendMessageStatus.UNKNOWN_ERROR);
+                        PutMessageResult putMessageResult = new PutMessageResult(PutMessageStatus.UNKNOWN_ERROR, temp);
+                        callback.callback(putMessageResult);
+                        return;
+                    }
                 }
             } else {
                 /*
                  * Use pulsar producer send delay message.
                  */
-                long producerId = buildPulsarProducerId(producerGroup, pTopic,
-                        ctx.channel().remoteAddress().toString());
-                Producer<byte[]> producer = this.producers.get(producerId);
-                if (producer == null) {
-                    synchronized (this.producers) {
-                        log.info("[{}] PutMessage creating producer[id={}] and channel=[{}].",
-                                rmqTopic.getPulsarFullName(), producerId, ctx.channel());
-                        if (this.producers.get(producerId) == null) {
-                            producer = createNewProducer(pTopic, producerGroup, producerId);
-                            Producer<byte[]> oldProducer = this.producers.put(producerId, producer);
-                            if (oldProducer != null) {
-                                oldProducer.closeAsync();
-                            }
-                        }
-                    }
-                }
-
                 CompletableFuture<MessageId> messageIdFuture = this.producers.get(producerId).newMessage()
                         .value((body.get(0)))
                         .deliverAt(deliverAtTime)
