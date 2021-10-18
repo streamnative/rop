@@ -387,7 +387,7 @@ public class PullMessageProcessor implements NettyRequestProcessor {
                                             ropGetMessageResult);
                             channel.writeAndFlush(fileRegion).addListener((ChannelFutureListener) future -> {
                                 if (!future.isSuccess()) {
-                                    log.error("transfer many message by pagecache failed, {}", channel.remoteAddress(),
+                                    log.error("transfer many message by bytebuf failed, {}", channel.remoteAddress(),
                                             future.cause());
                                 }
                             });

@@ -60,7 +60,6 @@ public class ConsumerGroupInfo {
                 return next.getValue();
             }
         }
-
         return null;
     }
 

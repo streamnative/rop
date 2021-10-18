@@ -170,7 +170,7 @@ public class ScheduleMessageService {
 
     class DeliverDelayedMessageTimerTask extends TimerTask {
 
-        private static final int PULL_MESSAGE_TIMEOUT_MS = 500;
+        private static final int PULL_MESSAGE_TIMEOUT_MS = 3000;
         private static final int SEND_MESSAGE_TIMEOUT_MS = 3000;
         private final RocketMQBrokerController rocketBroker;
         private final int delayLevel;
@@ -207,6 +207,7 @@ public class ScheduleMessageService {
                     CompletableFuture<Messages<byte[]>> messagesFuture = this.delayedConsumer
                             .batchReceiveAsync();
                     Messages<byte[]> messages = messagesFuture.get(PULL_MESSAGE_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+
                     if (messages.size() == 0) {
                         break;
                     }

@@ -637,7 +637,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         PositionImpl startPosition;
         if (queueOffset <= MessageIdUtils.MIN_ROP_OFFSET) {
             startPosition = PositionImpl.earliest;
-        } else if (queueOffset > maxOffset) {
+        } else if (queueOffset == Long.MAX_VALUE || queueOffset > maxOffset) {
             startPosition = PositionImpl.latest;
         } else {
             startPosition = MessageIdUtils.getPositionForOffset(managedLedger, queueOffset);

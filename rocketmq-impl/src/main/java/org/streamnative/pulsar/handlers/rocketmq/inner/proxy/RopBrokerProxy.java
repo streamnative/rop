@@ -18,6 +18,8 @@ import static org.apache.bookkeeper.util.ZkUtils.createFullPathOptimistic;
 import static org.apache.bookkeeper.util.ZkUtils.deleteFullPathOptimistic;
 import static org.apache.pulsar.broker.web.PulsarWebResource.joinPath;
 import static org.apache.rocketmq.common.protocol.RequestCode.CONSUMER_SEND_MSG_BACK;
+import static org.apache.rocketmq.common.protocol.RequestCode.GET_MAX_OFFSET;
+import static org.apache.rocketmq.common.protocol.RequestCode.GET_MIN_OFFSET;
 import static org.apache.rocketmq.common.protocol.RequestCode.PULL_MESSAGE;
 import static org.apache.rocketmq.common.protocol.RequestCode.QUERY_MESSAGE;
 import static org.apache.rocketmq.common.protocol.RequestCode.SEND_BATCH_MESSAGE;
@@ -68,6 +70,9 @@ import org.apache.rocketmq.common.help.FAQUrl;
 import org.apache.rocketmq.common.protocol.RequestCode;
 import org.apache.rocketmq.common.protocol.ResponseCode;
 import org.apache.rocketmq.common.protocol.header.ConsumerSendMsgBackRequestHeader;
+import org.apache.rocketmq.common.protocol.header.GetMaxOffsetResponseHeader;
+import org.apache.rocketmq.common.protocol.header.GetMinOffsetRequestHeader;
+import org.apache.rocketmq.common.protocol.header.GetMinOffsetResponseHeader;
 import org.apache.rocketmq.common.protocol.header.PullMessageRequestHeader;
 import org.apache.rocketmq.common.protocol.header.PullMessageResponseHeader;
 import org.apache.rocketmq.common.protocol.header.SendMessageRequestHeader;
@@ -108,6 +113,7 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
 
     private static final int ROP_SERVICE_PORT = 9876;
     private static final int INTERNAL_REDIRECT_TIMEOUT_MS = 3000;
+    private static final int INTERNAL_REDIRECT_PULL_MSG_TIMEOUT_MS = 6000;
     private static final String INNER_CLIENT_NAME_PREFIX = "rop_broker_proxy_";
 
     private final RocketMQBrokerController brokerController;
@@ -198,7 +204,7 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                     sysFlag = PullSysFlag.buildSysFlag(hasCommitOffsetFlag, hasSuspendFlag, true, false);
                     pullMsgHeader.setSysFlag(sysFlag);
                     processNonOwnedBrokerPullRequest(ctx, cmd, pullMsgHeader, pulsarTopicName,
-                            INTERNAL_REDIRECT_TIMEOUT_MS);
+                            INTERNAL_REDIRECT_PULL_MSG_TIMEOUT_MS);
                 }
                 break;
             case SEND_MESSAGE:
@@ -251,6 +257,40 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
             case QUERY_MESSAGE:
                 // TODO: not to support in the version
                 break;
+            case GET_MAX_OFFSET:
+                final GetMinOffsetRequestHeader getMaxOffsetHeader =
+                        (GetMinOffsetRequestHeader) cmd.decodeCommandCustomHeader(GetMinOffsetRequestHeader.class);
+
+                topic = getMaxOffsetHeader.getTopic();
+                queueId = getMaxOffsetHeader.getQueueId();
+                rmqTopic = new ClientTopicName(topic);
+                pulsarTopicName = rmqTopic.toPulsarTopicName();
+                isOwnedBroker = checkTopicOwnerBroker(cmd, pulsarTopicName, queueId);
+                if (isOwnedBroker) {
+                    log.trace("process owned broker getMaxOffset request[{}].", cmd);
+                    super.processRequestCommand(ctx, cmd);
+                } else {
+                    log.trace("process unowned broker getMaxOffset request[{}].", cmd);
+                    processGetMaxOffsetRequest(ctx, cmd, pulsarTopicName, INTERNAL_REDIRECT_TIMEOUT_MS);
+                }
+                break;
+            case GET_MIN_OFFSET:
+                final GetMinOffsetRequestHeader getMinOffsetHeader =
+                        (GetMinOffsetRequestHeader) cmd.decodeCommandCustomHeader(GetMinOffsetRequestHeader.class);
+
+                topic = getMinOffsetHeader.getTopic();
+                queueId = getMinOffsetHeader.getQueueId();
+                rmqTopic = new ClientTopicName(topic);
+                pulsarTopicName = rmqTopic.toPulsarTopicName();
+                isOwnedBroker = checkTopicOwnerBroker(cmd, pulsarTopicName, queueId);
+                if (isOwnedBroker) {
+                    log.trace("process owned broker getMinOffset request[{}].", cmd);
+                    super.processRequestCommand(ctx, cmd);
+                } else {
+                    log.trace("process unowned broker getMinOffset request[{}].", cmd);
+                    processGetMinOffsetRequest(ctx, cmd, pulsarTopicName, INTERNAL_REDIRECT_TIMEOUT_MS);
+                }
+                break;
             default:
                 super.processRequestCommand(ctx, cmd);
                 break;
@@ -268,7 +308,7 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
             cmd.addExtField(ROP_INNER_REMOTE_CLIENT_TAG, INNER_CLIENT_NAME_PREFIX + requestHeader.getGroup());
             brokerNetworkClients.invokeAsync(address, cmd, timeout, (responseFuture) -> {
                 RemotingCommand response = responseFuture.getResponseCommand();
-                if (response != null && response.getCode() == ResponseCode.SUCCESS) {
+                if (response != null) {
                     response.setOpaque(opaque);
                     ctx.writeAndFlush(response);
                 } else {
@@ -305,11 +345,11 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
             cmd.addExtField(ROP_INNER_REMOTE_CLIENT_TAG, INNER_CLIENT_NAME_PREFIX + sendHeader.getProducerGroup());
             brokerNetworkClients.invokeAsync(address, cmd, timeout, (responseFuture) -> {
                 RemotingCommand sendResponse = responseFuture.getResponseCommand();
-                if (sendResponse != null && sendResponse.getCode() == ResponseCode.SUCCESS) {
+                if (sendResponse != null) {
                     sendResponse.setOpaque(opaque);
                     ctx.writeAndFlush(sendResponse);
                 } else {
-                    log.warn("processNonOwnedBrokerSendRequest invokeAsync error[request={}].", cmd);
+                    log.trace("processNonOwnedBrokerSendRequest invokeAsync error[request={}].", cmd);
                     ownedBrokerCache.invalidate(partitionedTopicName);
                     sendResponse = sendResponseThreadLocal.get();
                     sendResponse.setOpaque(opaque);
@@ -326,6 +366,80 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
             sendResponse.setCode(ResponseCode.SYSTEM_ERROR);
             sendResponse.setRemark("BrokerNetworkAPI invokeAsync[send] error");
             ctx.writeAndFlush(sendResponse);
+        }
+    }
+
+
+    private void processGetMaxOffsetRequest(ChannelHandlerContext ctx, RemotingCommand cmd,
+            TopicName pulsarTopicName, long timeout) {
+        int pulsarPartitionId = Integer.parseInt(cmd.getExtFields().get(PULSAR_REAL_PARTITION_ID_TAG));
+        TopicName partitionedTopicName = pulsarTopicName.getPartition(pulsarPartitionId);
+        String address = lookupPulsarTopicBroker(partitionedTopicName);
+        log.debug("processGetMaxOffsetRequest [topic={},pid={}] and address=[{}].", pulsarTopicName,
+                pulsarPartitionId, address);
+        final int opaque = cmd.getOpaque();
+        try {
+            brokerNetworkClients.invokeAsync(address, cmd, timeout, (responseFuture) -> {
+                RemotingCommand getMaxOffsetResponse = responseFuture.getResponseCommand();
+                if (getMaxOffsetResponse != null) {
+                    getMaxOffsetResponse.setOpaque(opaque);
+                    ctx.writeAndFlush(getMaxOffsetResponse);
+                } else {
+                    log.trace("processGetMaxOffsetRequest invokeAsync error[request={}].", cmd);
+                    ownedBrokerCache.invalidate(partitionedTopicName);
+                    getMaxOffsetResponse = RemotingCommand
+                            .createResponseCommand(GetMaxOffsetResponseHeader.class);
+                    getMaxOffsetResponse.setOpaque(opaque);
+                    getMaxOffsetResponse.setCode(ResponseCode.SYSTEM_ERROR);
+                    getMaxOffsetResponse.setRemark("processGetMaxOffsetRequest invokeAsync error");
+                    ctx.writeAndFlush(getMaxOffsetResponse);
+                }
+            });
+        } catch (Exception e) {
+            log.warn("BrokerNetworkAPI processGetMaxOffsetRequest error.", e);
+            ownedBrokerCache.invalidate(partitionedTopicName);
+            RemotingCommand getMaxOffsetResponse = RemotingCommand
+                    .createResponseCommand(GetMaxOffsetResponseHeader.class);
+            getMaxOffsetResponse.setOpaque(opaque);
+            getMaxOffsetResponse.setCode(ResponseCode.SYSTEM_ERROR);
+            getMaxOffsetResponse.setRemark("BrokerNetworkAPI processGetMaxOffsetRequest error");
+            ctx.writeAndFlush(getMaxOffsetResponse);
+        }
+    }
+
+    private void processGetMinOffsetRequest(ChannelHandlerContext ctx, RemotingCommand cmd,
+            TopicName pulsarTopicName, long timeout) {
+        int pulsarPartitionId = Integer.parseInt(cmd.getExtFields().get(PULSAR_REAL_PARTITION_ID_TAG));
+        TopicName partitionedTopicName = pulsarTopicName.getPartition(pulsarPartitionId);
+        String address = lookupPulsarTopicBroker(partitionedTopicName);
+        log.debug("processGetMinOffsetRequest [topic={},pid={}] and address=[{}].", pulsarTopicName,
+                pulsarPartitionId, address);
+        final int opaque = cmd.getOpaque();
+        try {
+            brokerNetworkClients.invokeAsync(address, cmd, timeout, (responseFuture) -> {
+                RemotingCommand getMinOffsetResponse = responseFuture.getResponseCommand();
+                if (getMinOffsetResponse != null) {
+                    getMinOffsetResponse.setOpaque(opaque);
+                    ctx.writeAndFlush(getMinOffsetResponse);
+                } else {
+                    log.trace("processGetMinOffsetRequest invokeAsync error[request={}].", cmd);
+                    ownedBrokerCache.invalidate(partitionedTopicName);
+                    getMinOffsetResponse = RemotingCommand.createResponseCommand(GetMinOffsetResponseHeader.class);
+                    getMinOffsetResponse.setOpaque(opaque);
+                    getMinOffsetResponse.setCode(ResponseCode.SYSTEM_ERROR);
+                    getMinOffsetResponse.setRemark("processGetMinOffsetRequest invokeAsync error");
+                    ctx.writeAndFlush(getMinOffsetResponse);
+                }
+            });
+        } catch (Exception e) {
+            log.warn("BrokerNetworkAPI processGetMinOffsetRequest error.", e);
+            ownedBrokerCache.invalidate(partitionedTopicName);
+            RemotingCommand getMinOffsetResponse = RemotingCommand
+                    .createResponseCommand(GetMinOffsetResponseHeader.class);
+            getMinOffsetResponse.setOpaque(opaque);
+            getMinOffsetResponse.setCode(ResponseCode.SYSTEM_ERROR);
+            getMinOffsetResponse.setRemark("BrokerNetworkAPI processGetMinOffsetRequest error");
+            ctx.writeAndFlush(getMinOffsetResponse);
         }
     }
 

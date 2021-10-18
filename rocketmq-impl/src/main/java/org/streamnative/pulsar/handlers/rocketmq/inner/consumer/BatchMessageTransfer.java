@@ -43,7 +43,7 @@ public class BatchMessageTransfer extends AbstractReferenceCounted implements Fi
         int pos = byteBufferHeader.position();
         List<ByteBuf> messageBufferList = this.getMessageResult.getMessageBufferList();
         for (ByteBuf bb : messageBufferList) {
-            pos += bb.writerIndex();
+            pos += bb.readerIndex();
         }
         return pos;
     }
