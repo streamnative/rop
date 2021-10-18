@@ -223,6 +223,23 @@ public class GroupMetaManager {
         }
     }
 
+    /**
+     * query offset.
+     */
+    public long queryOffsetByPartitionId(final String group, final String topic, final int partitionId) {
+        ClientGroupAndTopicName groupAndTopicName = new ClientGroupAndTopicName(group, topic);
+        String pulsarGroupName = groupAndTopicName.getClientGroupName().getPulsarGroupName();
+        String pulsarTopicName = groupAndTopicName.getClientTopicName().getPulsarTopicName();
+
+        GroupOffsetKey groupOffsetKey = new GroupOffsetKey(pulsarGroupName, pulsarTopicName, partitionId);
+        GroupOffsetValue offsetValue = offsetTable.getIfPresent(groupOffsetKey);
+        if (Objects.nonNull(offsetValue)) {
+            return offsetValue.getOffset();
+        } else {//query in pulsar, if exists store it into cache
+            return getGroupOffsetFromPulsar(groupAndTopicName, partitionId);
+        }
+    }
+
     private long getGroupOffsetFromPulsar(ClientGroupAndTopicName groupAndTopic, int pulsarPartitionId) {
         try {
             PersistentTopic persistentTopic = getPulsarPersistentTopic(groupAndTopic.getClientTopicName(),

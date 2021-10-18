@@ -731,7 +731,8 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
                 continue;
             }
 
-            TopicConfig topicConfig = this.brokerController.getTopicConfigManager().selectTopicConfig(rmqTopic);
+            TopicConfig topicConfig = this.brokerController.getTopicConfigManager()
+                    .selectTopicConfig(topicName.toString());
             if (null == topicConfig) {
                 log.warn("consumeStats, rmqTopic config not exist, {}", rmqTopic);
                 continue;
@@ -805,7 +806,7 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
                     brokerOffset = 0;
                 }
 
-                long consumerOffset = this.brokerController.getConsumerOffsetManager().queryOffset(
+                long consumerOffset = this.brokerController.getConsumerOffsetManager().queryOffsetByPartitionId(
                         rmqGroupName,
                         rmqTopic,
                         partitionId);

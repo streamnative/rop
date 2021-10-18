@@ -102,6 +102,10 @@ public class ConsumerOffsetManager {
         return groupMetaManager.queryOffset(group, topic, queueId);
     }
 
+    public long queryOffsetByPartitionId(final String group, final String topic, final int partitionId) {
+        return groupMetaManager.queryOffsetByPartitionId(group, topic, partitionId);
+    }
+
     public Map<Integer, Long> queryMinOffsetInAllGroup(final String topic, final String filterGroups) {
         Map<Integer, Long> queueMinOffset = new HashMap<>();
         ConcurrentMap<GroupOffsetKey, GroupOffsetValue> groupOffsetMap = groupMetaManager
@@ -201,7 +205,22 @@ public class ConsumerOffsetManager {
         try {
             return getMaxOffsetInPulsarPartition(clientTopicName, pulsarPartitionId);
         } catch (RopPersistentTopicException ex) {
-            log.warn("getMaxOffsetInQueue can't get on unowned broker.", ex);
+            log.warn("[{}] queueId: [{}] getMaxOffsetInQueue can't get on unowned broker.", topic, queueId, ex);
+            throw ex;
+        }
+    }
+
+    /**
+     * @param topic rocketmq topic name
+     * @param partitionId pulsar partition id
+     * @return
+     */
+    public long getMaxOffsetInPartitionId(String topic, int partitionId) throws RopPersistentTopicException {
+        ClientTopicName clientTopicName = new ClientTopicName(topic);
+        try {
+            return getMaxOffsetInPulsarPartition(clientTopicName, partitionId);
+        } catch (RopPersistentTopicException ex) {
+            log.warn("[{}] partition: [{}] getMaxOffsetInQueue can't get on unowned broker.", topic, partitionId, ex);
             throw ex;
         }
     }

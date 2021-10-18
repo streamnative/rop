@@ -407,11 +407,12 @@ public class PullMessageProcessor implements NettyRequestProcessor {
 
                         String topic = requestHeader.getTopic();
                         long offset = requestHeader.getQueueOffset();
-                        int queueId = requestHeader.getQueueId();
+//                        int queueId = requestHeader.getQueueId();
+                        int partitionId = CommonUtils.getPulsarPartitionIdByRequest(request);
                         PullRequest pullRequest = new PullRequest(request, channel, pollingTimeMills,
                                 System.currentTimeMillis(), offset, subscriptionData, null);
                         this.brokerController.getPullRequestHoldService()
-                                .suspendPullRequest(topic, queueId, pullRequest);
+                                .suspendPullRequest(topic, partitionId, pullRequest);
                         response = null;
                     }
                     break;

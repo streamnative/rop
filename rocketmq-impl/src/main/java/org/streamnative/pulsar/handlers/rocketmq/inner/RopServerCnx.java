@@ -272,7 +272,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 callback.callback(putMessageResult);
 
                 brokerController.getMessageArrivingListener()
-                        .arriving(messageInner.getTopic(), messageInner.getQueueId(), offset, 0, 0,
+                        .arriving(messageInner.getTopic(), partitionId, offset, 0, 0,
                                 null, null);
             }, brokerController.getSendCallbackExecutor());
 
@@ -411,7 +411,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 callback.callback(result);
 
                 brokerController.getMessageArrivingListener()
-                        .arriving(batchMessage.getTopic(), queueId, Long.MAX_VALUE, 0, 0,
+                        .arriving(batchMessage.getTopic(), realPartitionID, Long.MAX_VALUE, 0, 0,
                                 null, null);
             }, brokerController.getSendCallbackExecutor());
 
