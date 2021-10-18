@@ -472,8 +472,8 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         final RemotingCommand response = RemotingCommand.createResponseCommand(SendMessageResponseHeader.class);
         final SendMessageResponseHeader responseHeader = (SendMessageResponseHeader) response.readCustomHeader();
 
-       /* response.setOpaque(request.getOpaque());
-        response.setCode(-1);
+        response.setOpaque(request.getOpaque());
+        /*response.setCode(-1);
         //super.msgCheck(ctx, requestHeader, response);
         if (response.getCode() != -1) {
             return response;
