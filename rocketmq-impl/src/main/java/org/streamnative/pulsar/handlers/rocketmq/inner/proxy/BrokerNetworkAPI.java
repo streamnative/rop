@@ -54,7 +54,16 @@ public class BrokerNetworkAPI implements AutoCloseable {
         Preconditions.checkArgument(Strings.isNotBlank(conn), "BrokerNetworkApi conn can't be null or empty");
         String requestHashStr =
                 (requestTag == null) ? Strings.EMPTY : requestTag;
-        int index = Math.abs(requestHashStr.hashCode()) % clientCapacity;
+
+        // process RV_ABSOLUTE_VALUE_OF_HASHCODE of findbugs
+        int index;
+        int requestIndex = requestHashStr.hashCode();
+        if (requestIndex != Integer.MIN_VALUE) {
+            index = Math.abs(requestHashStr.hashCode()) % clientCapacity;
+        } else {
+            index = Integer.MIN_VALUE % clientCapacity;
+        }
+
         innerClients.putIfAbsent(conn, new RemotingClient[this.clientCapacity]);
         RemotingClient[] remotingClients = innerClients.get(conn);
         RemotingClient remotingClient = remotingClients[index];
