@@ -91,6 +91,8 @@ public class ConsumerManager {
             clientChannelInfo = new RopClientChannelCnx(brokerController, ctx, clientId,
                     LanguageCode.JAVA, 0);
             channelInfoTable.putIfAbsent(ctx.channel(), clientChannelInfo);
+        } else {
+            clientChannelInfo.setLastUpdateTimestamp(System.currentTimeMillis());
         }
         return channelInfoTable.get(ctx.channel()) != null;
     }

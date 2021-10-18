@@ -114,7 +114,7 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
 
     private static final int ROP_SERVICE_PORT = 9876;
     private static final int INTERNAL_REDIRECT_TIMEOUT_MS = 3000;
-    private static final int INTERNAL_REDIRECT_PULL_MSG_TIMEOUT_MS = 10 * 1000;
+    private static final int INTERNAL_REDIRECT_PULL_MSG_TIMEOUT_MS = 30 * 1000;
     private static final String INNER_CLIENT_NAME_PREFIX = "rop_broker_proxy_";
 
     private final RocketMQBrokerController brokerController;
@@ -481,6 +481,8 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                     pullResponse.setOpaque(opaque);
                     pullResponse.markResponseType();
                     ctx.writeAndFlush(pullResponse);
+                } else {
+                    log.error("Rop processNonOwnedBrokerPullRequest pullResponse is null.");
                 }
             });
         } catch (Exception e) {
