@@ -82,6 +82,7 @@ import org.apache.rocketmq.common.sysflag.PullSysFlag;
 import org.apache.rocketmq.remoting.ChannelEventListener;
 import org.apache.rocketmq.remoting.exception.RemotingCommandException;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
+import org.apache.rocketmq.remoting.protocol.RemotingSysResponseCode;
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.ZooDefs.Ids;
@@ -160,140 +161,153 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
     }
 
     public int getPulsarTopicPartitionId(TopicName pulsarTopicName, int queueId) {
-        Map<String, List<Integer>> pulsarTopicRoute = mqTopicManager
-                .getPulsarTopicRoute(pulsarTopicName, Strings.EMPTY);
-        Preconditions.checkArgument(pulsarTopicRoute != null && !pulsarTopicRoute.isEmpty());
-        List<Integer> pulsarPartitionIdList = pulsarTopicRoute.get(this.brokerTag);
-        Preconditions.checkArgument(!pulsarPartitionIdList.isEmpty() && queueId < pulsarPartitionIdList.size());
-        return pulsarPartitionIdList.get(queueId);
+        try {
+            Map<String, List<Integer>> pulsarTopicRoute = mqTopicManager
+                    .getPulsarTopicRoute(pulsarTopicName, Strings.EMPTY);
+            Preconditions.checkArgument(pulsarTopicRoute != null && !pulsarTopicRoute.isEmpty());
+            List<Integer> pulsarPartitionIdList = pulsarTopicRoute.get(this.brokerTag);
+            Preconditions.checkArgument(!pulsarPartitionIdList.isEmpty() && queueId < pulsarPartitionIdList.size());
+            return pulsarPartitionIdList.get(queueId);
+        } catch (RuntimeException e) {
+            log.error("Rop [{}] [{}] getPulsarTopicPartitionId error.", pulsarTopicName, queueId, e);
+            throw e;
+        }
     }
 
     @Override
     public void processRequestCommand(ChannelHandlerContext ctx, RemotingCommand cmd) throws RemotingCommandException {
-        switch (cmd.getCode()) {
-            case PULL_MESSAGE:
-                PullMessageRequestHeader pullMsgHeader =
-                        (PullMessageRequestHeader) cmd.decodeCommandCustomHeader(PullMessageRequestHeader.class);
-                ClientTopicName rmqTopic = new ClientTopicName(pullMsgHeader.getTopic());
-                TopicName pulsarTopicName = rmqTopic.toPulsarTopicName();
-                boolean isOwnedBroker = checkTopicOwnerBroker(cmd, pulsarTopicName,
-                        pullMsgHeader.getQueueId());
+        try {
+            switch (cmd.getCode()) {
+                case PULL_MESSAGE:
+                    PullMessageRequestHeader pullMsgHeader =
+                            (PullMessageRequestHeader) cmd.decodeCommandCustomHeader(PullMessageRequestHeader.class);
+                    ClientTopicName rmqTopic = new ClientTopicName(pullMsgHeader.getTopic());
+                    TopicName pulsarTopicName = rmqTopic.toPulsarTopicName();
+                    boolean isOwnedBroker = checkTopicOwnerBroker(cmd, pulsarTopicName,
+                            pullMsgHeader.getQueueId());
 
-                if (isOwnedBroker) {
-                    super.processRequestCommand(ctx, cmd);
-                } else {
-                    SubscriptionData subscriptionData = this.brokerController.getConsumerManager()
-                            .findSubscriptionData(pullMsgHeader.getConsumerGroup(), pullMsgHeader.getTopic());
-                    if (subscriptionData == null) {
-                        RemotingCommand consumeResponse = RemotingCommand
-                                .createResponseCommand(PullMessageResponseHeader.class);
-                        consumeResponse.setOpaque(cmd.getOpaque());
-                        consumeResponse.setCode(ResponseCode.SUBSCRIPTION_NOT_EXIST);
-                        consumeResponse.setRemark(
-                                "the consumer's group info not exist" + FAQUrl
-                                        .suggestTodo(FAQUrl.SAME_GROUP_DIFFERENT_TOPIC));
-                        ctx.writeAndFlush(consumeResponse);
-                        return;
+                    if (isOwnedBroker) {
+                        super.processRequestCommand(ctx, cmd);
+                    } else {
+                        SubscriptionData subscriptionData = this.brokerController.getConsumerManager()
+                                .findSubscriptionData(pullMsgHeader.getConsumerGroup(), pullMsgHeader.getTopic());
+                        if (subscriptionData == null) {
+                            RemotingCommand consumeResponse = RemotingCommand
+                                    .createResponseCommand(PullMessageResponseHeader.class);
+                            consumeResponse.setOpaque(cmd.getOpaque());
+                            consumeResponse.setCode(ResponseCode.SUBSCRIPTION_NOT_EXIST);
+                            consumeResponse.setRemark(
+                                    "the consumer's group info not exist" + FAQUrl
+                                            .suggestTodo(FAQUrl.SAME_GROUP_DIFFERENT_TOPIC));
+                            ctx.writeAndFlush(consumeResponse);
+                            return;
+                        }
+
+                        pullMsgHeader.setExpressionType(subscriptionData.getExpressionType());
+                        pullMsgHeader.setSubscription(subscriptionData.getSubString());
+                        int sysFlag = pullMsgHeader.getSysFlag();
+                        boolean hasSuspendFlag = PullSysFlag.hasSuspendFlag(sysFlag);
+                        boolean hasCommitOffsetFlag = PullSysFlag.hasCommitOffsetFlag(sysFlag);
+                        sysFlag = PullSysFlag.buildSysFlag(hasCommitOffsetFlag, hasSuspendFlag, true, false);
+                        pullMsgHeader.setSysFlag(sysFlag);
+                        processNonOwnedBrokerPullRequest(ctx, cmd, pullMsgHeader, pulsarTopicName,
+                                INTERNAL_REDIRECT_PULL_MSG_TIMEOUT_MS);
                     }
-
-                    pullMsgHeader.setExpressionType(subscriptionData.getExpressionType());
-                    pullMsgHeader.setSubscription(subscriptionData.getSubString());
-                    int sysFlag = pullMsgHeader.getSysFlag();
-                    boolean hasSuspendFlag = PullSysFlag.hasSuspendFlag(sysFlag);
-                    boolean hasCommitOffsetFlag = PullSysFlag.hasCommitOffsetFlag(sysFlag);
-                    sysFlag = PullSysFlag.buildSysFlag(hasCommitOffsetFlag, hasSuspendFlag, true, false);
-                    pullMsgHeader.setSysFlag(sysFlag);
-                    processNonOwnedBrokerPullRequest(ctx, cmd, pullMsgHeader, pulsarTopicName,
-                            INTERNAL_REDIRECT_PULL_MSG_TIMEOUT_MS);
-                }
-                break;
-            case SEND_MESSAGE:
-            case SEND_MESSAGE_V2:
-            case SEND_BATCH_MESSAGE:
-                RemotingCommand sendResponse = sendResponseThreadLocal.get();
-                SendMessageRequestHeader sendHeader = SendMessageProcessor.parseRequestHeader(cmd);
-                sendResponse.setCode(-1);
-                SendMessageProcessor
-                        .msgCheck(brokerController.getServerConfig(), mqTopicManager, ctx, sendHeader,
-                                sendResponse);
-                if (sendResponse.getCode() != -1) {
-                    //fail to msgCheck and flush error at once;
-                    ctx.writeAndFlush(sendResponse);
                     break;
-                }
-                String topic = sendHeader.getTopic();
-                int queueId = sendHeader.getQueueId();
-                rmqTopic = new ClientTopicName(topic);
-                pulsarTopicName = rmqTopic.toPulsarTopicName();
-                isOwnedBroker = checkTopicOwnerBroker(cmd, pulsarTopicName, queueId);
-                if (isOwnedBroker) {
-                    log.trace("process owned broker send request[{}].", cmd);
-                    super.processRequestCommand(ctx, cmd);
-                } else {
-                    log.trace("process unowned broker send request[{}].", cmd);
-                    processNonOwnedBrokerSendRequest(ctx, cmd, sendHeader, pulsarTopicName,
-                            INTERNAL_REDIRECT_TIMEOUT_MS);
-                }
-                break;
-            case CONSUMER_SEND_MSG_BACK:
-                final ConsumerSendMsgBackRequestHeader requestHeader =
-                        (ConsumerSendMsgBackRequestHeader) cmd
-                                .decodeCommandCustomHeader(ConsumerSendMsgBackRequestHeader.class);
-                CommitLogOffset commitLogOffset = new CommitLogOffset(requestHeader.getOffset());
-                topic = commitLogOffset.isRetryTopic() ? MixAll.getRetryTopic(requestHeader.getGroup())
-                        : requestHeader.getOriginTopic();
-                int pulsarPartitionId = commitLogOffset.getPartitionId();
-                rmqTopic = new ClientTopicName(topic);
-                pulsarTopicName = rmqTopic.toPulsarTopicName();
-                isOwnedBroker = mqTopicManager.isPartitionTopicOwner(pulsarTopicName, pulsarPartitionId);
-                if (isOwnedBroker) {
-                    super.processRequestCommand(ctx, cmd);
-                } else {
-                    processNonOwnedBrokerConsumerSendBackRequest(ctx, cmd, requestHeader, pulsarTopicName,
-                            pulsarPartitionId,
-                            INTERNAL_REDIRECT_TIMEOUT_MS);
-                }
-                break;
-            case QUERY_MESSAGE:
-                // TODO: not to support in the version
-                break;
-            case GET_MAX_OFFSET:
-                final GetMinOffsetRequestHeader getMaxOffsetHeader =
-                        (GetMinOffsetRequestHeader) cmd.decodeCommandCustomHeader(GetMinOffsetRequestHeader.class);
+                case SEND_MESSAGE:
+                case SEND_MESSAGE_V2:
+                case SEND_BATCH_MESSAGE:
+                    RemotingCommand sendResponse = sendResponseThreadLocal.get();
+                    SendMessageRequestHeader sendHeader = SendMessageProcessor.parseRequestHeader(cmd);
+                    sendResponse.setCode(-1);
+                    SendMessageProcessor
+                            .msgCheck(brokerController.getServerConfig(), mqTopicManager, ctx, sendHeader,
+                                    sendResponse);
+                    if (sendResponse.getCode() != -1) {
+                        //fail to msgCheck and flush error at once;
+                        ctx.writeAndFlush(sendResponse);
+                        break;
+                    }
+                    String topic = sendHeader.getTopic();
+                    int queueId = sendHeader.getQueueId();
+                    rmqTopic = new ClientTopicName(topic);
+                    pulsarTopicName = rmqTopic.toPulsarTopicName();
+                    isOwnedBroker = checkTopicOwnerBroker(cmd, pulsarTopicName, queueId);
+                    if (isOwnedBroker) {
+                        log.trace("process owned broker send request[{}].", cmd);
+                        super.processRequestCommand(ctx, cmd);
+                    } else {
+                        log.trace("process unowned broker send request[{}].", cmd);
+                        processNonOwnedBrokerSendRequest(ctx, cmd, sendHeader, pulsarTopicName,
+                                INTERNAL_REDIRECT_TIMEOUT_MS);
+                    }
+                    break;
+                case CONSUMER_SEND_MSG_BACK:
+                    final ConsumerSendMsgBackRequestHeader requestHeader =
+                            (ConsumerSendMsgBackRequestHeader) cmd
+                                    .decodeCommandCustomHeader(ConsumerSendMsgBackRequestHeader.class);
+                    CommitLogOffset commitLogOffset = new CommitLogOffset(requestHeader.getOffset());
+                    topic = commitLogOffset.isRetryTopic() ? MixAll.getRetryTopic(requestHeader.getGroup())
+                            : requestHeader.getOriginTopic();
+                    int pulsarPartitionId = commitLogOffset.getPartitionId();
+                    rmqTopic = new ClientTopicName(topic);
+                    pulsarTopicName = rmqTopic.toPulsarTopicName();
+                    isOwnedBroker = mqTopicManager.isPartitionTopicOwner(pulsarTopicName, pulsarPartitionId);
+                    if (isOwnedBroker) {
+                        super.processRequestCommand(ctx, cmd);
+                    } else {
+                        processNonOwnedBrokerConsumerSendBackRequest(ctx, cmd, requestHeader, pulsarTopicName,
+                                pulsarPartitionId,
+                                INTERNAL_REDIRECT_TIMEOUT_MS);
+                    }
+                    break;
+                case QUERY_MESSAGE:
+                    // TODO: not to support in the version
+                    break;
+                case GET_MAX_OFFSET:
+                    final GetMinOffsetRequestHeader getMaxOffsetHeader =
+                            (GetMinOffsetRequestHeader) cmd.decodeCommandCustomHeader(GetMinOffsetRequestHeader.class);
 
-                topic = getMaxOffsetHeader.getTopic();
-                queueId = getMaxOffsetHeader.getQueueId();
-                rmqTopic = new ClientTopicName(topic);
-                pulsarTopicName = rmqTopic.toPulsarTopicName();
-                isOwnedBroker = checkTopicOwnerBroker(cmd, pulsarTopicName, queueId);
-                if (isOwnedBroker) {
-                    log.trace("process owned broker getMaxOffset request[{}].", cmd);
-                    super.processRequestCommand(ctx, cmd);
-                } else {
-                    log.trace("process unowned broker getMaxOffset request[{}].", cmd);
-                    processGetMaxOffsetRequest(ctx, cmd, pulsarTopicName, INTERNAL_REDIRECT_TIMEOUT_MS);
-                }
-                break;
-            case GET_MIN_OFFSET:
-                final GetMinOffsetRequestHeader getMinOffsetHeader =
-                        (GetMinOffsetRequestHeader) cmd.decodeCommandCustomHeader(GetMinOffsetRequestHeader.class);
+                    topic = getMaxOffsetHeader.getTopic();
+                    queueId = getMaxOffsetHeader.getQueueId();
+                    rmqTopic = new ClientTopicName(topic);
+                    pulsarTopicName = rmqTopic.toPulsarTopicName();
+                    isOwnedBroker = checkTopicOwnerBroker(cmd, pulsarTopicName, queueId);
+                    if (isOwnedBroker) {
+                        log.trace("process owned broker getMaxOffset request[{}].", cmd);
+                        super.processRequestCommand(ctx, cmd);
+                    } else {
+                        log.trace("process unowned broker getMaxOffset request[{}].", cmd);
+                        processGetMaxOffsetRequest(ctx, cmd, pulsarTopicName, INTERNAL_REDIRECT_TIMEOUT_MS);
+                    }
+                    break;
+                case GET_MIN_OFFSET:
+                    final GetMinOffsetRequestHeader getMinOffsetHeader =
+                            (GetMinOffsetRequestHeader) cmd.decodeCommandCustomHeader(GetMinOffsetRequestHeader.class);
 
-                topic = getMinOffsetHeader.getTopic();
-                queueId = getMinOffsetHeader.getQueueId();
-                rmqTopic = new ClientTopicName(topic);
-                pulsarTopicName = rmqTopic.toPulsarTopicName();
-                isOwnedBroker = checkTopicOwnerBroker(cmd, pulsarTopicName, queueId);
-                if (isOwnedBroker) {
-                    log.trace("process owned broker getMinOffset request[{}].", cmd);
+                    topic = getMinOffsetHeader.getTopic();
+                    queueId = getMinOffsetHeader.getQueueId();
+                    rmqTopic = new ClientTopicName(topic);
+                    pulsarTopicName = rmqTopic.toPulsarTopicName();
+                    isOwnedBroker = checkTopicOwnerBroker(cmd, pulsarTopicName, queueId);
+                    if (isOwnedBroker) {
+                        log.trace("process owned broker getMinOffset request[{}].", cmd);
+                        super.processRequestCommand(ctx, cmd);
+                    } else {
+                        log.trace("process unowned broker getMinOffset request[{}].", cmd);
+                        processGetMinOffsetRequest(ctx, cmd, pulsarTopicName, INTERNAL_REDIRECT_TIMEOUT_MS);
+                    }
+                    break;
+                default:
                     super.processRequestCommand(ctx, cmd);
-                } else {
-                    log.trace("process unowned broker getMinOffset request[{}].", cmd);
-                    processGetMinOffsetRequest(ctx, cmd, pulsarTopicName, INTERNAL_REDIRECT_TIMEOUT_MS);
-                }
-                break;
-            default:
-                super.processRequestCommand(ctx, cmd);
-                break;
+                    break;
+            }
+        } catch (Exception e) {
+            log.warn("Rop processRequestCommand error, RemotingCommand: [{}]", cmd, e);
+            final RemotingCommand response = RemotingCommand
+                    .createResponseCommand(RemotingSysResponseCode.SYSTEM_ERROR, "Wrong routing info.");
+            response.setOpaque(cmd.getOpaque());
+            ctx.writeAndFlush(response);
         }
 
     }
