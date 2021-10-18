@@ -194,14 +194,15 @@ public class ConsumerOffsetManager {
      * @param queueId rocketmq queue id
      * @return
      */
-    public long getMaxOffsetInQueue(String topic, int queueId) {
+    public long getMaxOffsetInQueue(String topic, int queueId) throws RopPersistentTopicException {
         ClientTopicName clientTopicName = new ClientTopicName(topic);
         int pulsarPartitionId = brokerController.getRopBrokerProxy()
                 .getPulsarTopicPartitionId(clientTopicName.toPulsarTopicName(), queueId);
         try {
             return getMaxOffsetInPulsarPartition(clientTopicName, pulsarPartitionId);
-        } catch (RopPersistentTopicException e) {
-            return Long.MAX_VALUE;
+        } catch (RopPersistentTopicException ex) {
+            log.warn("getMaxOffsetInQueue can't get on unowned broker.", ex);
+            throw ex;
         }
     }
 

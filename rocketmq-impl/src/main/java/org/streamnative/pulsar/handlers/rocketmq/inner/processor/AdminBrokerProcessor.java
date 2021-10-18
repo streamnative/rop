@@ -398,15 +398,17 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
         final GetMaxOffsetRequestHeader requestHeader =
                 (GetMaxOffsetRequestHeader) request.decodeCommandCustomHeader(GetMaxOffsetRequestHeader.class);
 
-        long offset = Long.MAX_VALUE;
         try {
-            offset = this.brokerController.getConsumerOffsetManager()
-                    .getMaxOffsetInQueue(requestHeader.getTopic(), CommonUtils.getPulsarPartitionIdByRequest(request));
-        } catch (Exception e) {
-            log.warn("Rop getMaxOffset error", e);
+            long offset = this.brokerController.getConsumerOffsetManager()
+                    .getMaxOffsetInQueue(requestHeader.getTopic(), requestHeader.getQueueId());
+            responseHeader.setOffset(offset);
+            response.setCode(ResponseCode.SUCCESS);
+        } catch (RopPersistentTopicException e) {
+            log.info("getMaxOffset on unowned-broker topic[{}] and queueId[{}].", requestHeader.getTopic(),
+                    requestHeader.getQueueId());
+            responseHeader.setOffset(Long.MAX_VALUE);
+            response.setCode(ResponseCode.QUERY_NOT_FOUND);
         }
-        responseHeader.setOffset(offset);
-        response.setCode(ResponseCode.SUCCESS);
         return response;
     }
 

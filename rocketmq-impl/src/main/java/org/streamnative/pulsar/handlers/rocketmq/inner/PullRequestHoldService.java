@@ -24,6 +24,7 @@ import org.apache.rocketmq.broker.longpolling.ManyPullRequest;
 import org.apache.rocketmq.broker.longpolling.PullRequest;
 import org.apache.rocketmq.common.ServiceThread;
 import org.apache.rocketmq.common.SystemClock;
+import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopPersistentTopicException;
 
 /**
  * Pull request hold service.
@@ -102,6 +103,9 @@ public class PullRequestHoldService extends ServiceThread {
                     long offset = this.brokerController.getConsumerOffsetManager()
                             .getMaxOffsetInQueue(topic, queueId);
                     this.notifyMessageArriving(topic, queueId, offset);
+                } catch (RopPersistentTopicException ex) {
+                    log.info("unowned-broker topic and remove the hold request.");
+                    this.pullRequestTable.remove(key);
                 } catch (Throwable th) {
                     log.warn("check hold request failed. topic: {}, queueId: {} ", topic, queueId, th);
                 }
@@ -125,10 +129,16 @@ public class PullRequestHoldService extends ServiceThread {
                 List<PullRequest> replayList = new ArrayList<PullRequest>();
 
                 for (PullRequest request : requestList) {
+
                     long newestOffset = maxOffset;
                     if (newestOffset <= request.getPullFromThisOffset()) {
-                        newestOffset = this.brokerController.getConsumerOffsetManager()
-                                .getMaxOffsetInQueue(topic, queueId);
+                        try {
+                            newestOffset = this.brokerController.getConsumerOffsetManager()
+                                    .getMaxOffsetInQueue(topic, queueId);
+                        } catch (RopPersistentTopicException e) {
+                            log.info("unowned-broker topic and remove the hold request. remove the request from request-hold-service");
+                            continue;
+                        }
                     }
 
                     if (newestOffset > request.getPullFromThisOffset()) {
