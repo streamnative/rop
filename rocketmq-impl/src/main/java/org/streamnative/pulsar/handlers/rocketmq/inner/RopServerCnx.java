@@ -209,8 +209,11 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
              * Optimize the production performance of publish messages.
              * If the broker is the owner of the current partitioned topic, directly use the PersistentTopic interface
              * for publish message.
+             *
+             * For SCHEDULE_TOPIC messages, we still use publish topic to send msg, the
+             * `pTopic.contains("SCHEDULE_TOPIC")` check will process RECONSUME_LATER failed case.
              */
-            if (!isDelayMessage(deliverAtTime)) {
+            if (!isDelayMessage(deliverAtTime) && pTopic.contains("SCHEDULE_TOPIC")) {
                 ClientTopicName clientTopicName = new ClientTopicName(messageInner.getTopic());
                 PersistentTopic persistentTopic = this.brokerController.getConsumerOffsetManager()
                         .getPulsarPersistentTopic(clientTopicName, partitionId);
