@@ -136,7 +136,8 @@ public class PullRequestHoldService extends ServiceThread {
                             newestOffset = this.brokerController.getConsumerOffsetManager()
                                     .getMaxOffsetInQueue(topic, queueId);
                         } catch (RopPersistentTopicException e) {
-                            log.info("unowned-broker topic and remove the hold request. remove the request from request-hold-service");
+                            log.info("unowned-broker topic and remove the hold request. "
+                                    + "remove the request from request-hold-service");
                             continue;
                         }
                     }

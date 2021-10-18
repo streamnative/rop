@@ -106,10 +106,7 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.ConsumerGroupInf
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopPersistentTopicException;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupAndTopicName;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupName;
-<<<<<<< HEAD
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientTopicName;
-=======
->>>>>>> master
 import org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils;
 import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 
