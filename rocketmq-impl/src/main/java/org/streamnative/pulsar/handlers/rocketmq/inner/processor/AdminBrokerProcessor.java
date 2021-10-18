@@ -106,6 +106,7 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.ConsumerGroupInf
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopPersistentTopicException;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupAndTopicName;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupName;
+import org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils;
 import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 
 /**
@@ -422,8 +423,10 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
         long offset = 0L;
         try {
             offset = this.brokerController.getConsumerOffsetManager()
-                    .getMinOffsetInQueue(clientGroupName.getClientTopicName(), requestHeader.getQueueId());
-        } catch (RopPersistentTopicException e) {
+                    .getMinOffsetInQueue(clientGroupName.getClientTopicName(),
+                            CommonUtils.getPulsarPartitionIdByRequest(request));
+        } catch (Exception e) {
+            log.warn("Rop getMinOffset error", e);
         }
 
         responseHeader.setOffset(offset);
