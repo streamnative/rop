@@ -172,7 +172,6 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         RocketMQTopic rmqTopic = new RocketMQTopic(messageInner.getTopic());
         String pTopic = rmqTopic.getPartitionName(partitionId);
         long deliverAtTime = getDeliverAtTime(messageInner);
-        int queueId = messageInner.getQueueId();
 
         if (deliverAtTime - System.currentTimeMillis() > brokerController.getServerConfig().getRopMaxDelayTime()) {
             throw new RuntimeException("DELAY TIME IS TOO LONG");
@@ -181,47 +180,14 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         final int tranType = MessageSysFlag.getTransactionValue(messageInner.getSysFlag());
         if (tranType == MessageSysFlag.TRANSACTION_NOT_TYPE || tranType == MessageSysFlag.TRANSACTION_COMMIT_TYPE) {
             // Delay Delivery
-            if (!isDelayMessage(deliverAtTime) && messageInner.getDelayTimeLevel() > 0 && !rmqTopic.isDLQTopic()) {
-                if (messageInner.getDelayTimeLevel() > this.brokerController.getServerConfig().getMaxDelayLevelNum()) {
-                    messageInner.setDelayTimeLevel(this.brokerController.getServerConfig().getMaxDelayLevelNum());
-                }
-
-                int totalQueueNum = this.brokerController.getServerConfig().getRmqScheduleTopicPartitionNum();
-                queueId = queueId % totalQueueNum;
-                pTopic = this.brokerController.getDelayedMessageService()
-                        .getDelayedTopicName(messageInner.getDelayTimeLevel(), partitionId);
-
-                MessageAccessor.putProperty(messageInner, MessageConst.PROPERTY_REAL_TOPIC, messageInner.getTopic());
-                MessageAccessor.putProperty(messageInner, MessageConst.PROPERTY_REAL_QUEUE_ID,
-                        String.valueOf(messageInner.getQueueId()));
-                messageInner.setPropertiesString(MessageDecoder.messageProperties2String(messageInner.getProperties()));
-                messageInner.setTopic(pTopic);
-                messageInner.setQueueId(queueId);
-
+            if (!isDelayMessage(deliverAtTime)) {
+                pTopic = handleReconsumeDelayedMessage(messageInner);
             }
         }
 
         try {
             List<byte[]> body = this.entryFormatter.encode(messageInner, 1);
             CompletableFuture<Long> offsetFuture = null;
-
-            long producerId = buildPulsarProducerId(producerGroup, pTopic,
-                    ctx.channel().remoteAddress().toString());
-            Producer<byte[]> producer = this.producers.get(producerId);
-            if (producer == null) {
-                synchronized (this.producers) {
-                    log.info("[{}] PutMessage creating producer[id={}] and channel=[{}].",
-                            rmqTopic.getPulsarFullName(), producerId, ctx.channel());
-                    if (this.producers.get(producerId) == null) {
-                        producer = createNewProducer(pTopic, producerGroup, producerId);
-                        Producer<byte[]> oldProducer = this.producers.put(producerId, producer);
-                        if (oldProducer != null) {
-                            oldProducer.closeAsync();
-                        }
-                    }
-                }
-            }
-
             /*
              * Optimize the production performance of publish messages.
              * If the broker is the owner of the current partitioned topic, directly use the PersistentTopic interface
@@ -233,7 +199,9 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 // `messageInner.getDelayTimeLevel() > 0` check will process RECONSUME_LATER failed case.
                 // In here, we don't need to process the return value(MessageID)
                 if (messageInner.getDelayTimeLevel() > 0) {
-                    this.producers.get(producerId).newMessage()
+                    long producerId = buildPulsarProducerId(producerGroup, pTopic,
+                            ctx.channel().remoteAddress().toString());
+                    getProducerFromCache(pTopic, producerGroup, producerId).newMessage()
                             .value((body.get(0)))
                             .sendAsync();
                 } else {
@@ -254,7 +222,10 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 /*
                  * Use pulsar producer send delay message.
                  */
-                CompletableFuture<MessageId> messageIdFuture = this.producers.get(producerId).newMessage()
+                long producerId = buildPulsarProducerId(producerGroup, pTopic,
+                        ctx.channel().remoteAddress().toString());
+                CompletableFuture<MessageId> messageIdFuture = getProducerFromCache(pTopic, producerGroup, producerId)
+                        .newMessage()
                         .value((body.get(0)))
                         .deliverAt(deliverAtTime)
                         .sendAsync();
@@ -317,23 +288,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
     @Override
     public void putSendBackMsg(MessageExtBrokerInner messageInner, String producerGroup,
             RemotingCommand response, CompletableFuture<RemotingCommand> cmdFuture) {
-        RocketMQTopic rmqTopic = new RocketMQTopic(messageInner.getTopic());
-        String pTopic = rmqTopic.getPulsarFullName();
-        if (messageInner.getDelayTimeLevel() > 0 && !rmqTopic.isDLQTopic()) {
-            if (messageInner.getDelayTimeLevel() > this.brokerController.getServerConfig().getMaxDelayLevelNum()) {
-                messageInner.setDelayTimeLevel(this.brokerController.getServerConfig().getMaxDelayLevelNum());
-            }
-
-            pTopic = this.brokerController.getDelayedMessageService()
-                    .getDelayedTopicName(messageInner.getDelayTimeLevel());
-            MessageAccessor.putProperty(messageInner, MessageConst.PROPERTY_REAL_TOPIC, messageInner.getTopic());
-            MessageAccessor.putProperty(messageInner, MessageConst.PROPERTY_REAL_QUEUE_ID,
-                    String.valueOf(messageInner.getQueueId()));
-            messageInner.setPropertiesString(MessageDecoder.messageProperties2String(messageInner.getProperties()));
-            messageInner.setTopic(pTopic);
-        }
-
         try {
+            String pTopic = handleReconsumeDelayedMessage(messageInner);
             long producerId = buildPulsarProducerId(pTopic);
             Producer<byte[]> producer = getProducerFromCache(pTopic, producerGroup, producerId);
             List<byte[]> body = this.entryFormatter.encode(messageInner, 1);
@@ -779,5 +735,24 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             return null;
         });
         return producer;
+    }
+
+    private String handleReconsumeDelayedMessage(MessageExtBrokerInner messageInner) {
+        RocketMQTopic rocketMQTopic = new RocketMQTopic(messageInner.getTopic());
+        String sendTopicName = rocketMQTopic.getPulsarFullName();
+        if (messageInner.getDelayTimeLevel() > 0 && !rocketMQTopic.isDLQTopic()) {
+            if (messageInner.getDelayTimeLevel() > this.brokerController.getServerConfig().getMaxDelayLevelNum()) {
+                messageInner.setDelayTimeLevel(this.brokerController.getServerConfig().getMaxDelayLevelNum());
+            }
+            sendTopicName = this.brokerController.getDelayedMessageService()
+                    .getDelayedTopicName(messageInner.getDelayTimeLevel());
+
+            MessageAccessor.putProperty(messageInner, MessageConst.PROPERTY_REAL_TOPIC, messageInner.getTopic());
+            MessageAccessor.putProperty(messageInner, MessageConst.PROPERTY_REAL_QUEUE_ID,
+                    String.valueOf(messageInner.getQueueId()));
+            messageInner.setPropertiesString(MessageDecoder.messageProperties2String(messageInner.getProperties()));
+            messageInner.setTopic(sendTopicName);
+        }
+        return sendTopicName;
     }
 }
