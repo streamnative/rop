@@ -106,6 +106,8 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.ConsumerGroupInf
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopPersistentTopicException;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupAndTopicName;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupName;
+import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientTopicName;
+import org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils;
 import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 
 /**
@@ -397,8 +399,13 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
         final GetMaxOffsetRequestHeader requestHeader =
                 (GetMaxOffsetRequestHeader) request.decodeCommandCustomHeader(GetMaxOffsetRequestHeader.class);
 
-        long offset = this.brokerController.getConsumerOffsetManager()
-                .getMaxOffsetInQueue(requestHeader.getTopic(), requestHeader.getQueueId());
+        ClientTopicName clientTopic = new ClientTopicName(requestHeader.getTopic());
+        long offset = Long.MAX_VALUE;
+        try {
+            offset = this.brokerController.getConsumerOffsetManager()
+                    .getMaxOffsetInPulsarPartition(clientTopic, CommonUtils.getPulsarPartitionIdByRequest(request));
+        } catch (Exception e) {
+        }
         responseHeader.setOffset(offset);
         response.setCode(ResponseCode.SUCCESS);
         return response;
@@ -411,11 +418,11 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
         final GetMinOffsetRequestHeader requestHeader =
                 (GetMinOffsetRequestHeader) request.decodeCommandCustomHeader(GetMinOffsetRequestHeader.class);
 
-        ClientGroupAndTopicName clientGroupName = new ClientGroupAndTopicName(Strings.EMPTY, requestHeader.getTopic());
+        ClientTopicName clientTopic = new ClientTopicName(requestHeader.getTopic());
         long offset = 0L;
         try {
             offset = this.brokerController.getConsumerOffsetManager()
-                    .getMinOffsetInQueue(clientGroupName.getClientTopicName(), requestHeader.getQueueId());
+                    .getMinOffsetInQueue(clientTopic, CommonUtils.getPulsarPartitionIdByRequest(request));
         } catch (RopPersistentTopicException e) {
         }
 
