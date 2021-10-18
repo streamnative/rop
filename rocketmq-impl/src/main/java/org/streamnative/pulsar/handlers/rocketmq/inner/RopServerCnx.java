@@ -322,7 +322,6 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         Preconditions.checkNotNull(producerGroup);
         RocketMQTopic rmqTopic = new RocketMQTopic(batchMessage.getTopic());
         String pTopic = rmqTopic.getPartitionName(realPartitionID);
-        int queueId = batchMessage.getQueueId();
 
         try {
             StringBuilder sb = new StringBuilder();
