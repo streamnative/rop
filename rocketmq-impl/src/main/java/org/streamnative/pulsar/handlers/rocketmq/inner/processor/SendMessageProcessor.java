@@ -301,11 +301,11 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         response.setOpaque(request.getOpaque());
 
         log.debug("receive SendMessage request command, {}", request);
-        response.setCode(-1);
+     /*   response.setCode(-1);
         //super.msgCheck(ctx, requestHeader, response);
         if (response.getCode() != -1) {
             return response;
-        }
+        }*/
 
         final byte[] body = request.getBody();
         int queueIdInt = requestHeader.getQueueId();
@@ -424,7 +424,6 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
 
         String owner = request.getExtFields().get(BrokerStatsManager.COMMERCIAL_OWNER);
         if (sendOK) {
-
             this.brokerController.getBrokerStatsManager()
                     .incTopicPutNums(msg.getTopic(), putMessageResult.getAppendMessageResult().getMsgNum(), 1);
             this.brokerController.getBrokerStatsManager().incTopicPutSize(msg.getTopic(),
@@ -433,7 +432,6 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
                     .incBrokerPutNums(putMessageResult.getAppendMessageResult().getMsgNum());
 
             response.setRemark(null);
-
             responseHeader.setMsgId(putMessageResult.getAppendMessageResult().getMsgId());
             responseHeader.setQueueId(queueIdInt);
             responseHeader.setQueueOffset(putMessageResult.getAppendMessageResult().getLogicsOffset());
@@ -452,7 +450,6 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
                 sendMessageContext.setCommercialSendSize(wroteSize);
                 sendMessageContext.setCommercialOwner(owner);
             }
-            return null;
         } else {
             if (hasSendMessageHook()) {
                 int wroteSize = request.getBody().length;
@@ -475,12 +472,12 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         final RemotingCommand response = RemotingCommand.createResponseCommand(SendMessageResponseHeader.class);
         final SendMessageResponseHeader responseHeader = (SendMessageResponseHeader) response.readCustomHeader();
 
-        response.setOpaque(request.getOpaque());
+       /* response.setOpaque(request.getOpaque());
         response.setCode(-1);
         //super.msgCheck(ctx, requestHeader, response);
         if (response.getCode() != -1) {
             return response;
-        }
+        }*/
 
         int queueIdInt = requestHeader.getQueueId();
         TopicConfig topicConfig = this.brokerController.getTopicConfigManager()
