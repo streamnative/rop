@@ -143,7 +143,7 @@ public class PullRequestHoldService extends ServiceThread {
         if (mpr != null) {
             List<PullRequest> requestList = mpr.cloneListAndClear();
             if (requestList != null) {
-                List<PullRequest> replayList = new ArrayList<>();
+                List<PullRequest> replayList = new ArrayList<PullRequest>();
                 for (PullRequest request : requestList) {
 
                     long newestOffset = maxOffset;
