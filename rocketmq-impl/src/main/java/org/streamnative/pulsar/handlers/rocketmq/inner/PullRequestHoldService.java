@@ -14,7 +14,6 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -39,6 +38,7 @@ public class PullRequestHoldService extends ServiceThread {
     // key       => topicName@partitionId
     // topicName => tenant/ns/topicName
     private final ConcurrentMap<String, ManyPullRequest> pullRequestTable = new ConcurrentHashMap<>(1024);
+    private final ConcurrentMap<String, Long> messageOffsetTable = new ConcurrentHashMap<>(1024);
 
     public PullRequestHoldService(final RocketMQBrokerController brokerController) {
         this.brokerController = brokerController;
@@ -47,16 +47,30 @@ public class PullRequestHoldService extends ServiceThread {
     public void suspendPullRequest(final String topic, final int partitionId, final PullRequest pullRequest) {
         String key = this.buildKey(topic, partitionId);
 
-        ManyPullRequest mpr = this.pullRequestTable.get(key);
-        if (null == mpr) {
-            mpr = new ManyPullRequest();
-            ManyPullRequest prev = this.pullRequestTable.putIfAbsent(key, mpr);
-            if (prev != null) {
-                mpr = prev;
+        ManyPullRequest mpr = pullRequestTable.computeIfAbsent(key, s -> new ManyPullRequest());
+        mpr.addPullRequest(pullRequest);
+
+        boolean needNotifyMessageArriving = false;
+        Long currentOffset;
+        synchronized (key.intern()) {
+            currentOffset = messageOffsetTable.get(key);
+            if (currentOffset != null && currentOffset >= pullRequest.getPullFromThisOffset()) {
+                needNotifyMessageArriving = true;
             }
         }
+        if (needNotifyMessageArriving) {
+            notifyMessageArriving(topic, partitionId, currentOffset, null, 0L, null, null);
+        }
+    }
 
-        mpr.addPullRequest(pullRequest);
+    public void updateMessageOffset(final String topic, final int partitionId, long currentOffset) {
+        String key = this.buildKey(topic, partitionId);
+        synchronized (key.intern()) {
+            Long offset = messageOffsetTable.get(key);
+            if (offset == null || offset < currentOffset) {
+                messageOffsetTable.put(key, currentOffset);
+            }
+        }
     }
 
     private String buildKey(final String topic, final int partitionId) {
@@ -119,7 +133,8 @@ public class PullRequestHoldService extends ServiceThread {
 
     public void notifyMessageArriving(final String topic, final int partitionId, final long maxOffset,
             final Long tagsCode, long msgStoreTime, byte[] filterBitMap, Map<String, String> properties) {
-        log.debug("notifyMessageArriving ==========> (topic={} and partitionId={} and maxoffset={})", topic,
+        log.debug("notifyMessageArriving ==========> (topic={} and partitionId={} and maxOffset={})",
+                topic,
                 partitionId,
                 maxOffset);
         String key = this.buildKey(topic, partitionId);
@@ -127,12 +142,11 @@ public class PullRequestHoldService extends ServiceThread {
         if (mpr != null) {
             List<PullRequest> requestList = mpr.cloneListAndClear();
             if (requestList != null) {
-                List<PullRequest> replayList = new ArrayList<PullRequest>();
 
                 for (PullRequest request : requestList) {
 
                     long newestOffset = maxOffset;
-                    if (newestOffset <= request.getPullFromThisOffset()) {
+                    if (newestOffset < request.getPullFromThisOffset()) {
                         try {
                             newestOffset = this.brokerController.getConsumerOffsetManager()
                                     .getMaxOffsetInPartitionId(topic, partitionId);
@@ -143,7 +157,7 @@ public class PullRequestHoldService extends ServiceThread {
                         }
                     }
 
-                    if (newestOffset > request.getPullFromThisOffset()) {
+                    if (newestOffset >= request.getPullFromThisOffset()) {
                         try {
                             this.brokerController.getRopBrokerProxy().getPullMessageProcessor()
                                     .executeRequestWhenWakeup(request.getClientChannel(),
@@ -165,11 +179,7 @@ public class PullRequestHoldService extends ServiceThread {
                         continue;
                     }
 
-                    replayList.add(request);
-                }
-
-                if (!replayList.isEmpty()) {
-                    mpr.addPullRequest(replayList);
+                    suspendPullRequest(topic, partitionId, request);
                 }
             }
         }
