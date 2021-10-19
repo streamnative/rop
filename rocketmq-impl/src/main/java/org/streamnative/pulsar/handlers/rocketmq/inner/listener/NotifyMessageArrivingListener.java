@@ -32,6 +32,7 @@ public class NotifyMessageArrivingListener implements MessageArrivingListener {
     @Override
     public void arriving(String topic, int partitionId, long logicOffset, long tagsCode,
             long msgStoreTime, byte[] filterBitMap, Map<String, String> properties) {
+        this.pullRequestHoldService.updateMessageOffset(topic, partitionId, logicOffset);
         this.pullRequestHoldService.notifyMessageArriving(topic, partitionId, logicOffset, tagsCode,
                 msgStoreTime, filterBitMap, properties);
     }
