@@ -437,10 +437,10 @@ public class PullMessageProcessor implements NettyRequestProcessor {
         }
         boolean storeOffsetEnable = brokerAllowSuspend && hasCommitOffsetFlag;
         if (storeOffsetEnable) {
-            this.brokerController.getConsumerOffsetManager().commitOffset(
+            this.brokerController.getConsumerOffsetManager().commitOffsetByPartitionId(
                     RemotingHelper.parseChannelRemoteAddr(channel),
                     requestHeader.getConsumerGroup(), requestHeader.getTopic(),
-                    requestHeader.getQueueId(), requestHeader.getCommitOffset());
+                    CommonUtils.getPulsarPartitionIdByRequest(request), requestHeader.getCommitOffset());
         }
         return response;
     }

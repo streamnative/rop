@@ -98,6 +98,12 @@ public class ConsumerOffsetManager {
         groupMetaManager.commitOffset(group, topic, queueId, offset);
     }
 
+    public void commitOffsetByPartitionId(final String clientHost, final String group, final String topic,
+            final int partitionId,
+            final long offset) {
+        groupMetaManager.commitOffsetByPartitionId(group, topic, partitionId, offset);
+    }
+
     public long queryOffset(final String group, final String topic, final int queueId) {
         return groupMetaManager.queryOffset(group, topic, queueId);
     }
