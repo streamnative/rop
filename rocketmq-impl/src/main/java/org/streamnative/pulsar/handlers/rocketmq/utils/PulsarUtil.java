@@ -70,8 +70,6 @@ public class PulsarUtil {
             throws PulsarAdminException {
         createRopMetadataIfMissing(pulsarAdmin, clusterData, RocketMQTopic.getGroupMetaOffsetTopic(), conf,
                 conf.getOffsetsTopicNumPartitions());
-        createRopMetadataIfMissing(pulsarAdmin, clusterData, RocketMQTopic.getGroupMetaSubscriptionTopic(), conf,
-                1);
     }
 
     /**
