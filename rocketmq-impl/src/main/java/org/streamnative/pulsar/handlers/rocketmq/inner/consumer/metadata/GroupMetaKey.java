@@ -86,8 +86,7 @@ public abstract class GroupMetaKey<T extends GroupMetaKey> implements Deserializ
             buffer.get(grpNameBytes);
             String groupName = new String(grpNameBytes, StandardCharsets.UTF_8);
 
-            GroupMetaKey metaKey =
-                    type == GroupKeyType.GROUP_OFFSET ? new GroupOffsetKey() : new GroupSubscriptionKey();
+            GroupMetaKey metaKey = new GroupOffsetKey();
             metaKey.setVersion((short) version);
             metaKey.setType(type);
             metaKey.setGroupName(groupName);

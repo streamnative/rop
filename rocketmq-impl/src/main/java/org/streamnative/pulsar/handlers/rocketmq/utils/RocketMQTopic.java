@@ -34,14 +34,12 @@ import org.apache.rocketmq.common.protocol.NamespaceUtil;
 public class RocketMQTopic {
 
     public static final String GROUP_METADATA_OFFSET_TOPIC_NAME = "__consumer_offsets";
-    public static final String GROUP_METADATA_SUBSCRIPTION_TOPIC_NAME = "__consumer_groups";
     public static final String ROUTE_CHANGE_TOPIC_NAME = "__route_changes";
     private static final char TENANT_NAMESPACE_SEP = '|';
     private static final char ROCKETMQ_NAMESPACE_TOPIC_SEP = NamespaceUtil.NAMESPACE_SEPARATOR;
     private static final TopicDomain domain = TopicDomain.persistent;
     private static final Collection<String> ROCKETMQ_SYSTEM_TOPICS = Arrays
-            .asList(MixAll.AUTO_CREATE_TOPIC_KEY_TOPIC, MixAll.BENCHMARK_TOPIC, GROUP_METADATA_OFFSET_TOPIC_NAME,
-                    GROUP_METADATA_SUBSCRIPTION_TOPIC_NAME);
+            .asList(MixAll.AUTO_CREATE_TOPIC_KEY_TOPIC, MixAll.BENCHMARK_TOPIC, GROUP_METADATA_OFFSET_TOPIC_NAME);
     @Getter
     private static String defaultTenant = "rocketmq";
     @Getter
@@ -165,11 +163,6 @@ public class RocketMQTopic {
     public static RocketMQTopic getGroupMetaOffsetTopic() {
         return new RocketMQTopic(RocketMQTopic.metaTenant, RocketMQTopic.metaNamespace,
                 GROUP_METADATA_OFFSET_TOPIC_NAME);
-    }
-
-    public static RocketMQTopic getGroupMetaSubscriptionTopic() {
-        return new RocketMQTopic(RocketMQTopic.metaTenant, RocketMQTopic.metaNamespace,
-                GROUP_METADATA_SUBSCRIPTION_TOPIC_NAME);
     }
 
     public static RocketMQTopic getTopicRouteChangeTopic() {

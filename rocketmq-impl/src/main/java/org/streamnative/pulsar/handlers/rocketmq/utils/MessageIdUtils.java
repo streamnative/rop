@@ -42,6 +42,8 @@ public class MessageIdUtils {
     // use 32 bits for ledgerId,
     // 24 bits for entryId,
     // 8 bits for partitionId.
+
+    // Currently, this MessageID method has been abandoned, only delayed messages are still in use.
     public static final int LEDGER_BITS = 32;
     public static final int ENTRY_BITS = 24;
     public static final int PARTITION_BITS = 8;
@@ -97,24 +99,9 @@ public class MessageIdUtils {
         return new MessageIdImpl(ledgerId, entryId, partitionId);
     }
 
-    public static boolean isMessageEquals(MessageId left, MessageId right) {
-        if (left != null && right != null) {
-            MessageIdImpl leftMsgId = (MessageIdImpl) left;
-            MessageIdImpl rightMsgId = (MessageIdImpl) right;
-            return (leftMsgId.getLedgerId() == rightMsgId.getLedgerId())
-                    && (leftMsgId.getEntryId() == rightMsgId.getEntryId())
-                    && (leftMsgId.getPartitionIndex() == rightMsgId.getPartitionIndex());
-        }
-        return false;
-    }
-
 
     public static long getLastMessageIndex(ManagedLedger managedLedger) {
         return ((ManagedLedgerInterceptorImpl) managedLedger.getManagedLedgerInterceptor()).getIndex();
-    }
-
-    public static boolean hasMessagesInQueue(ManagedLedger managedLedger) {
-        return getLastMessageIndex(managedLedger) >= 0;
     }
 
     public static long getLogEndOffset(ManagedLedger managedLedger) {
@@ -140,7 +127,7 @@ public class MessageIdUtils {
     public static long getQueueOffsetByPosition(PersistentTopic pulsarTopic, Position pulsarPosition) {
         Preconditions.checkNotNull(pulsarTopic);
         Preconditions.checkArgument(pulsarPosition instanceof PositionImpl);
-        Long queueOffset = getLogEndOffset(pulsarTopic.getManagedLedger());
+        long queueOffset = getLogEndOffset(pulsarTopic.getManagedLedger());
         try {
             ManagedLedgerImpl managedLedger = (ManagedLedgerImpl) pulsarTopic.getManagedLedger();
             return getOffsetOfPosition(managedLedger,
