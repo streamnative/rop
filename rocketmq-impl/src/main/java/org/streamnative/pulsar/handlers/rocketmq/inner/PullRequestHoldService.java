@@ -14,6 +14,7 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -118,7 +119,7 @@ public class PullRequestHoldService extends ServiceThread {
                             .getMaxOffsetInPartitionId(topic, partitionId);
                     this.notifyMessageArriving(topic, partitionId, offset);
                 } catch (RopPersistentTopicException ex) {
-                    log.info("unowned-broker topic and remove the hold request.");
+                    log.warn("unowned-broker topic and remove the hold request.");
                     this.pullRequestTable.remove(key);
                 } catch (Throwable th) {
                     log.warn("check hold request failed. topic: {}, partitionId: {} ", topic, partitionId, th);
@@ -142,7 +143,7 @@ public class PullRequestHoldService extends ServiceThread {
         if (mpr != null) {
             List<PullRequest> requestList = mpr.cloneListAndClear();
             if (requestList != null) {
-
+                List<PullRequest> replayList = new ArrayList<PullRequest>();
                 for (PullRequest request : requestList) {
 
                     long newestOffset = maxOffset;

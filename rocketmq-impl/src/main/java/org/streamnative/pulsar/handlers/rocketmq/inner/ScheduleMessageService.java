@@ -283,7 +283,7 @@ public class ScheduleMessageService {
                 try {
                     return rocketBroker.getRopBrokerProxy().getPulsarClient().newProducer()
                             .topic(pulsarTopic)
-                            .producerName(pulsarTopic + "_delayedMessageSender")
+                            .producerName(pulsarTopic + "_delayedMessageSender" + System.currentTimeMillis())
                             .enableBatching(false)
                             .sendTimeout(SEND_MESSAGE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
                             .create();
