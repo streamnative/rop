@@ -179,7 +179,7 @@ public class GroupMetaManager {
             persistOffsetExecutor.scheduleAtFixedRate(() -> {
                 try {
                     persistOffset();
-                    showOffsetTable();
+                    //showOffsetTable();
                 } catch (Throwable e) {
                     log.error("Persist consumerOffset error.", e);
                 }
