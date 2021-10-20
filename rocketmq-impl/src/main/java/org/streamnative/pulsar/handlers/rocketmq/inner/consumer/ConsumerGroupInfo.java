@@ -122,7 +122,9 @@ public class ConsumerGroupInfo {
 
             infoOld = infoNew;
         } else {
-            if (Strings.isNotBlank(infoOld.getClientId()) && !infoOld.getClientId().equals(infoNew.getClientId())) {
+            if (Strings.isBlank(infoOld.getClientId())) {
+                this.channelInfoTable.put(infoNew.getChannel(), infoNew);
+            } else if (!infoOld.getClientId().equals(infoNew.getClientId())) {
                 log.error("[BUG] consumer channel exist in broker, but clientId not equal. GROUP: {} OLD: {} NEW: {} ",
                         this.groupName,
                         infoOld.toString(),
