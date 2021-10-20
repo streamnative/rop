@@ -14,6 +14,7 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner;
 
+import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import java.util.List;
 import java.util.Map;
@@ -26,7 +27,6 @@ import org.apache.rocketmq.broker.longpolling.PullRequest;
 import org.apache.rocketmq.common.ServiceThread;
 import org.apache.rocketmq.common.SystemClock;
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopPersistentTopicException;
-import com.google.common.cache.Cache;
 
 /**
  * Pull request hold service.
@@ -47,8 +47,8 @@ public class PullRequestHoldService extends ServiceThread {
         this.brokerController = brokerController;
         this.messageOffsetTable = CacheBuilder.newBuilder()
                 .initialCapacity(1024)
-                .maximumSize(1024 << 8)
-                .expireAfterAccess(15, TimeUnit.MINUTES)
+                .maximumSize(100 * 1000)
+                .expireAfterAccess(1, TimeUnit.DAYS)
                 .build();
     }
 
