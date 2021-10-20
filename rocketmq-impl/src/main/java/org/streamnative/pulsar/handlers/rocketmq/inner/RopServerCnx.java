@@ -44,6 +44,7 @@ import org.apache.pulsar.broker.service.BrokerService;
 import org.apache.pulsar.broker.service.persistent.PersistentTopic;
 import org.apache.pulsar.client.api.MessageId;
 import org.apache.pulsar.client.api.Producer;
+import org.apache.pulsar.client.api.ProducerBuilder;
 import org.apache.pulsar.client.api.PulsarClientException;
 import org.apache.pulsar.client.api.Reader;
 import org.apache.pulsar.client.impl.ClientCnx;
@@ -90,7 +91,7 @@ import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 public class RopServerCnx extends ChannelInboundHandlerAdapter implements PulsarMessageStore {
 
     private static final int sendTimeoutInSec = 3;
-    private static final int maxPendingMessages = 1000;
+    private static final int maxPendingMessages = 30000;
     private static final int fetchTimeoutInMs = 3000; // 3 sec
     private static final String ropHandlerName = "RopServerCnxHandler";
     private final BrokerService service;
@@ -425,9 +426,12 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
 
     private Producer<byte[]> createNewProducer(String pTopic, String producerGroup, long producerId)
             throws PulsarClientException {
-        return brokerController.getRopBrokerProxy().getPulsarClient().newProducer()
+        ProducerBuilder<byte[]> producerBuilder = brokerController.getRopBrokerProxy().getPulsarClient()
+                .newProducer()
+                .maxPendingMessages(maxPendingMessages);
+
+        return producerBuilder.clone()
                 .topic(pTopic)
-                .maxPendingMessages(maxPendingMessages)
                 .producerName(producerGroup + CommonUtils.UNDERSCORE_CHAR + System.currentTimeMillis())
                 .sendTimeout(sendTimeoutInSec, TimeUnit.SECONDS)
                 .enableBatching(false)

@@ -14,11 +14,13 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner;
 
-import java.util.ArrayList;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.broker.longpolling.ManyPullRequest;
 import org.apache.rocketmq.broker.longpolling.PullRequest;
@@ -39,10 +41,15 @@ public class PullRequestHoldService extends ServiceThread {
     // key       => topicName@partitionId
     // topicName => tenant/ns/topicName
     private final ConcurrentMap<String, ManyPullRequest> pullRequestTable = new ConcurrentHashMap<>(1024);
-    private final ConcurrentMap<String, Long> messageOffsetTable = new ConcurrentHashMap<>(1024);
+    private final Cache<String, Long> messageOffsetTable;
 
     public PullRequestHoldService(final RocketMQBrokerController brokerController) {
         this.brokerController = brokerController;
+        this.messageOffsetTable = CacheBuilder.newBuilder()
+                .initialCapacity(1024)
+                .maximumSize(100 * 1000)
+                .expireAfterAccess(10, TimeUnit.MINUTES)
+                .build();
     }
 
     public void suspendPullRequest(final String topic, final int partitionId, final PullRequest pullRequest) {
@@ -54,7 +61,7 @@ public class PullRequestHoldService extends ServiceThread {
         boolean needNotifyMessageArriving = false;
         Long currentOffset;
         synchronized (key.intern()) {
-            currentOffset = messageOffsetTable.get(key);
+            currentOffset = messageOffsetTable.getIfPresent(key);
             if (currentOffset != null && currentOffset >= pullRequest.getPullFromThisOffset()) {
                 needNotifyMessageArriving = true;
             }
@@ -67,7 +74,7 @@ public class PullRequestHoldService extends ServiceThread {
     public void updateMessageOffset(final String topic, final int partitionId, long currentOffset) {
         String key = this.buildKey(topic, partitionId);
         synchronized (key.intern()) {
-            Long offset = messageOffsetTable.get(key);
+            Long offset = messageOffsetTable.getIfPresent(key);
             if (offset == null || offset < currentOffset) {
                 messageOffsetTable.put(key, currentOffset);
             }
@@ -143,7 +150,6 @@ public class PullRequestHoldService extends ServiceThread {
         if (mpr != null) {
             List<PullRequest> requestList = mpr.cloneListAndClear();
             if (requestList != null) {
-                List<PullRequest> replayList = new ArrayList<PullRequest>();
                 for (PullRequest request : requestList) {
 
                     long newestOffset = maxOffset;

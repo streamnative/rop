@@ -14,6 +14,8 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.processor;
 
+import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.PULSAR_REAL_PARTITION_ID_TAG;
+
 import com.google.common.collect.Maps;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
@@ -379,8 +381,16 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
                 (SearchOffsetRequestHeader) request.decodeCommandCustomHeader(SearchOffsetRequestHeader.class);
 
         ClientGroupAndTopicName clientGroupName = new ClientGroupAndTopicName(Strings.EMPTY, requestHeader.getTopic());
-        long offset = this.brokerController.getConsumerOffsetManager()
-                .searchOffsetByTimestamp(clientGroupName, requestHeader.getQueueId(), requestHeader.getTimestamp());
+
+        long offset;
+        if (request.getExtFields().containsKey(PULSAR_REAL_PARTITION_ID_TAG)) {
+            int partitionId = CommonUtils.getPulsarPartitionIdByRequest(request);
+            offset = this.brokerController.getConsumerOffsetManager()
+                    .searchOffsetByTimestamp(clientGroupName, partitionId, requestHeader.getTimestamp());
+        } else {
+            offset = this.brokerController.getConsumerOffsetManager()
+                    .searchOffsetByTimestamp(clientGroupName, requestHeader.getQueueId(), requestHeader.getTimestamp());
+        }
 
         if (offset >= 0) {
             responseHeader.setOffset(offset);
@@ -389,6 +399,7 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
         }
 
         response.setCode(ResponseCode.SYSTEM_ERROR);
+        response.setRemark("Not found offset by timestamp.");
         return response;
     }
 
@@ -403,7 +414,7 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
         long offset = Long.MAX_VALUE;
         try {
             offset = this.brokerController.getConsumerOffsetManager()
-                    .getMaxOffsetInPulsarPartition(clientTopic, CommonUtils.getPulsarPartitionIdByRequest(request));
+                    .getNextOffset(clientTopic, CommonUtils.getPulsarPartitionIdByRequest(request));
         } catch (Exception e) {
             log.info("getMaxOffset on unowned-broker topic[{}] and queueId[{}].", requestHeader.getTopic(),
                     requestHeader.getQueueId());
