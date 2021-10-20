@@ -17,6 +17,7 @@ package org.streamnative.pulsar.handlers.rocketmq.inner.processor;
 import io.netty.channel.ChannelHandlerContext;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.common.consumer.ConsumeFromWhere;
 import org.apache.rocketmq.common.protocol.RequestCode;
 import org.apache.rocketmq.common.protocol.ResponseCode;
 import org.apache.rocketmq.common.protocol.header.GetConsumerListByGroupRequestHeader;
@@ -26,6 +27,7 @@ import org.apache.rocketmq.common.protocol.header.QueryConsumerOffsetRequestHead
 import org.apache.rocketmq.common.protocol.header.QueryConsumerOffsetResponseHeader;
 import org.apache.rocketmq.common.protocol.header.UpdateConsumerOffsetRequestHeader;
 import org.apache.rocketmq.common.protocol.header.UpdateConsumerOffsetResponseHeader;
+import org.apache.rocketmq.common.protocol.heartbeat.ConsumeType;
 import org.apache.rocketmq.remoting.common.RemotingHelper;
 import org.apache.rocketmq.remoting.exception.RemotingCommandException;
 import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
@@ -133,11 +135,21 @@ public class ConsumerManageProcessor implements NettyRequestProcessor {
         if (offset >= 0) {
             responseHeader.setOffset(offset);
             response.setCode(ResponseCode.SUCCESS);
-            response.setRemark(null);
         } else {
             responseHeader.setOffset(-1L);
             response.setCode(ResponseCode.QUERY_NOT_FOUND);
             response.setRemark("Not found offset.");
+//            ConsumerGroupInfo consumerGroupInfo = this.brokerController.getConsumerManager()
+//                    .getConsumerGroupInfo(requestHeader.getConsumerGroup());
+//            if (ConsumeType.CONSUME_PASSIVELY.equals(consumerGroupInfo.getConsumeType())
+//                    && ConsumeFromWhere.CONSUME_FROM_LAST_OFFSET.equals(consumerGroupInfo.getConsumeFromWhere())) {
+//                responseHeader.setOffset(Long.MAX_VALUE);
+//                response.setCode(ResponseCode.SUCCESS);
+//            } else {
+//                responseHeader.setOffset(-1L);
+//                response.setCode(ResponseCode.QUERY_NOT_FOUND);
+//                response.setRemark("Not found offset.");
+//            }
         }
 
         return response;
