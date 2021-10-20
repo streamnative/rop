@@ -251,12 +251,14 @@ public class ScheduleMessageService {
                                                     .sendAsync()
                                                     .whenCompleteAsync((msgId, ex) -> {
                                                         if (ex == null) {
-//                                                            rocketBroker.getMessageArrivingListener()
-//                                                                    .arriving(msgInner.getTopic(),
-//                                                                            msgInner.getQueueId(), -1, 0, 0,
-//                                                                            null, null);
+                                                            /*TODO: how to notify RetryTopic consumer pull message
+                                                             * at once. need rpc to notify, for some partition isn't
+                                                             * on current broker.
+                                                             */
                                                             delayedConsumer.acknowledgeAsync(message);
                                                         } else {
+                                                            log.warn("DelayedMessageSender send message[{}] failed.",
+                                                                    message);
                                                             delayedConsumer.negativeAcknowledge(message);
                                                         }
                                                     });

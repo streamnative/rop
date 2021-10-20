@@ -14,6 +14,8 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.processor;
 
+import static org.apache.rocketmq.common.protocol.heartbeat.ConsumeType.CONSUME_PASSIVELY;
+import static org.apache.rocketmq.common.protocol.heartbeat.MessageModel.CLUSTERING;
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_INNER_REMOTE_CLIENT_TAG;
 
 import io.netty.buffer.ByteBuf;
@@ -23,14 +25,18 @@ import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.FileRegion;
 import java.nio.ByteBuffer;
+import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.logging.log4j.util.Strings;
 import org.apache.rocketmq.broker.longpolling.PullRequest;
 import org.apache.rocketmq.broker.mqtrace.ConsumeMessageContext;
 import org.apache.rocketmq.broker.mqtrace.ConsumeMessageHook;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.TopicConfig;
 import org.apache.rocketmq.common.constant.PermName;
+import org.apache.rocketmq.common.consumer.ConsumeFromWhere;
 import org.apache.rocketmq.common.filter.FilterAPI;
 import org.apache.rocketmq.common.help.FAQUrl;
 import org.apache.rocketmq.common.message.MessageDecoder;
@@ -46,6 +52,7 @@ import org.apache.rocketmq.remoting.common.RemotingHelper;
 import org.apache.rocketmq.remoting.exception.RemotingCommandException;
 import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
 import org.apache.rocketmq.remoting.netty.RequestTask;
+import org.apache.rocketmq.remoting.protocol.LanguageCode;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.store.stats.BrokerStatsManager;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
@@ -84,12 +91,12 @@ public class PullMessageProcessor implements NettyRequestProcessor {
             RopClientChannelCnx channelCnx = (RopClientChannelCnx) consumerGroupInfo
                     .getChannelInfoTable().get(channel);
             return channelCnx.getServerCnx();
-        } catch (
-                Exception e) {
-            log.info("PullMessageProcessor get client channel context error, wait client register consumer info.");
+        } catch (Exception e) {
+            log.info("PullMessageProcessor get client [request={}] channel context error,"
+                            + " wait client register consumer info.",
+                    request);
             return null;
         }
-
     }
 
     @Override
@@ -102,6 +109,17 @@ public class PullMessageProcessor implements NettyRequestProcessor {
             this.brokerController.getConsumerManager()
                     .registerProxyRequestConsumer(brokerProxyGroupName, requestHeader.getConsumerGroup(),
                             this.brokerController, ctx);
+        } else {
+            if (Objects.isNull(this.brokerController.getConsumerManager()
+                    .getConsumerGroupInfo(requestHeader.getConsumerGroup())) && Objects.nonNull(ctx)) {
+                RopClientChannelCnx clientChannelCnx = new RopClientChannelCnx(brokerController, ctx, Strings.EMPTY,
+                        LanguageCode.JAVA, 0);
+                this.brokerController.getConsumerManager()
+                        .registerConsumer(requestHeader.getConsumerGroup(), clientChannelCnx, CONSUME_PASSIVELY,
+                                CLUSTERING,
+                                ConsumeFromWhere.CONSUME_FROM_LAST_OFFSET, Collections.emptySet(),
+                                true);
+            }
         }
         return this.processRequest(ctx.channel(), requestHeader, request, true);
     }
