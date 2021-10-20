@@ -48,7 +48,7 @@ public class PullRequestHoldService extends ServiceThread {
         this.messageOffsetTable = CacheBuilder.newBuilder()
                 .initialCapacity(1024)
                 .maximumSize(100 * 1000)
-                .expireAfterAccess(1, TimeUnit.DAYS)
+                .expireAfterAccess(10, TimeUnit.MINUTES)
                 .build();
     }
 
