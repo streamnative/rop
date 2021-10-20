@@ -23,6 +23,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.logging.log4j.util.Strings;
 import org.apache.rocketmq.broker.client.ClientChannelInfo;
 import org.apache.rocketmq.common.consumer.ConsumeFromWhere;
 import org.apache.rocketmq.common.protocol.heartbeat.ConsumeType;
@@ -121,7 +122,7 @@ public class ConsumerGroupInfo {
 
             infoOld = infoNew;
         } else {
-            if (!infoOld.getClientId().equals(infoNew.getClientId())) {
+            if (Strings.isNotBlank(infoOld.getClientId()) && !infoOld.getClientId().equals(infoNew.getClientId())) {
                 log.error("[BUG] consumer channel exist in broker, but clientId not equal. GROUP: {} OLD: {} NEW: {} ",
                         this.groupName,
                         infoOld.toString(),

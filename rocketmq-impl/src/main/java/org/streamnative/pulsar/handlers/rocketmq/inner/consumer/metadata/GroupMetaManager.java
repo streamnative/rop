@@ -169,6 +169,7 @@ public class GroupMetaManager {
             persistOffsetExecutor.scheduleAtFixedRate(() -> {
                 try {
                     persistOffset();
+                    //showOffsetTable();
                 } catch (Throwable e) {
                     log.error("Persist consumerOffset error.", e);
                 }
@@ -281,6 +282,7 @@ public class GroupMetaManager {
     }
 
     public void persistOffset() {
+        log.debug("Rop persist offset.");
         for (Entry<GroupOffsetKey, GroupOffsetValue> entry : offsetTable.asMap().entrySet()) {
             GroupOffsetKey groupOffsetKey = entry.getKey();
             GroupOffsetValue groupOffsetValue = entry.getValue();
