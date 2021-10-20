@@ -330,8 +330,8 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
 
     }
 
-    public long searchOffsetByTimestamp(ClientTopicName clientTopicName, int queueId, int pulsarPartitionId, long timestamp)
-            throws Exception {
+    public long searchOffsetByTimestamp(ClientTopicName clientTopicName, int queueId, int pulsarPartitionId,
+            long timestamp) throws Exception {
         SearchOffsetRequestHeader requestHeader = new SearchOffsetRequestHeader();
         requestHeader.setTopic(clientTopicName.getRmqTopicName());
         requestHeader.setQueueId(queueId);
