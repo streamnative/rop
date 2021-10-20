@@ -39,7 +39,7 @@ public class GroupOffsetValue implements Deserializer<GroupOffsetValue> {
     private long offset;
     private long commitTimestamp;
     private long expireTimestamp;
-    private transient volatile boolean isUpdated = true;
+    private transient volatile boolean isUpdated;
 
     public GroupOffsetValue() {
     }
@@ -48,6 +48,7 @@ public class GroupOffsetValue implements Deserializer<GroupOffsetValue> {
         this.offset = offset;
         this.commitTimestamp = commitTimestamp;
         this.expireTimestamp = expireTimestamp;
+        this.isUpdated = true;
     }
 
     @Override

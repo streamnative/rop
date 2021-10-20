@@ -44,9 +44,13 @@ import org.apache.pulsar.client.api.CompressionType;
 import org.apache.pulsar.client.api.Message;
 import org.apache.pulsar.client.api.MessageId;
 import org.apache.pulsar.client.api.Producer;
+import org.apache.pulsar.client.api.ProducerBuilder;
 import org.apache.pulsar.client.api.PulsarClient;
 import org.apache.pulsar.client.api.Reader;
+import org.apache.pulsar.client.api.ReaderBuilder;
 import org.apache.pulsar.client.api.Schema;
+import org.apache.pulsar.client.impl.PulsarClientImpl;
+import org.apache.pulsar.client.impl.ReaderBuilderImpl;
 import org.apache.pulsar.common.api.proto.CommandSubscribe.InitialPosition;
 import org.apache.pulsar.common.naming.TopicName;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
@@ -127,12 +131,15 @@ public class GroupMetaManager {
         if (isRunning && groupOffsetProducer == null) {
             try {
                 PulsarClient pulsarClient = brokerController.getBrokerService().getPulsar().getClient();
-                groupOffsetProducer = pulsarClient.newProducer(Schema.BYTEBUFFER)
-                        .sendTimeout(3, TimeUnit.SECONDS)
+                ProducerBuilder<ByteBuffer> producer = pulsarClient
+                        .newProducer(Schema.BYTEBUFFER)
+                        .maxPendingMessages(100000);
+
+                groupOffsetProducer = producer.clone()
+                        .topic(RocketMQTopic.getGroupMetaOffsetTopic().getPulsarFullName())
                         .compressionType(CompressionType.SNAPPY)
                         .enableBatching(true)
                         .blockIfQueueFull(false)
-                        .topic(RocketMQTopic.getGroupMetaOffsetTopic().getPulsarFullName())
                         .create();
             } catch (Exception e) {
                 log.warn("getGroupOffsetProducer error.", e);
@@ -146,7 +153,9 @@ public class GroupMetaManager {
         if (isRunning && groupOffsetReader == null) {
             try {
                 PulsarClient pulsarClient = brokerController.getBrokerService().getPulsar().getClient();
-                groupOffsetReader = pulsarClient.newReader(Schema.BYTEBUFFER)
+                ReaderBuilder<ByteBuffer> reader = new ReaderBuilderImpl<>((PulsarClientImpl) pulsarClient,
+                        Schema.BYTEBUFFER);
+                groupOffsetReader = reader.clone()
                         .topic(RocketMQTopic.getGroupMetaOffsetTopic().getPulsarFullName())
                         .startMessageId(MessageId.earliest)
                         .readCompacted(true)
@@ -165,10 +174,12 @@ public class GroupMetaManager {
             isRunning = true;
             pulsarService = this.brokerController.getBrokerService().pulsar();
             offsetReaderExecutor.execute(this::loadOffsets);
+            Thread.sleep(5000);
 
             persistOffsetExecutor.scheduleAtFixedRate(() -> {
                 try {
                     persistOffset();
+                    showOffsetTable();
                 } catch (Throwable e) {
                     log.error("Persist consumerOffset error.", e);
                 }
@@ -178,6 +189,16 @@ public class GroupMetaManager {
             throw new RopServerException("GroupMetaManager failed to start.", e);
         }
         log.info("Start GroupMetaManager service successfully.");
+    }
+
+    private void showOffsetTable() {
+        log.info("Rop show offset table:");
+        offsetTable.asMap().forEach((groupOffsetKey, groupOffsetValue) ->
+                log.info(String.format("GroupOffsetKey: [%s|%s|%s], GroupOffsetValue: %s",
+                        groupOffsetKey.getGroupName(),
+                        groupOffsetKey.getTopicName(),
+                        groupOffsetKey.getPulsarPartitionId(),
+                        groupOffsetValue.getOffset())));
     }
 
     /**
@@ -258,9 +279,8 @@ public class GroupMetaManager {
 
     public void commitOffset(final String group, final String topic, final int queueId, final long offset) {
         // skip commit offset request if this broker not owner for the request queueId topic
-        log.debug("When commit group[{}] offset, the [topic@queueId] is [{}@{}] and the messageID is: {}", group, topic,
-                queueId,
-                offset);
+        log.debug("When commit group[{}] offset, the [topic@queueId] is [{}@{}] and the messageID is: {}",
+                group, topic, queueId, offset);
         ClientGroupAndTopicName groupAndTopicName = new ClientGroupAndTopicName(group, topic);
         String pulsarGroupName = groupAndTopicName.getClientGroupName().getPulsarGroupName();
         String pulsarTopicName = groupAndTopicName.getClientTopicName().getPulsarTopicName();
@@ -280,7 +300,30 @@ public class GroupMetaManager {
         }
     }
 
+    public void commitOffsetByPartitionId(final String group, final String topic, final int partitionId,
+            final long offset) {
+        // skip commit offset request if this broker not owner for the request queueId topic
+        log.debug("When commit group[{}] offset, the [topic@partitionId] is [{}@{}] and the messageID is: {}",
+                group, topic, partitionId, offset);
+        ClientGroupAndTopicName groupAndTopicName = new ClientGroupAndTopicName(group, topic);
+        String pulsarGroupName = groupAndTopicName.getClientGroupName().getPulsarGroupName();
+        String pulsarTopicName = groupAndTopicName.getClientTopicName().getPulsarTopicName();
+
+        GroupOffsetKey groupOffsetKey = new GroupOffsetKey(pulsarGroupName, pulsarTopicName, partitionId);
+        GroupOffsetValue oldGroupOffset = offsetTable.getIfPresent(groupOffsetKey);
+        long commitTimestamp = System.currentTimeMillis();
+        long expireTimestamp = System.currentTimeMillis() + offsetsRetentionMs;
+        if (Objects.nonNull(oldGroupOffset)) {
+            //refresh group offset value and expire time
+            oldGroupOffset.refresh(offset, commitTimestamp, expireTimestamp);
+        } else {
+            // add new group offset
+            offsetTable.put(groupOffsetKey, new GroupOffsetValue(offset, commitTimestamp, expireTimestamp));
+        }
+    }
+
     public void persistOffset() {
+        log.info("Rop persist offset.");
         for (Entry<GroupOffsetKey, GroupOffsetValue> entry : offsetTable.asMap().entrySet()) {
             GroupOffsetKey groupOffsetKey = entry.getKey();
             GroupOffsetValue groupOffsetValue = entry.getValue();
