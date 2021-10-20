@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.TimerTask;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -49,6 +50,7 @@ import org.apache.rocketmq.common.message.MessageDecoder;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.store.MessageExtBrokerInner;
 import org.streamnative.pulsar.handlers.rocketmq.RocketMQServiceConfiguration;
+import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopServerException;
 import org.streamnative.pulsar.handlers.rocketmq.inner.format.RopEntryFormatter;
 import org.streamnative.pulsar.handlers.rocketmq.inner.timer.SystemTimer;
 import org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils;
@@ -234,8 +236,7 @@ public class ScheduleMessageService {
                                                     deliveryTime - Instant.now().toEpochMilli());
                                             MessageExtBrokerInner msgInner = messageTimeup(messageExt);
                                             if (MixAll.RMQ_SYS_TRANS_HALF_TOPIC.equals(messageExt.getTopic())) {
-                                                log.error(
-                                                        "[BUG] the real topic of schedule msg is {}, "
+                                                log.error("[BUG] the real topic of schedule msg is {}, "
                                                                 + "discard the msg. msg={}",
                                                         messageExt.getTopic(), messageExt);
                                                 return;
@@ -259,7 +260,7 @@ public class ScheduleMessageService {
                                                         }
                                                     });
                                         } catch (Exception ex) {
-                                            log.warn("delayedMessageSender send message[{}] failed.",
+                                            log.warn("DelayedMessageSender send message[{}] failed.",
                                                     message.getMessageId(), ex);
                                             delayedConsumer.negativeAcknowledge(message);
                                         }
@@ -277,7 +278,7 @@ public class ScheduleMessageService {
             }
         }
 
-        private Producer<byte[]> getProducerFromCache(String pulsarTopic) {
+        private Producer<byte[]> getProducerFromCache(String pulsarTopic) throws RopServerException {
             Producer<byte[]> producer = sendBackProducers.computeIfAbsent(pulsarTopic, key -> {
                 log.info("getProducerFromCache [topic={}].", pulsarTopic);
                 try {
@@ -292,7 +293,15 @@ public class ScheduleMessageService {
                 }
                 return null;
             });
-            return producer;
+            if (Objects.nonNull(producer) && producer.isConnected()) {
+                return producer;
+            } else {
+                if (Objects.nonNull(producer)) {
+                    producer.closeAsync();
+                }
+                sendBackProducers.remove(pulsarTopic);
+                throw new RopServerException("[ScheduleMessageService]getProducerFromCache error.");
+            }
         }
 
         private void createConsumerIfNotExists() {
