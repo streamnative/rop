@@ -65,16 +65,20 @@ import org.apache.pulsar.client.impl.PulsarClientImpl;
 import org.apache.pulsar.common.naming.TopicName;
 import org.apache.rocketmq.broker.mqtrace.ConsumeMessageHook;
 import org.apache.rocketmq.broker.mqtrace.SendMessageHook;
+import org.apache.rocketmq.client.exception.MQBrokerException;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.help.FAQUrl;
 import org.apache.rocketmq.common.protocol.RequestCode;
 import org.apache.rocketmq.common.protocol.ResponseCode;
 import org.apache.rocketmq.common.protocol.header.ConsumerSendMsgBackRequestHeader;
+import org.apache.rocketmq.common.protocol.header.GetMaxOffsetRequestHeader;
 import org.apache.rocketmq.common.protocol.header.GetMaxOffsetResponseHeader;
 import org.apache.rocketmq.common.protocol.header.GetMinOffsetRequestHeader;
 import org.apache.rocketmq.common.protocol.header.GetMinOffsetResponseHeader;
 import org.apache.rocketmq.common.protocol.header.PullMessageRequestHeader;
 import org.apache.rocketmq.common.protocol.header.PullMessageResponseHeader;
+import org.apache.rocketmq.common.protocol.header.SearchOffsetRequestHeader;
+import org.apache.rocketmq.common.protocol.header.SearchOffsetResponseHeader;
 import org.apache.rocketmq.common.protocol.header.SendMessageRequestHeader;
 import org.apache.rocketmq.common.protocol.header.SendMessageResponseHeader;
 import org.apache.rocketmq.common.protocol.heartbeat.SubscriptionData;
@@ -126,7 +130,9 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
     private PulsarService pulsarService;
     private final OrderedExecutor orderedExecutor;
     private final List<ProcessorProxyRegister> processorProxyRegisters = new ArrayList<>();
+    @Getter
     private final BrokerNetworkAPI brokerNetworkClients;
+    @Getter
     private volatile String brokerTag = Strings.EMPTY;
     private final String clusterName;
     @Getter
@@ -170,6 +176,18 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
             return pulsarPartitionIdList.get(queueId);
         } catch (RuntimeException e) {
             log.error("Rop [{}] [{}] getPulsarTopicPartitionId error.", pulsarTopicName, queueId, e);
+            throw e;
+        }
+    }
+
+    public List<Integer> getPulsarTopicPartitionIdList(TopicName pulsarTopicName) {
+        try {
+            Map<String, List<Integer>> pulsarTopicRoute = mqTopicManager
+                    .getPulsarTopicRoute(pulsarTopicName, Strings.EMPTY);
+            Preconditions.checkArgument(pulsarTopicRoute != null && !pulsarTopicRoute.isEmpty());
+            return pulsarTopicRoute.get(this.brokerTag);
+        } catch (RuntimeException e) {
+            log.error("Rop [{}] [{}] getPulsarTopicPartitionIdList error.", pulsarTopicName, e);
             throw e;
         }
     }
@@ -310,6 +328,55 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
             ctx.writeAndFlush(response);
         }
 
+    }
+
+    public long searchOffsetByTimestamp(ClientTopicName clientTopicName, int queueId, int pulsarPartitionId,
+            long timestamp) throws Exception {
+        SearchOffsetRequestHeader requestHeader = new SearchOffsetRequestHeader();
+        requestHeader.setTopic(clientTopicName.getRmqTopicName());
+        requestHeader.setQueueId(queueId);
+        requestHeader.setTimestamp(timestamp);
+        RemotingCommand request = RemotingCommand
+                .createRequestCommand(RequestCode.SEARCH_OFFSET_BY_TIMESTAMP, requestHeader);
+        request.addExtField(PULSAR_REAL_PARTITION_ID_TAG, String.valueOf(pulsarPartitionId));
+
+        TopicName pulsarTopicName = TopicName.get(clientTopicName.getPulsarTopicName());
+        TopicName partitionedTopicName = pulsarTopicName.getPartition(pulsarPartitionId);
+        String address = lookupPulsarTopicBroker(partitionedTopicName);
+
+        RemotingCommand response = brokerNetworkClients.invokeSync(address, request, 5000);
+        assert response != null;
+        if (response.getCode() == ResponseCode.SUCCESS) {
+            SearchOffsetResponseHeader responseHeader =
+                    (SearchOffsetResponseHeader) response.decodeCommandCustomHeader(SearchOffsetResponseHeader.class);
+            return responseHeader.getOffset();
+        }
+
+        throw new MQBrokerException(response.getCode(), response.getRemark());
+    }
+
+    public long searchMaxOffset(ClientTopicName clientTopicName, int queueId, int pulsarPartitionId)
+            throws Exception {
+        GetMaxOffsetRequestHeader requestHeader = new GetMaxOffsetRequestHeader();
+        requestHeader.setTopic(clientTopicName.getRmqTopicName());
+        requestHeader.setQueueId(queueId);
+        RemotingCommand request = RemotingCommand.createRequestCommand(RequestCode.GET_MAX_OFFSET, requestHeader);
+        request.addExtField(PULSAR_REAL_PARTITION_ID_TAG, String.valueOf(pulsarPartitionId));
+
+        TopicName pulsarTopicName = TopicName.get(clientTopicName.getPulsarTopicName());
+        TopicName partitionedTopicName = pulsarTopicName.getPartition(pulsarPartitionId);
+        String address = lookupPulsarTopicBroker(partitionedTopicName);
+
+        RemotingCommand response = brokerNetworkClients.invokeSync(address, request, 5000);
+        assert response != null;
+        if (response.getCode() == ResponseCode.SUCCESS) {
+            GetMaxOffsetResponseHeader responseHeader =
+                    (GetMaxOffsetResponseHeader) response.decodeCommandCustomHeader(GetMaxOffsetResponseHeader.class);
+
+            return responseHeader.getOffset();
+        }
+
+        throw new MQBrokerException(response.getCode(), response.getRemark());
     }
 
     private void processNonOwnedBrokerConsumerSendBackRequest(ChannelHandlerContext ctx, RemotingCommand cmd,

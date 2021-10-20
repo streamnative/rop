@@ -238,6 +238,13 @@ public class ConsumerOffsetManager {
         return lastMessageIndex < 0 ? 0L : lastMessageIndex;
     }
 
+    public long getNextOffset(ClientTopicName topicName, int pulsarPartitionId)
+            throws RopPersistentTopicException {
+        PersistentTopic persistentTopic = getPulsarPersistentTopic(topicName, pulsarPartitionId);
+        long lastMessageIndex = MessageIdUtils.getLastMessageIndex(persistentTopic.getManagedLedger());
+        return Math.max(lastMessageIndex + 1, 0L);
+    }
+
     public long getLastTimestamp(ClientTopicName topicName, int pulsarPartitionId) {
         try {
             PersistentTopic persistentTopic = getPulsarPersistentTopic(topicName, pulsarPartitionId);
@@ -295,7 +302,7 @@ public class ConsumerOffsetManager {
                         finalOffset.complete(-1L);
                     } else {
                         MessageIdUtils.getOffsetOfPosition(managedLedger,
-                                (PositionImpl) position, true, -1).whenComplete((offset, throwable) -> {
+                                (PositionImpl) position, true, timestamp).whenComplete((offset, throwable) -> {
                             if (throwable != null) {
                                 log.error("[{}] Failed to get offset for position {}", persistentTopic.getName(),
                                         position, throwable);

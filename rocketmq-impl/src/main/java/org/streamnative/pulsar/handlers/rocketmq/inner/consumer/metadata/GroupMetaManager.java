@@ -192,9 +192,9 @@ public class GroupMetaManager {
     }
 
     private void showOffsetTable() {
-        log.info("Rop show offset table:");
+        log.debug("Rop show offset table:");
         offsetTable.asMap().forEach((groupOffsetKey, groupOffsetValue) ->
-                log.info(String.format("GroupOffsetKey: [%s|%s|%s], GroupOffsetValue: %s",
+                log.debug(String.format("GroupOffsetKey: [%s|%s|%s], GroupOffsetValue: %s",
                         groupOffsetKey.getGroupName(),
                         groupOffsetKey.getTopicName(),
                         groupOffsetKey.getPulsarPartitionId(),
@@ -323,7 +323,6 @@ public class GroupMetaManager {
     }
 
     public void persistOffset() {
-        log.info("Rop persist offset.");
         for (Entry<GroupOffsetKey, GroupOffsetValue> entry : offsetTable.asMap().entrySet()) {
             GroupOffsetKey groupOffsetKey = entry.getKey();
             GroupOffsetValue groupOffsetValue = entry.getValue();
