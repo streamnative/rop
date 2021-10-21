@@ -22,6 +22,7 @@ import static org.apache.rocketmq.common.protocol.RequestCode.GET_MAX_OFFSET;
 import static org.apache.rocketmq.common.protocol.RequestCode.GET_MIN_OFFSET;
 import static org.apache.rocketmq.common.protocol.RequestCode.PULL_MESSAGE;
 import static org.apache.rocketmq.common.protocol.RequestCode.QUERY_MESSAGE;
+import static org.apache.rocketmq.common.protocol.RequestCode.SEARCH_OFFSET_BY_TIMESTAMP;
 import static org.apache.rocketmq.common.protocol.RequestCode.SEND_BATCH_MESSAGE;
 import static org.apache.rocketmq.common.protocol.RequestCode.SEND_MESSAGE;
 import static org.apache.rocketmq.common.protocol.RequestCode.SEND_MESSAGE_V2;
@@ -316,6 +317,23 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                         processGetMinOffsetRequest(ctx, cmd, pulsarTopicName, INTERNAL_REDIRECT_TIMEOUT_MS);
                     }
                     break;
+                case SEARCH_OFFSET_BY_TIMESTAMP:
+                    final SearchOffsetRequestHeader searchOffsetByTimestampHeader =
+                            (SearchOffsetRequestHeader) cmd.decodeCommandCustomHeader(SearchOffsetRequestHeader.class);
+
+                    topic = searchOffsetByTimestampHeader.getTopic();
+                    queueId = searchOffsetByTimestampHeader.getQueueId();
+                    rmqTopic = new ClientTopicName(topic);
+                    pulsarTopicName = rmqTopic.toPulsarTopicName();
+                    isOwnedBroker = checkTopicOwnerBroker(cmd, pulsarTopicName, queueId);
+                    if (isOwnedBroker) {
+                        log.trace("process owned broker searchOffsetByTimestamp request[{}].", cmd);
+                        super.processRequestCommand(ctx, cmd);
+                    } else {
+                        log.trace("process unowned broker searchOffsetByTimestamp request[{}].", cmd);
+                        processSearchOffsetByTimestampRequest(ctx, cmd, pulsarTopicName, INTERNAL_REDIRECT_TIMEOUT_MS);
+                    }
+                    break;
                 default:
                     super.processRequestCommand(ctx, cmd);
                     break;
@@ -336,8 +354,7 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
         requestHeader.setTopic(clientTopicName.getRmqTopicName());
         requestHeader.setQueueId(queueId);
         requestHeader.setTimestamp(timestamp);
-        RemotingCommand request = RemotingCommand
-                .createRequestCommand(RequestCode.SEARCH_OFFSET_BY_TIMESTAMP, requestHeader);
+        RemotingCommand request = RemotingCommand.createRequestCommand(SEARCH_OFFSET_BY_TIMESTAMP, requestHeader);
         request.addExtField(PULSAR_REAL_PARTITION_ID_TAG, String.valueOf(pulsarPartitionId));
 
         TopicName pulsarTopicName = TopicName.get(clientTopicName.getPulsarTopicName());
@@ -527,6 +544,45 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
             getMinOffsetResponse.setCode(ResponseCode.SYSTEM_ERROR);
             getMinOffsetResponse.setRemark("BrokerNetworkAPI processGetMinOffsetRequest error");
             ctx.writeAndFlush(getMinOffsetResponse);
+        }
+    }
+
+    private void processSearchOffsetByTimestampRequest(ChannelHandlerContext ctx, RemotingCommand cmd,
+            TopicName pulsarTopicName, long timeout) {
+        int pulsarPartitionId = Integer.parseInt(cmd.getExtFields().get(PULSAR_REAL_PARTITION_ID_TAG));
+        TopicName partitionedTopicName = pulsarTopicName.getPartition(pulsarPartitionId);
+        String address = lookupPulsarTopicBroker(partitionedTopicName);
+        log.debug("processSearchOffsetByTimestampRequest [topic={},pid={}] and address=[{}].", pulsarTopicName,
+                pulsarPartitionId, address);
+        final int opaque = cmd.getOpaque();
+        try {
+            brokerNetworkClients.invokeAsync(address, cmd, timeout, (responseFuture) -> {
+                RemotingCommand searchOffsetByTimestampResponse = responseFuture.getResponseCommand();
+                if (searchOffsetByTimestampResponse != null) {
+                    searchOffsetByTimestampResponse.setOpaque(opaque);
+                    searchOffsetByTimestampResponse.markResponseType();
+                    ctx.writeAndFlush(searchOffsetByTimestampResponse);
+                } else {
+                    log.trace("processSearchOffsetByTimestampRequest invokeAsync error[request={}].", cmd);
+                    ownedBrokerCache.invalidate(partitionedTopicName);
+                    searchOffsetByTimestampResponse = RemotingCommand
+                            .createResponseCommand(SearchOffsetResponseHeader.class);
+                    searchOffsetByTimestampResponse.setOpaque(opaque);
+                    searchOffsetByTimestampResponse.setCode(ResponseCode.SYSTEM_ERROR);
+                    searchOffsetByTimestampResponse
+                            .setRemark("processSearchOffsetByTimestampRequest invokeAsync error");
+                    ctx.writeAndFlush(searchOffsetByTimestampResponse);
+                }
+            });
+        } catch (Exception e) {
+            log.warn("BrokerNetworkAPI processSearchOffsetByTimestampRequest error.", e);
+            ownedBrokerCache.invalidate(partitionedTopicName);
+            RemotingCommand searchOffsetByTimestampResponse = RemotingCommand
+                    .createResponseCommand(SearchOffsetResponseHeader.class);
+            searchOffsetByTimestampResponse.setOpaque(opaque);
+            searchOffsetByTimestampResponse.setCode(ResponseCode.SYSTEM_ERROR);
+            searchOffsetByTimestampResponse.setRemark("BrokerNetworkAPI processSearchOffsetByTimestampRequest error");
+            ctx.writeAndFlush(searchOffsetByTimestampResponse);
         }
     }
 
