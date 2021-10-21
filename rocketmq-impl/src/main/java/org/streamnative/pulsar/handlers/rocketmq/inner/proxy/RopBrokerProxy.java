@@ -68,6 +68,7 @@ import org.apache.rocketmq.broker.mqtrace.ConsumeMessageHook;
 import org.apache.rocketmq.broker.mqtrace.SendMessageHook;
 import org.apache.rocketmq.client.exception.MQBrokerException;
 import org.apache.rocketmq.common.MixAll;
+import org.apache.rocketmq.common.filter.FilterAPI;
 import org.apache.rocketmq.common.help.FAQUrl;
 import org.apache.rocketmq.common.protocol.RequestCode;
 import org.apache.rocketmq.common.protocol.ResponseCode;
@@ -206,25 +207,32 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                             pullMsgHeader.getQueueId());
 
                     if (isOwnedBroker) {
+                        log.trace("process owned broker pull request[{}].", cmd);
                         super.processRequestCommand(ctx, cmd);
                     } else {
+                        log.trace("process unowned broker pull request[{}].", cmd);
                         SubscriptionData subscriptionData = this.brokerController.getConsumerManager()
                                 .findSubscriptionData(pullMsgHeader.getConsumerGroup(), pullMsgHeader.getTopic());
+                        int sysFlag = pullMsgHeader.getSysFlag();
                         if (subscriptionData == null) {
-                            RemotingCommand consumeResponse = RemotingCommand
-                                    .createResponseCommand(PullMessageResponseHeader.class);
-                            consumeResponse.setOpaque(cmd.getOpaque());
-                            consumeResponse.setCode(ResponseCode.SUBSCRIPTION_NOT_EXIST);
-                            consumeResponse.setRemark(
-                                    "the consumer's group info not exist" + FAQUrl
-                                            .suggestTodo(FAQUrl.SAME_GROUP_DIFFERENT_TOPIC));
-                            ctx.writeAndFlush(consumeResponse);
-                            return;
+                            if (!PullSysFlag.hasSubscriptionFlag(sysFlag)) {
+                                RemotingCommand consumeResponse = RemotingCommand
+                                        .createResponseCommand(PullMessageResponseHeader.class);
+                                consumeResponse.setOpaque(cmd.getOpaque());
+                                consumeResponse.setCode(ResponseCode.SUBSCRIPTION_NOT_EXIST);
+                                consumeResponse.setRemark(
+                                        "the consumer's group info not exist" + FAQUrl
+                                                .suggestTodo(FAQUrl.SAME_GROUP_DIFFERENT_TOPIC));
+                                ctx.writeAndFlush(consumeResponse);
+                                return;
+                            }
+                            subscriptionData = FilterAPI.build(
+                                    pullMsgHeader.getTopic(), pullMsgHeader.getSubscription(),
+                                    pullMsgHeader.getExpressionType()
+                            );
                         }
-
                         pullMsgHeader.setExpressionType(subscriptionData.getExpressionType());
                         pullMsgHeader.setSubscription(subscriptionData.getSubString());
-                        int sysFlag = pullMsgHeader.getSysFlag();
                         boolean hasSuspendFlag = PullSysFlag.hasSuspendFlag(sysFlag);
                         boolean hasCommitOffsetFlag = PullSysFlag.hasCommitOffsetFlag(sysFlag);
                         sysFlag = PullSysFlag.buildSysFlag(hasCommitOffsetFlag, hasSuspendFlag, true, false);
