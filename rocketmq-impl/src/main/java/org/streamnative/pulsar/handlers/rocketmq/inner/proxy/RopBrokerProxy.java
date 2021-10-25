@@ -605,6 +605,8 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
             RemotingCommand newCmd = RemotingCommand.createRequestCommand(RequestCode.PULL_MESSAGE, pullMsgHeader);
             newCmd.addExtField(ROP_INNER_REMOTE_CLIENT_TAG,
                     INNER_CLIENT_NAME_PREFIX + pullMsgHeader.getConsumerGroup());
+            // The change fo rop acl, for new cmd, the access key is null.
+            newCmd.getExtFields().putAll(cmd.getExtFields());
             newCmd.addExtField(PULSAR_REAL_PARTITION_ID_TAG, String.valueOf(pulsarPartitionId));
             brokerNetworkClients.invokeAsync(address, newCmd, timeout, (responseFuture) -> {
                 RemotingCommand pullResponse = responseFuture.getResponseCommand();
