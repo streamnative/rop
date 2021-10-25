@@ -211,6 +211,16 @@ public class PullMessageProcessor implements NettyRequestProcessor {
                 response.setRemark("parse the consumer's subscription failed");
                 return response;
             }
+
+            ConsumerGroupInfo consumerGroupInfo =
+                    this.brokerController.getConsumerManager().getConsumerGroupInfo(requestHeader.getConsumerGroup());
+            if (consumerGroupInfo != null && !subscriptionGroupConfig.isConsumeBroadcastEnable()
+                    && consumerGroupInfo.getMessageModel() == MessageModel.BROADCASTING) {
+                response.setCode(ResponseCode.NO_PERMISSION);
+                response.setRemark("the consumer group[" + requestHeader.getConsumerGroup()
+                        + "] can not consume by broadcast way");
+                return response;
+            }
         } else {
             ConsumerGroupInfo consumerGroupInfo =
                     this.brokerController.getConsumerManager().getConsumerGroupInfo(requestHeader.getConsumerGroup());
