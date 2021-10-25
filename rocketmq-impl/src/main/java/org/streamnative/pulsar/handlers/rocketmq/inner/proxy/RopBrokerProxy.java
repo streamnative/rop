@@ -83,7 +83,9 @@ import org.apache.rocketmq.common.protocol.header.SearchOffsetRequestHeader;
 import org.apache.rocketmq.common.protocol.header.SearchOffsetResponseHeader;
 import org.apache.rocketmq.common.protocol.header.SendMessageRequestHeader;
 import org.apache.rocketmq.common.protocol.header.SendMessageResponseHeader;
+import org.apache.rocketmq.common.protocol.heartbeat.MessageModel;
 import org.apache.rocketmq.common.protocol.heartbeat.SubscriptionData;
+import org.apache.rocketmq.common.subscription.SubscriptionGroupConfig;
 import org.apache.rocketmq.common.sysflag.PullSysFlag;
 import org.apache.rocketmq.remoting.ChannelEventListener;
 import org.apache.rocketmq.remoting.exception.RemotingCommandException;
@@ -96,6 +98,7 @@ import org.streamnative.pulsar.handlers.rocketmq.RocketMQServiceConfiguration;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQRemoteServer;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.CommitLogOffset;
+import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.ConsumerGroupInfo;
 import org.streamnative.pulsar.handlers.rocketmq.inner.coordinator.RopCoordinator;
 import org.streamnative.pulsar.handlers.rocketmq.inner.namesvr.MQTopicManager;
 import org.streamnative.pulsar.handlers.rocketmq.inner.namesvr.NameserverProcessor;
@@ -221,7 +224,7 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                                 consumeResponse.setOpaque(cmd.getOpaque());
                                 consumeResponse.setCode(ResponseCode.SUBSCRIPTION_NOT_EXIST);
                                 consumeResponse.setRemark(
-                                        "the consumer's group info not exist" + FAQUrl
+                                        "[proxy]the consumer's group info not exist" + FAQUrl
                                                 .suggestTodo(FAQUrl.SAME_GROUP_DIFFERENT_TOPIC));
                                 ctx.writeAndFlush(consumeResponse);
                                 return;
@@ -231,13 +234,61 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                                     pullMsgHeader.getExpressionType()
                             );
                         }
+
+                        if (!PullSysFlag.hasSubscriptionFlag(sysFlag)) {
+                            ConsumerGroupInfo consumerGroupInfo =
+                                    this.brokerController.getConsumerManager()
+                                            .getConsumerGroupInfo(pullMsgHeader.getConsumerGroup());
+                            if (consumerGroupInfo == null) {
+                                RemotingCommand consumeResponse = RemotingCommand
+                                        .createResponseCommand(PullMessageResponseHeader.class);
+                                log.warn("[proxy]the consumer's group info not exist, group: {}",
+                                        pullMsgHeader.getConsumerGroup());
+                                consumeResponse.setOpaque(cmd.getOpaque());
+                                consumeResponse.setCode(ResponseCode.SUBSCRIPTION_NOT_EXIST);
+                                consumeResponse.setRemark(
+                                        "[proxy]the consumer's group info not exist" + FAQUrl
+                                                .suggestTodo(FAQUrl.SAME_GROUP_DIFFERENT_TOPIC));
+                                ctx.writeAndFlush(consumeResponse);
+                                return;
+                            }
+
+                            SubscriptionGroupConfig subscriptionGroupConfig =
+                                    this.brokerController.getSubscriptionGroupManager()
+                                            .findSubscriptionGroupConfig(pullMsgHeader.getConsumerGroup());
+
+                            if (null == subscriptionGroupConfig) {
+                                RemotingCommand consumeResponse = RemotingCommand
+                                        .createResponseCommand(PullMessageResponseHeader.class);
+                                consumeResponse.setCode(ResponseCode.SUBSCRIPTION_GROUP_NOT_EXIST);
+                                consumeResponse.setRemark(
+                                        String.format("[proxy]subscription group [%s] does not exist, %s",
+                                                pullMsgHeader.getConsumerGroup(),
+                                                FAQUrl.suggestTodo(FAQUrl.SUBSCRIPTION_GROUP_NOT_EXIST)));
+                                ctx.writeAndFlush(consumeResponse);
+                                return;
+                            }
+
+                            if (!subscriptionGroupConfig.isConsumeBroadcastEnable()
+                                    && consumerGroupInfo.getMessageModel() == MessageModel.BROADCASTING) {
+                                RemotingCommand consumeResponse = RemotingCommand
+                                        .createResponseCommand(PullMessageResponseHeader.class);
+                                consumeResponse.setOpaque(cmd.getOpaque());
+                                consumeResponse.setCode(ResponseCode.NO_PERMISSION);
+                                consumeResponse
+                                        .setRemark("[proxy]the consumer group[" + pullMsgHeader.getConsumerGroup()
+                                                + "] can not consume by broadcast way");
+                                ctx.writeAndFlush(consumeResponse);
+                                return;
+                            }
+                        }
+
                         pullMsgHeader.setExpressionType(subscriptionData.getExpressionType());
                         pullMsgHeader.setSubscription(subscriptionData.getSubString());
                         boolean hasSuspendFlag = PullSysFlag.hasSuspendFlag(sysFlag);
                         boolean hasCommitOffsetFlag = PullSysFlag.hasCommitOffsetFlag(sysFlag);
-                        boolean hasSubscriptionFlag = PullSysFlag.hasSubscriptionFlag(sysFlag);
                         sysFlag = PullSysFlag
-                                .buildSysFlag(hasCommitOffsetFlag, hasSuspendFlag, hasSubscriptionFlag, false);
+                                .buildSysFlag(hasCommitOffsetFlag, hasSuspendFlag, true, false);
                         pullMsgHeader.setSysFlag(sysFlag);
                         processNonOwnedBrokerPullRequest(ctx, cmd, pullMsgHeader, pulsarTopicName,
                                 INTERNAL_REDIRECT_PULL_MSG_TIMEOUT_MS);
