@@ -235,10 +235,9 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                             );
                         }
 
+                        ConsumerGroupInfo consumerGroupInfo = this.brokerController.getConsumerManager()
+                                .getConsumerGroupInfo(pullMsgHeader.getConsumerGroup());
                         if (!PullSysFlag.hasSubscriptionFlag(sysFlag)) {
-                            ConsumerGroupInfo consumerGroupInfo =
-                                    this.brokerController.getConsumerManager()
-                                            .getConsumerGroupInfo(pullMsgHeader.getConsumerGroup());
                             if (consumerGroupInfo == null) {
                                 RemotingCommand consumeResponse = RemotingCommand
                                         .createResponseCommand(PullMessageResponseHeader.class);
@@ -252,35 +251,34 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                                 ctx.writeAndFlush(consumeResponse);
                                 return;
                             }
+                        }
 
-                            SubscriptionGroupConfig subscriptionGroupConfig =
-                                    this.brokerController.getSubscriptionGroupManager()
-                                            .findSubscriptionGroupConfig(pullMsgHeader.getConsumerGroup());
+                        SubscriptionGroupConfig subscriptionGroupConfig = this.brokerController
+                                .getSubscriptionGroupManager()
+                                .findSubscriptionGroupConfig(pullMsgHeader.getConsumerGroup());
+                        if (null == subscriptionGroupConfig) {
+                            RemotingCommand consumeResponse = RemotingCommand
+                                    .createResponseCommand(PullMessageResponseHeader.class);
+                            consumeResponse.setCode(ResponseCode.SUBSCRIPTION_GROUP_NOT_EXIST);
+                            consumeResponse.setRemark(
+                                    String.format("[proxy]subscription group [%s] does not exist, %s",
+                                            pullMsgHeader.getConsumerGroup(),
+                                            FAQUrl.suggestTodo(FAQUrl.SUBSCRIPTION_GROUP_NOT_EXIST)));
+                            ctx.writeAndFlush(consumeResponse);
+                            return;
+                        }
 
-                            if (null == subscriptionGroupConfig) {
-                                RemotingCommand consumeResponse = RemotingCommand
-                                        .createResponseCommand(PullMessageResponseHeader.class);
-                                consumeResponse.setCode(ResponseCode.SUBSCRIPTION_GROUP_NOT_EXIST);
-                                consumeResponse.setRemark(
-                                        String.format("[proxy]subscription group [%s] does not exist, %s",
-                                                pullMsgHeader.getConsumerGroup(),
-                                                FAQUrl.suggestTodo(FAQUrl.SUBSCRIPTION_GROUP_NOT_EXIST)));
-                                ctx.writeAndFlush(consumeResponse);
-                                return;
-                            }
-
-                            if (!subscriptionGroupConfig.isConsumeBroadcastEnable()
-                                    && consumerGroupInfo.getMessageModel() == MessageModel.BROADCASTING) {
-                                RemotingCommand consumeResponse = RemotingCommand
-                                        .createResponseCommand(PullMessageResponseHeader.class);
-                                consumeResponse.setOpaque(cmd.getOpaque());
-                                consumeResponse.setCode(ResponseCode.NO_PERMISSION);
-                                consumeResponse
-                                        .setRemark("[proxy]the consumer group[" + pullMsgHeader.getConsumerGroup()
-                                                + "] can not consume by broadcast way");
-                                ctx.writeAndFlush(consumeResponse);
-                                return;
-                            }
+                        if (!subscriptionGroupConfig.isConsumeBroadcastEnable()
+                                && consumerGroupInfo.getMessageModel() == MessageModel.BROADCASTING) {
+                            RemotingCommand consumeResponse = RemotingCommand
+                                    .createResponseCommand(PullMessageResponseHeader.class);
+                            consumeResponse.setOpaque(cmd.getOpaque());
+                            consumeResponse.setCode(ResponseCode.NO_PERMISSION);
+                            consumeResponse
+                                    .setRemark("[proxy]the consumer group[" + pullMsgHeader.getConsumerGroup()
+                                            + "] can not consume by broadcast way");
+                            ctx.writeAndFlush(consumeResponse);
+                            return;
                         }
 
                         pullMsgHeader.setExpressionType(subscriptionData.getExpressionType());
