@@ -236,7 +236,8 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                         boolean hasSuspendFlag = PullSysFlag.hasSuspendFlag(sysFlag);
                         boolean hasCommitOffsetFlag = PullSysFlag.hasCommitOffsetFlag(sysFlag);
                         boolean hasSubscriptionFlag = PullSysFlag.hasSubscriptionFlag(sysFlag);
-                        sysFlag = PullSysFlag.buildSysFlag(hasCommitOffsetFlag, hasSuspendFlag, hasSubscriptionFlag, false);
+                        sysFlag = PullSysFlag
+                                .buildSysFlag(hasCommitOffsetFlag, hasSuspendFlag, hasSubscriptionFlag, false);
                         pullMsgHeader.setSysFlag(sysFlag);
                         processNonOwnedBrokerPullRequest(ctx, cmd, pullMsgHeader, pulsarTopicName,
                                 INTERNAL_REDIRECT_PULL_MSG_TIMEOUT_MS);
