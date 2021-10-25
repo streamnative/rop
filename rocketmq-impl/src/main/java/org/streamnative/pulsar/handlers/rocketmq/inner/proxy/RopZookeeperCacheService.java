@@ -1,7 +1,5 @@
 package org.streamnative.pulsar.handlers.rocketmq.inner.proxy;
 
-import static org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkPath.BROKER_PATH;
-import static org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkPath.COORDINATOR_PATH;
 import static org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkPath.GROUP_BASE_PATH;
 import static org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkPath.TOPIC_BASE_PATH;
 
@@ -38,7 +36,7 @@ public class RopZookeeperCacheService implements AutoCloseable {
 
 
     private void initZK() throws RopServerException {
-        String[] paths = new String[]{BROKER_PATH, TOPIC_BASE_PATH, GROUP_BASE_PATH};
+        String[] paths = new String[]{TOPIC_BASE_PATH, GROUP_BASE_PATH};
         try {
             ZooKeeper zk = cache.getZooKeeper();
             for (String path : paths) {

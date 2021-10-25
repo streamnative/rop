@@ -53,7 +53,7 @@ public class SubscriptionGroupManager {
     protected final Cache<ClientGroupName, SubscriptionGroupConfig> subscriptionGroupTableCache = CacheBuilder
             .newBuilder()
             .initialCapacity(maxCacheSize)
-            .expireAfterWrite(maxCacheTimeInSec, TimeUnit.SECONDS)
+            .expireAfterAccess(maxCacheTimeInSec, TimeUnit.SECONDS)
             .removalListener((RemovalNotification<ClientGroupName, SubscriptionGroupConfig> notification) ->
                     log.info("Remove key [{}] from subscriptionGroupTableCache", notification.getKey().toString()))
             .build();
