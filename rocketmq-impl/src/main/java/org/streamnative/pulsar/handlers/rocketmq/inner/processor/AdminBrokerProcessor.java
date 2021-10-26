@@ -791,20 +791,6 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
 
                 RopOffsetWrapper offsetWrapper = new RopOffsetWrapper();
 
-                // fetch msg backlog
-                String pulsarTopicName = topicName.getPartition(partitionId).toString();
-                try {
-                    TopicStats topicStats = pulsarAdmin.topics().getStats(pulsarTopicName);
-                    if (topicStats.getSubscriptions().containsKey(pulsarGroupName)) {
-                        offsetWrapper.setMsgBacklog(topicStats.getSubscriptions().get(pulsarGroupName).getMsgBacklog());
-                    } else {
-                        log.warn("getConsumeStats not found subscriptions, pulsarTopicName: {}, pulsarGroupName: {}",
-                                pulsarTopicName, pulsarGroupName);
-                    }
-                } catch (Exception e) {
-                    log.warn("getConsumeStats found msgBacklog error", e);
-                }
-
                 ClientGroupAndTopicName clientGroupName = new ClientGroupAndTopicName(rmqGroupName, rmqTopic);
                 long brokerOffset = 0L;
                 try {
@@ -827,6 +813,11 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
 
                 offsetWrapper.setBrokerOffset(brokerOffset);
                 offsetWrapper.setConsumerOffset(consumerOffset);
+                if (consumerOffset == 0) {
+                    offsetWrapper.setMsgBacklog(brokerOffset);
+                } else {
+                    offsetWrapper.setMsgBacklog(brokerOffset - consumerOffset + 1);
+                }
 
                 if (consumerOffset >= 1) {
                     long lastTimestamp = this.brokerController.getConsumerOffsetManager()
