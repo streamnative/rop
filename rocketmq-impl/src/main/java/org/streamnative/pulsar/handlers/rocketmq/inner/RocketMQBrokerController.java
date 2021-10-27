@@ -317,7 +317,7 @@ public class RocketMQBrokerController {
                 AuthenticationService authService = brokerService.getAuthenticationService();
                 AuthenticationDataCommand authCommand = new AuthenticationDataCommand(token);
 
-                log.info("The user upload token is: {} and the superuser token is: {}", token, authToken);
+                log.trace("The user upload token is: {} and the superuser token is: {}", token, authToken);
                 if (RequestCode.SEND_MESSAGE == request.getCode()
                         || RequestCode.SEND_MESSAGE_V2 == request.getCode()
                         || RequestCode.CONSUMER_SEND_MSG_BACK == request.getCode()
@@ -331,7 +331,7 @@ public class RocketMQBrokerController {
                             return;
                         }
 
-                        log.info("The use topic is: {}", requestHeader.getTopic());
+                        log.trace("The use topic is: {}", requestHeader.getTopic());
                         String roleSubject = authService.authenticate(authCommand, "token");
                         if (Strings.EMPTY.equals(roleSubject)) {
                             log.error("The upload token:{} is wrong.", token);
@@ -350,7 +350,7 @@ public class RocketMQBrokerController {
                             throw new AclException("[PRODUCE] Token authentication failed, please check");
                         }
 
-                        log.info("Successfully for send auth: {}", authOK);
+                        log.trace("Successfully for send auth: {}", authOK);
                     } catch (Exception e) {
                         log.error("[PRODUCE] Throws exception:{}", e.getMessage());
                         throw new RuntimeException(e);
@@ -377,7 +377,7 @@ public class RocketMQBrokerController {
                             log.error("[CONSUME] Token authentication failed, please check");
                             throw new AclException("[CONSUME] Token authentication failed, please check");
                         }
-                        log.info("Successfully for receive auth");
+                        log.trace("Successfully for receive auth");
                     } catch (Exception e) {
                         log.error("[CONSUME] Throws exception:{}", e.getMessage());
                         throw new RuntimeException(e);
@@ -389,14 +389,14 @@ public class RocketMQBrokerController {
                         || RequestCode.DELETE_SUBSCRIPTIONGROUP == request.getCode()
                         || RequestCode.INVOKE_BROKER_TO_RESET_OFFSET == request.getCode()) {
 
-                    log.info("Into admin auth logic and the check is: {}", authToken.equals(token));
+                    log.trace("Into admin auth logic and the check is: {}", authToken.equals(token));
                     if (!authToken.equals(token)) {
                         log.error("[ADMIN] Token authentication failed, please check");
                         throw new AclException("[ADMIN] Token authentication failed, please check");
                     }
-                    log.info("Successfully for admin auth");
+                    log.trace("Successfully for admin auth");
                 } else {
-                    log.info("No auth check.");
+                    log.trace("No auth check.");
                 }
 
             }
