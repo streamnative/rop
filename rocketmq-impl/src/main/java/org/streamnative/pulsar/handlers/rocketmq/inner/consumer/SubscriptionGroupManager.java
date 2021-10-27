@@ -92,6 +92,7 @@ public class SubscriptionGroupManager implements Closeable {
 
     public SubscriptionGroupConfig findSubscriptionGroupConfig(String ropGroup) {
         try {
+            //ropGroup: tenant|ns%groupName
             RopGroupContent groupConfigContent = zkServiceRef.get().getGroupConfig(ropGroup);
             if (groupConfigContent != null) {
                 return groupConfigContent.getConfig();

@@ -43,6 +43,8 @@ import org.apache.pulsar.client.api.SubscriptionInitialPosition;
 import org.apache.pulsar.client.api.SubscriptionMode;
 import org.apache.pulsar.client.api.SubscriptionType;
 import org.apache.pulsar.client.impl.PulsarClientImpl;
+import org.apache.pulsar.common.naming.TopicName;
+import org.apache.pulsar.common.partition.PartitionedTopicMetadata;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.TopicFilterType;
 import org.apache.rocketmq.common.message.MessageAccessor;
@@ -52,6 +54,7 @@ import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.store.MessageExtBrokerInner;
 import org.streamnative.pulsar.handlers.rocketmq.RocketMQServiceConfiguration;
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopServerException;
+import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopTopicNotExistsException;
 import org.streamnative.pulsar.handlers.rocketmq.inner.format.RopEntryFormatter;
 import org.streamnative.pulsar.handlers.rocketmq.inner.timer.SystemTimer;
 import org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils;
@@ -262,6 +265,11 @@ public class ScheduleMessageService {
                                                             delayedConsumer.negativeAcknowledge(message);
                                                         }
                                                     });
+                                        } catch (RopTopicNotExistsException topicNotExistsException) {
+                                            log.warn(
+                                                    "DelayedMessageSender discard sending message[{}], because: {}.",
+                                                    message.getMessageId(), topicNotExistsException.getMessage());
+                                            delayedConsumer.acknowledgeAsync(message);
                                         } catch (Exception ex) {
                                             log.warn("DelayedMessageSender send message[{}] failed.",
                                                     message.getMessageId(), ex);
@@ -281,27 +289,41 @@ public class ScheduleMessageService {
             }
         }
 
-        private Producer<byte[]> getProducerFromCache(String pulsarTopic) throws RopServerException {
+        private Producer<byte[]> getProducerFromCache(String pulsarTopic)
+                throws RopServerException, RopTopicNotExistsException {
+            AtomicBoolean topicNotExists = new AtomicBoolean(false);
             Producer<byte[]> producer = sendBackProducers.computeIfAbsent(pulsarTopic, key -> {
                 log.info("getProducerFromCache [topic={}].", pulsarTopic);
                 try {
-                    ProducerBuilder<byte[]> producerBuilder = rocketBroker.getRopBrokerProxy().getPulsarClient()
-                            .newProducer()
-                            .maxPendingMessages(30000);
+                    CompletableFuture<PartitionedTopicMetadata> topicMetaFuture = rocketBroker
+                            .getBrokerService().fetchPartitionedTopicMetadataAsync(TopicName.get(pulsarTopic));
 
-                    return producerBuilder.clone()
-                            .topic(pulsarTopic)
-                            .producerName(pulsarTopic + "_delayedMessageSender" + System.currentTimeMillis())
-                            .enableBatching(false)
-                            .sendTimeout(SEND_MESSAGE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
-                            .create();
+                    PartitionedTopicMetadata topicMeta = topicMetaFuture.get();
+                    if (Objects.nonNull(topicMeta) && topicMeta.partitions > 0) {
+                        ProducerBuilder<byte[]> producerBuilder = rocketBroker.getRopBrokerProxy().getPulsarClient()
+                                .newProducer()
+                                .maxPendingMessages(30000);
+
+                        return producerBuilder.clone()
+                                .topic(pulsarTopic)
+                                .producerName(pulsarTopic + "_delayedMessageSender" + System.currentTimeMillis())
+                                .enableBatching(false)
+                                .sendTimeout(SEND_MESSAGE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+                                .create();
+                    } else {
+                        topicNotExists.set(true);
+                        return null;
+                    }
                 } catch (Exception e) {
                     log.warn("getProducerFromCache[topic={}] error.", pulsarTopic, e);
                 }
                 return null;
             });
+
             if (Objects.nonNull(producer) && producer.isConnected()) {
                 return producer;
+            } else if (topicNotExists.get()) {
+                throw new RopTopicNotExistsException(String.format("Maybe topic[%s] have been deleted.", pulsarTopic));
             } else {
                 if (Objects.nonNull(producer)) {
                     producer.closeAsync();
