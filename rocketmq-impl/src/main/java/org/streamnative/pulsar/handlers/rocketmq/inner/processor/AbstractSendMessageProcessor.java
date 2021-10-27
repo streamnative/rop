@@ -187,7 +187,7 @@ public abstract class AbstractSendMessageProcessor implements NettyRequestProces
             return;
         }
         TopicConfig topicConfig = topicManager
-                .selectTopicConfig(RocketMQTopic.getPulsarOrigNoDomainTopic(requestHeader.getTopic()));
+                .selectTopicConfig(requestHeader.getTopic());
         if (null == topicConfig) {
             int topicSysFlag = 0;
             if (requestHeader.isUnitMode()) {

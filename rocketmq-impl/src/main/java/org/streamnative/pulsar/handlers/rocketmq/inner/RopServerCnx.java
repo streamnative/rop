@@ -741,9 +741,9 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
     }
 
     private String handleReconsumeDelayedMessage(MessageExtBrokerInner messageInner) {
-        RocketMQTopic rocketMQTopic = new RocketMQTopic(messageInner.getTopic());
-        String sendTopicName = rocketMQTopic.getPulsarFullName();
-        if (messageInner.getDelayTimeLevel() > 0 && !rocketMQTopic.isDLQTopic()) {
+        ClientTopicName clientTopicName = new ClientTopicName(messageInner.getTopic());
+        String sendTopicName = clientTopicName.getPulsarTopicName();
+        if (messageInner.getDelayTimeLevel() > 0 && !clientTopicName.isDLQTopic()) {
             if (messageInner.getDelayTimeLevel() > this.brokerController.getServerConfig().getMaxDelayLevelNum()) {
                 messageInner.setDelayTimeLevel(this.brokerController.getServerConfig().getMaxDelayLevelNum());
             }
