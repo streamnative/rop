@@ -272,7 +272,10 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                 adminClient.namespaces().createNamespace(fullNs, clusters);
                 adminClient.namespaces().setNamespaceReplicationClusters(fullNs, clusters);
                 adminClient.namespaces().setRetention(fullNs,
-                        new RetentionPolicies(-1, -1));
+                        new RetentionPolicies(
+                                this.brokerController.getServerConfig().getDefaultRetentionTimeInMinutes(), -1));
+                adminClient.namespaces().setNamespaceMessageTTL(fullNs,
+                        this.brokerController.getServerConfig().getDefaultRetentionTimeInMinutes() * 60);
             }
         } catch (Exception e) {
             if (e instanceof ConflictException) {
