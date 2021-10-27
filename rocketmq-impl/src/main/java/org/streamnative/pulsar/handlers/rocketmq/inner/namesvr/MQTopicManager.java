@@ -97,13 +97,15 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
 
     @Override
     public TopicConfig selectTopicConfig(String rmqTopicName) {
+        //rmqTopicName: tenants|ns%topicName
         TopicConfig topicConfig = super.selectTopicConfig(rmqTopicName);
         try {
             if (topicConfig == null) {
-                RopTopicContent ropTopicContent = zkService.getTopicContent(TopicName.get(rmqTopicName));
+                ClientTopicName clientTopicName = new ClientTopicName(rmqTopicName);
+                RopTopicContent ropTopicContent = zkService.getTopicContent(clientTopicName.toPulsarTopicName());
                 if (ropTopicContent != null) {
                     topicConfig = ropTopicContent.getConfig();
-                    this.topicConfigTable.put(rmqTopicName, topicConfig);
+                    this.topicConfigTable.put(clientTopicName.getPulsarTopicName(), topicConfig);
                 }
             }
         } catch (Exception e) {

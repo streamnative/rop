@@ -126,7 +126,7 @@ public class RopZookeeperCacheService implements AutoCloseable {
         try {
             topicContent = Objects.isNull(topicContent) ? topicDataCache.get(topicZNodePath).get() : topicContent;
         } catch (Exception e) {
-            log.warn("RopTopicContent[topicName:{}] isn't exists in metadata.", topicName);
+            log.warn("RopTopicContent[topicPath:{}] isn't exists in metadata.", topicZNodePath, e);
         }
         return topicContent;
     }
@@ -184,7 +184,7 @@ public class RopZookeeperCacheService implements AutoCloseable {
         try {
             groupContent = (groupContent == null) ? subscribeGroupConfigCache.get(groupNodePath).get() : groupContent;
         } catch (Exception e) {
-            log.warn("GroupConfig[{}] isn't exists in metadata.", group);
+            log.warn("GroupConfig[{}] and zkPath[{}] isn't exists in metadata.", group, groupNodePath);
         }
         return groupContent;
     }

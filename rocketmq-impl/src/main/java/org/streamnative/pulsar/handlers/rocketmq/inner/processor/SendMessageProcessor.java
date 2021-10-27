@@ -121,7 +121,6 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             this.executeConsumeMessageHookAfter(context);
         }
 
-        RocketMQTopic pulsarGroupName = new RocketMQTopic(requestHeader.getGroup());
         SubscriptionGroupConfig subscriptionGroupConfig =
                 this.brokerController.getSubscriptionGroupManager()
                         .findSubscriptionGroupConfig(requestHeader.getGroup());
@@ -172,6 +171,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         MessageExt msgExt = this.getServerCnxMsgStore(ctx, requestHeader.getGroup())
                 .lookMessageByCommitLogOffset(requestHeader);
         if (null == msgExt) {
+            log.warn("[SendBackMsg] lookMessageByCommitLogOffset request header: [{}] error.", requestHeader);
             response.setCode(ResponseCode.SYSTEM_ERROR);
             response.setRemark("look message by offset failed, " + requestHeader.getOffset());
             return response;
@@ -236,7 +236,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
                     .putSendBackMsg(msgInner, requestHeader.getGroup(), response, responseFuture);
             return responseFuture.get();
         } catch (Exception e) {
-            log.warn("[{}] consumerSendMsgBack failed", pulsarGroupName.getPulsarFullName(), e);
+            log.warn("[{}] consumerSendMsgBack failed", requestHeader.getGroup(), e);
             response.setCode(ResponseCode.SYSTEM_ERROR);
             response.setRemark(e.getMessage());
         }
