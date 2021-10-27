@@ -22,6 +22,7 @@ import java.io.Serializable;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
+import org.apache.logging.log4j.util.Strings;
 import org.apache.pulsar.common.naming.TopicName;
 import org.apache.rocketmq.common.protocol.NamespaceUtil;
 import org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils;
@@ -53,5 +54,10 @@ public class ClientTopicName implements Serializable {
 
     public TopicName toPulsarTopicName() {
         return TopicName.get(this.pulsarTopicName);
+    }
+
+    public boolean isDLQTopic() {
+        return Strings.isNotBlank(toPulsarTopicName().getLocalName())
+                && NamespaceUtil.isDLQTopic(toPulsarTopicName().getLocalName());
     }
 }
