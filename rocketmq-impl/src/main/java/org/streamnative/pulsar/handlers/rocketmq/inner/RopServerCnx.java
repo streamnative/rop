@@ -202,9 +202,22 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 if (messageInner.getDelayTimeLevel() > 0) {
                     long producerId = buildPulsarProducerId(producerGroup, pTopic,
                             ctx.channel().remoteAddress().toString());
-                    getProducerFromCache(pTopic, producerGroup, producerId).newMessage()
+                    CompletableFuture<MessageId> messageIdFuture = getProducerFromCache(pTopic, producerGroup,
+                            producerId).newMessage()
                             .value((body.get(0)))
                             .sendAsync();
+                    offsetFuture = messageIdFuture.thenApply((Function<MessageId, Long>) messageId -> {
+                        try {
+                            if (messageId == null) {
+                                log.warn("Rop send delay level message error, messageId is null.");
+                                return -1L;
+                            }
+                            return MessageIdUtils.getOffset((MessageIdImpl) messageId);
+                        } catch (Exception e) {
+                            log.warn("Rop send delay level message error.", e);
+                            return -1L;
+                        }
+                    });
                 } else {
                     PersistentTopic persistentTopic = this.brokerController.getConsumerOffsetManager()
                             .getPulsarPersistentTopic(clientTopicName, partitionId);
