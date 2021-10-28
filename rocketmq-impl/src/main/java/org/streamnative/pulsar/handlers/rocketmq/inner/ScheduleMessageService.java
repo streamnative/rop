@@ -302,7 +302,7 @@ public class ScheduleMessageService {
                     if (Objects.nonNull(topicMeta) && topicMeta.partitions > 0) {
                         ProducerBuilder<byte[]> producerBuilder = rocketBroker.getRopBrokerProxy().getPulsarClient()
                                 .newProducer()
-                                .maxPendingMessages(30000);
+                                .maxPendingMessages(2000);
 
                         return producerBuilder.clone()
                                 .topic(pulsarTopic)
@@ -333,14 +333,14 @@ public class ScheduleMessageService {
             }
         }
 
-        private void createConsumerIfNotExists() {
+        private synchronized void createConsumerIfNotExists() {
             try {
                 if (delayedConsumer != null) {
                     return;
                 }
                 PulsarClientImpl pulsarClient = rocketBroker.getRopBrokerProxy().getPulsarClient();
-                log.info("Begin to Create delayed consumer, the client config value: [{}]",
-                        pulsarClient.getConfiguration());
+                log.info("Begin to Create delayed consumer of topic[delayLevel={}], the client config value: [{}]",
+                        delayLevel, pulsarClient.getConfiguration());
                 this.delayedConsumer = rocketBroker.getRopBrokerProxy().getPulsarClient()
                         .newConsumer()
                         .ackTimeout(2, TimeUnit.HOURS)
