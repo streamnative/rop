@@ -174,7 +174,7 @@ public class GroupMetaManager {
             isRunning = true;
             pulsarService = this.brokerController.getBrokerService().pulsar();
             offsetReaderExecutor.execute(this::loadOffsets);
-            Thread.sleep(5000);
+            Thread.sleep(10000);
 
             persistOffsetExecutor.scheduleAtFixedRate(() -> {
                 try {

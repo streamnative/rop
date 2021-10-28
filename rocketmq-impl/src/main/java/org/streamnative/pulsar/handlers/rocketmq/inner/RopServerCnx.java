@@ -200,6 +200,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 // `messageInner.getDelayTimeLevel() > 0` check will process RECONSUME_LATER failed case.
                 // In here, we don't need to process the return value(MessageID)
                 if (messageInner.getDelayTimeLevel() > 0) {
+                    log.trace("Send delay level message topic: {}, messageInner: {}", messageInner.getTopic(),
+                            messageInner);
                     long producerId = buildPulsarProducerId(producerGroup, pTopic,
                             ctx.channel().remoteAddress().toString());
                     CompletableFuture<MessageId> messageIdFuture = getProducerFromCache(pTopic, producerGroup,
