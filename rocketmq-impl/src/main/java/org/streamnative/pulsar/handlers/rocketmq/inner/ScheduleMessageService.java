@@ -333,7 +333,7 @@ public class ScheduleMessageService {
             }
         }
 
-        private synchronized void createConsumerIfNotExists() {
+        private void createConsumerIfNotExists() {
             try {
                 if (delayedConsumer != null) {
                     return;
