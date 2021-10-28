@@ -264,6 +264,11 @@ public class CommonUtils {
                 Map<String, String> map = MessageDecoder.string2messageProperties(propertiesString);
                 MessageAccessor.setProperties(msgExt, map);
             }
+
+            int msgIDLength = storehostIPLength + 4 + 8;
+            ByteBuffer byteBufferMsgId = ByteBuffer.allocate(msgIDLength);
+            String msgId = createMessageId(byteBufferMsgId, msgExt.getStoreHostBytes(), physicOffset);
+            msgExt.setMsgId(msgId);
             return msgExt;
         } catch (IOException ex) {
             log.warn("Decode message error.", ex);

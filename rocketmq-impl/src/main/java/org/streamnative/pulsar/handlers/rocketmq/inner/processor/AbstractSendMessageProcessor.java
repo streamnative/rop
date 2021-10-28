@@ -51,7 +51,6 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RopClientChannelCnx;
 import org.streamnative.pulsar.handlers.rocketmq.inner.namesvr.TopicConfigManager;
 import org.streamnative.pulsar.handlers.rocketmq.inner.pulsar.PulsarMessageStore;
-import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 
 /**
  * Abstract send message processor.
