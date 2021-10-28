@@ -125,7 +125,10 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
                 this.brokerController.getSubscriptionGroupManager()
                         .findSubscriptionGroupConfig(requestHeader.getGroup());
         if (null == subscriptionGroupConfig) {
-            log.warn("[SendBackMsg] lookMessageByCommitLogOffset getSubscriptionGroupManager error, request header: [{}].", requestHeader);
+            log.warn(
+                    "[SendBackMsg] lookMessageByCommitLogOffset getSubscriptionGroupManager error, "
+                            + "request header: [{}].",
+                    requestHeader);
             response.setCode(ResponseCode.SUBSCRIPTION_GROUP_NOT_EXIST);
             response.setRemark("subscription group not exist, " + requestHeader.getGroup() + " "
                     + FAQUrl.suggestTodo(FAQUrl.SUBSCRIPTION_GROUP_NOT_EXIST));
@@ -133,7 +136,8 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         }
 
         if (!PermName.isWriteable(this.brokerController.getServerConfig().getBrokerPermission())) {
-            log.warn("[SendBackMsg] lookMessageByCommitLogOffset getBrokerPermission error, request header: [{}].", requestHeader);
+            log.warn("[SendBackMsg] lookMessageByCommitLogOffset getBrokerPermission error, request header: [{}].",
+                    requestHeader);
             response.setCode(ResponseCode.NO_PERMISSION);
             response.setRemark("the broker[" //+ this.brokerController.getBrokerConfig().getBrokerIP1()
                     + "] sending message is forbidden");
@@ -141,7 +145,8 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         }
 
         if (subscriptionGroupConfig.getRetryQueueNums() <= 0) {
-            log.warn("[SendBackMsg] lookMessageByCommitLogOffset getRetryQueueNums < 0 error, request header: [{}].", requestHeader);
+            log.warn("[SendBackMsg] lookMessageByCommitLogOffset getRetryQueueNums < 0 error, request header: [{}].",
+                    requestHeader);
             response.setCode(ResponseCode.SUCCESS);
             response.setRemark(null);
             return response;
@@ -160,14 +165,16 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
                 subscriptionGroupConfig.getRetryQueueNums(),
                 PermName.PERM_WRITE | PermName.PERM_READ, topicSysFlag);
         if (null == topicConfig) {
-            log.warn("[SendBackMsg] lookMessageByCommitLogOffset get topicConfig error, request header: [{}].", requestHeader);
+            log.warn("[SendBackMsg] lookMessageByCommitLogOffset get topicConfig error, request header: [{}].",
+                    requestHeader);
             response.setCode(ResponseCode.SYSTEM_ERROR);
             response.setRemark("topic[" + newTopic + "] not exist");
             return response;
         }
 
         if (!PermName.isWriteable(topicConfig.getPerm())) {
-            log.warn("[SendBackMsg] lookMessageByCommitLogOffset get topicConfig Perm error, request header: [{}].", requestHeader);
+            log.warn("[SendBackMsg] lookMessageByCommitLogOffset get topicConfig Perm error, request header: [{}].",
+                    requestHeader);
             response.setCode(ResponseCode.NO_PERMISSION);
             response.setRemark(String.format("the topic[%s] sending message is forbidden", newTopic));
             return response;
@@ -205,7 +212,8 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
                     PermName.PERM_WRITE, 0
             );
             if (null == topicConfig) {
-                log.warn("[SendBackMsg] lookMessageByCommitLogOffset get DLQ topicConfig error, request header: [{}].", requestHeader);
+                log.warn("[SendBackMsg] lookMessageByCommitLogOffset get DLQ topicConfig error, request header: [{}].",
+                        requestHeader);
                 response.setCode(ResponseCode.SYSTEM_ERROR);
                 response.setRemark("topic[" + newTopic + "] not exist");
                 return response;
