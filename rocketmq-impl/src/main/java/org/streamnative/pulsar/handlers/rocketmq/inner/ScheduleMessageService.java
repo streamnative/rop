@@ -127,10 +127,12 @@ public class ScheduleMessageService {
                         arr.add(new DeliverDelayedMessageTimerTask(level));
                     }, ArrayList::addAll);
             this.deliverDelayedMessageManager
-                    .forEach((i) -> {
+                    .forEach(task -> {
                         this.timer
-                                .scheduleWithFixedDelay(i, FIRST_DELAY_TIME, DELAY_FOR_A_WHILE, TimeUnit.MILLISECONDS);
-                        this.timer.scheduleWithFixedDelay(() -> i.advanceClock(ADVANCE_TIME_INTERVAL), FIRST_DELAY_TIME,
+                                .scheduleWithFixedDelay(task, FIRST_DELAY_TIME, DELAY_FOR_A_WHILE,
+                                        TimeUnit.MILLISECONDS);
+                        this.timer.scheduleWithFixedDelay(() -> task.advanceClock(ADVANCE_TIME_INTERVAL),
+                                FIRST_DELAY_TIME,
                                 ADVANCE_TIME_INTERVAL, TimeUnit.MILLISECONDS);
                     });
         }
@@ -176,8 +178,8 @@ public class ScheduleMessageService {
 
     class DeliverDelayedMessageTimerTask extends TimerTask {
 
-        private static final int PULL_MESSAGE_TIMEOUT_MS = 3000;
-        private static final int SEND_MESSAGE_TIMEOUT_MS = 3000;
+        private static final int PULL_MESSAGE_TIMEOUT_MS = 1000;
+        private static final int SEND_MESSAGE_TIMEOUT_MS = 1000;
         private final RocketMQBrokerController rocketBroker;
         private final int delayLevel;
         private final RopEntryFormatter formatter = new RopEntryFormatter();
@@ -210,11 +212,16 @@ public class ScheduleMessageService {
                 while (msgNum.get() < config.getMaxScheduleMsgBatchSize()
                         && timeoutTimer.size() < config.getMaxScheduleMsgBatchSize()
                         && ScheduleMessageService.this.isStarted()) {
-                    CompletableFuture<Messages<byte[]>> messagesFuture = this.delayedConsumer
-                            .batchReceiveAsync();
-                    Messages<byte[]> messages = messagesFuture.get(PULL_MESSAGE_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+                    Messages<byte[]> messages = null;
+                    try {
+                        CompletableFuture<Messages<byte[]>> messagesFuture = this.delayedConsumer
+                                .batchReceiveAsync();
+                        messages = messagesFuture.get(PULL_MESSAGE_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+                    } catch (Exception e) {
+                        log.warn("DeliverDelayedMessageTimerTask pull message exception, for: {}.", e.getMessage());
+                    }
 
-                    if (messages.size() == 0) {
+                    if (Objects.isNull(messages) | messages.size() == 0) {
                         break;
                     }
 
@@ -352,6 +359,7 @@ public class ScheduleMessageService {
                         .subscriptionInitialPosition(SubscriptionInitialPosition.Earliest)
                         .deadLetterPolicy(DeadLetterPolicy.builder()
                                 .maxRedeliverCount(delayLevel).build())
+                        .enableRetry(true)
                         .subscribe();
                 log.info("The client config value: [{}]", pulsarClient.getConfiguration());
             } catch (Exception e) {
