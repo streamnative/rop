@@ -221,7 +221,7 @@ public class ScheduleMessageService {
                         log.warn("DeliverDelayedMessageTimerTask pull message exception, for: {}.", e.getMessage());
                     }
 
-                    if (Objects.isNull(messages) | messages.size() == 0) {
+                    if (Objects.isNull(messages) || messages.size() == 0) {
                         break;
                     }
 

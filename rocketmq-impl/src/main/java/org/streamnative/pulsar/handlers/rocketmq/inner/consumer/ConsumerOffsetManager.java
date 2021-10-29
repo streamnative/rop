@@ -83,11 +83,10 @@ public class ConsumerOffsetManager {
 
     public Set<String> whichGroupByTopic(final String topic) {
         Set<String> groups = new HashSet<>();
-        for (Entry<GroupOffsetKey, GroupOffsetValue> next : groupMetaManager.getOffsetTable()
-                .asMap().entrySet()) {
-            ClientTopicName clientTopicName = new ClientTopicName(next.getKey().getTopicName());
+        for (Entry<GroupOffsetKey, GroupOffsetValue> next : groupMetaManager.getOffsetTable().asMap().entrySet()) {
+            ClientTopicName clientTopicName = new ClientTopicName(TopicName.get(next.getKey().getTopicName()));
             if (topic.equals(clientTopicName.getRmqTopicName())) {
-                groups.add(next.getKey().getGroupName());
+                groups.add(new ClientGroupName(TopicName.get(next.getKey().getGroupName())).getRmqGroupName());
             }
         }
         return groups;

@@ -320,7 +320,7 @@ public class RocketMQBrokerController {
                 log.trace("The user upload token is: {} and the superuser token is: {}", token, authToken);
                 if (RequestCode.SEND_MESSAGE == request.getCode()
                         || RequestCode.SEND_MESSAGE_V2 == request.getCode()
-                        || RequestCode.CONSUMER_SEND_MSG_BACK == request.getCode()
+//                        || RequestCode.CONSUMER_SEND_MSG_BACK == request.getCode()
                         || RequestCode.SEND_BATCH_MESSAGE == request.getCode()) {
 
                     try {

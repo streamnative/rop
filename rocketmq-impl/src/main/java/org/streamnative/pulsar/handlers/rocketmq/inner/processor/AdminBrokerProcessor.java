@@ -742,7 +742,7 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
             }
 
             TopicConfig topicConfig = this.brokerController.getTopicConfigManager()
-                    .selectTopicConfig(topicName.toString());
+                    .selectTopicConfig(rmqTopic);
             if (null == topicConfig) {
                 log.warn("consumeStats, rmqTopic config not exist, {}", rmqTopic);
                 continue;
