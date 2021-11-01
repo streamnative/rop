@@ -82,7 +82,7 @@ public class GroupMetaManager {
     private volatile CountDownLatch offsetLoadingLatch;
     private volatile ProducerBuilder<ByteBuffer> offsetTopicProducerBuilder;
     private volatile ReaderBuilder<ByteBuffer> offsetTopicReaderBuilder;
-    private final static int MAX_CHECKPOINT_TIMEOUT_MS = 10 * 1000;
+    private final static int MAX_CHECKPOINT_TIMEOUT_MS = 30 * 1000;
 
     /**
      * group offset producer\reader.
@@ -548,7 +548,7 @@ public class GroupMetaManager {
                 partitionProducer = offsetTopicProducerBuilder.clone()
                         .topic(offsetTopicName.getPartition(pId).toString())
                         .compressionType(CompressionType.SNAPPY)
-                        .enableBatching(true)
+                        .enableBatching(false)
                         .blockIfQueueFull(false)
                         .create();
                 return partitionProducer.newMessage().value(ByteBuffer.allocate(0)).send();
