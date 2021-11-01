@@ -16,22 +16,28 @@ package org.streamnative.pulsar.handlers.rocketmq.inner.consumer.metadata;
 
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_CACHE_INITIAL_SIZE;
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.SLASH_CHAR;
+import static org.streamnative.pulsar.handlers.rocketmq.utils.PulsarUtil.getTopicPartitionNum;
 
+import com.google.common.base.Preconditions;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.RemovalListener;
 import com.google.common.util.concurrent.Uninterruptibles;
 import java.nio.ByteBuffer;
+import java.util.List;
 import java.util.Map.Entry;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bookkeeper.mledger.ManagedCursor;
@@ -45,12 +51,14 @@ import org.apache.pulsar.client.api.Message;
 import org.apache.pulsar.client.api.MessageId;
 import org.apache.pulsar.client.api.Producer;
 import org.apache.pulsar.client.api.ProducerBuilder;
-import org.apache.pulsar.client.api.PulsarClient;
+import org.apache.pulsar.client.api.PulsarClientException;
 import org.apache.pulsar.client.api.Reader;
 import org.apache.pulsar.client.api.ReaderBuilder;
 import org.apache.pulsar.client.api.Schema;
+import org.apache.pulsar.client.impl.MessageIdImpl;
 import org.apache.pulsar.client.impl.PulsarClientImpl;
 import org.apache.pulsar.client.impl.ReaderBuilderImpl;
+import org.apache.pulsar.client.impl.TopicMessageImpl;
 import org.apache.pulsar.common.api.proto.CommandSubscribe.InitialPosition;
 import org.apache.pulsar.common.naming.TopicName;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
@@ -71,12 +79,16 @@ public class GroupMetaManager {
     private final RocketMQBrokerController brokerController;
     private final long offsetsRetentionMs;
     private volatile PulsarService pulsarService;
+    private volatile CountDownLatch offsetLoadingLatch;
+    private volatile ProducerBuilder<ByteBuffer> offsetTopicProducerBuilder;
+    private volatile ReaderBuilder<ByteBuffer> offsetTopicReaderBuilder;
+    private final static int MAX_CHECKPOINT_TIMEOUT_MS = 10 * 1000;
 
     /**
      * group offset producer\reader.
      */
-    private Producer<ByteBuffer> groupOffsetProducer;
-    private Reader<ByteBuffer> groupOffsetReader;
+    private volatile Producer<ByteBuffer> groupOffsetProducer;
+    private volatile Reader<ByteBuffer> groupOffsetReader;
 
     /**
      * group offset reader executor.
@@ -130,12 +142,7 @@ public class GroupMetaManager {
     private Producer<ByteBuffer> getGroupOffsetProducer() {
         if (isRunning && groupOffsetProducer == null) {
             try {
-                PulsarClient pulsarClient = brokerController.getBrokerService().getPulsar().getClient();
-                ProducerBuilder<ByteBuffer> producer = pulsarClient
-                        .newProducer(Schema.BYTEBUFFER)
-                        .maxPendingMessages(100000);
-
-                groupOffsetProducer = producer.clone()
+                groupOffsetProducer = offsetTopicProducerBuilder.clone()
                         .topic(RocketMQTopic.getGroupMetaOffsetTopic().getPulsarFullName())
                         .compressionType(CompressionType.SNAPPY)
                         .enableBatching(true)
@@ -152,10 +159,7 @@ public class GroupMetaManager {
     private Reader<ByteBuffer> getGroupOffsetReader() {
         if (isRunning && groupOffsetReader == null) {
             try {
-                PulsarClient pulsarClient = brokerController.getBrokerService().getPulsar().getClient();
-                ReaderBuilder<ByteBuffer> reader = new ReaderBuilderImpl<>((PulsarClientImpl) pulsarClient,
-                        Schema.BYTEBUFFER);
-                groupOffsetReader = reader.clone()
+                groupOffsetReader = offsetTopicReaderBuilder.clone()
                         .topic(RocketMQTopic.getGroupMetaOffsetTopic().getPulsarFullName())
                         .startMessageId(MessageId.earliest)
                         .readCompacted(true)
@@ -173,9 +177,15 @@ public class GroupMetaManager {
         try {
             isRunning = true;
             pulsarService = this.brokerController.getBrokerService().pulsar();
-            offsetReaderExecutor.execute(this::loadOffsets);
-            Thread.sleep(10000);
+            offsetTopicProducerBuilder = pulsarService.getClient().newProducer(Schema.BYTEBUFFER)
+                    .maxPendingMessages(100000);
+            offsetTopicReaderBuilder = new ReaderBuilderImpl<>((PulsarClientImpl) pulsarService.getClient(),
+                    Schema.BYTEBUFFER);
+            //send checkpoint messages for every partition
+            List<MessageId> messageIds = sendCheckPointMessages();
+            offsetLoadingLatch = new CountDownLatch(messageIds.size());
 
+            offsetReaderExecutor.execute(() -> loadOffsets(offsetLoadingLatch, messageIds));
             persistOffsetExecutor.scheduleAtFixedRate(() -> {
                 try {
                     persistOffset();
@@ -204,12 +214,21 @@ public class GroupMetaManager {
     /**
      * load offset.
      */
-    private void loadOffsets() {
+    private void loadOffsets(CountDownLatch latch, List<MessageId> checkedMessageIds) {
         log.info("Start load group offset.");
         while (isRunning) {
             try {
                 Message<ByteBuffer> message = getGroupOffsetReader().readNext(1, TimeUnit.SECONDS);
-                if (Objects.nonNull(message)) {
+                if (Objects.isNull(message)) {
+                    continue;
+                }
+                if (needCountDownOffsetLatch(latch, message, checkedMessageIds)) {
+                    latch.countDown();
+                    if (latch.getCount() == 0) {
+                        log.info("CountDownOffsetLatch successfully.");
+                    }
+                    continue;
+                } else if (Objects.nonNull(message.getData()) && message.getData().length > 0) {
                     GroupOffsetKey groupOffsetKey = GroupMetaKey.decodeKey(ByteBuffer.wrap(message.getKeyBytes()));
                     GroupOffsetValue groupOffsetValue = GroupOffsetValue.decodeGroupOffset(message.getValue());
                     offsetTable.put(groupOffsetKey, groupOffsetValue);
@@ -221,10 +240,26 @@ public class GroupMetaManager {
         }
     }
 
+    private boolean needCountDownOffsetLatch(CountDownLatch latch, Message<ByteBuffer> checkedMessage,
+            List<MessageId> checkedMessageIds) {
+        if (latch.getCount() > 0) {
+            MessageIdImpl checkedMessageId = (MessageIdImpl) ((TopicMessageImpl) checkedMessage)
+                    .getInnerMessageId();
+            return checkedMessageIds.stream().anyMatch((msgId) -> {
+                MessageIdImpl msgIdImpl = (MessageIdImpl) msgId;
+                return checkedMessageId.getLedgerId() == msgIdImpl.getLedgerId()
+                        && checkedMessageId.getEntryId() == msgIdImpl.getEntryId();
+            });
+        }
+        return false;
+    }
+
     /**
      * query offset.
      */
     public long queryOffset(final String group, final String topic, final int queueId) {
+        checkOffsetTableOk();
+
         ClientGroupAndTopicName groupAndTopicName = new ClientGroupAndTopicName(group, topic);
         String pulsarGroupName = groupAndTopicName.getClientGroupName().getPulsarGroupName();
         String pulsarTopicName = groupAndTopicName.getClientTopicName().getPulsarTopicName();
@@ -248,6 +283,8 @@ public class GroupMetaManager {
      * query offset.
      */
     public long queryOffsetByPartitionId(final String group, final String topic, final int partitionId) {
+        checkOffsetTableOk();
+
         ClientGroupAndTopicName groupAndTopicName = new ClientGroupAndTopicName(group, topic);
         String pulsarGroupName = groupAndTopicName.getClientGroupName().getPulsarGroupName();
         String pulsarTopicName = groupAndTopicName.getClientTopicName().getPulsarTopicName();
@@ -323,6 +360,7 @@ public class GroupMetaManager {
     }
 
     public void persistOffset() {
+        checkOffsetTableOk();
         for (Entry<GroupOffsetKey, GroupOffsetValue> entry : offsetTable.asMap().entrySet()) {
             GroupOffsetKey groupOffsetKey = entry.getKey();
             GroupOffsetValue groupOffsetValue = entry.getValue();
@@ -499,4 +537,39 @@ public class GroupMetaManager {
                 .containsKey(pulsarPartitionId);
     }
 
+    private List<MessageId> sendCheckPointMessages() {
+        TopicName offsetTopicName = RocketMQTopic.getGroupMetaOffsetTopic().getPulsarTopicName();
+        int pNum = getTopicPartitionNum(brokerController.getBrokerService(), offsetTopicName.toString(),
+                brokerController.getServerConfig().getOffsetsTopicNumPartitions());
+        Preconditions.checkArgument(pNum > 0, "The partition num of offset topic must > 0.");
+        List<MessageId> messageIds = IntStream.range(0, pNum).mapToObj(pId -> {
+            Producer<ByteBuffer> partitionProducer = null;
+            try {
+                partitionProducer = offsetTopicProducerBuilder.clone()
+                        .topic(offsetTopicName.getPartition(pId).toString())
+                        .compressionType(CompressionType.SNAPPY)
+                        .enableBatching(true)
+                        .blockIfQueueFull(false)
+                        .create();
+                return partitionProducer.newMessage().value(ByteBuffer.allocate(0)).send();
+            } catch (PulsarClientException e) {
+                log.warn("sendCheckPointMessages partitionId=[{}] error.", pId);
+                return null;
+            } finally {
+                if (partitionProducer != null) {
+                    partitionProducer.closeAsync();
+                }
+            }
+        }).filter(Objects::nonNull).collect(Collectors.toList());
+        Preconditions.checkArgument(messageIds.size() == pNum, "sendCheckpointMessage num is wrong.");
+        return messageIds;
+    }
+
+    private void checkOffsetTableOk() {
+        try {
+            offsetLoadingLatch.await(MAX_CHECKPOINT_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+        } catch (Exception e) {
+            log.warn("offsetTable is loading timeout [{}] ms.", MAX_CHECKPOINT_TIMEOUT_MS);
+        }
+    }
 }

@@ -22,11 +22,13 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.logging.log4j.util.Strings;
+import org.apache.pulsar.broker.service.BrokerService;
 import org.apache.pulsar.client.admin.Clusters;
 import org.apache.pulsar.client.admin.Namespaces;
 import org.apache.pulsar.client.admin.PulsarAdmin;
@@ -35,6 +37,7 @@ import org.apache.pulsar.client.admin.PulsarAdminException.ConflictException;
 import org.apache.pulsar.client.admin.Tenants;
 import org.apache.pulsar.client.api.MessageId;
 import org.apache.pulsar.common.naming.TopicName;
+import org.apache.pulsar.common.partition.PartitionedTopicMetadata;
 import org.apache.pulsar.common.policies.data.ClusterData;
 import org.apache.pulsar.common.policies.data.RetentionPolicies;
 import org.apache.pulsar.common.policies.data.TenantInfo;
@@ -266,5 +269,19 @@ public class PulsarUtil {
             return true;
         }
         return false;
+    }
+
+    public static int getTopicPartitionNum(BrokerService brokerService, String pulsarTopic, int defaultValue) {
+        Preconditions.checkNotNull(brokerService);
+        Preconditions.checkArgument(Strings.isNotBlank(pulsarTopic));
+        CompletableFuture<PartitionedTopicMetadata> topicMetaFuture = brokerService
+                .fetchPartitionedTopicMetadataAsync(TopicName.get(pulsarTopic));
+        try {
+            PartitionedTopicMetadata topicMeta = topicMetaFuture.get();
+            return topicMeta.partitions;
+        } catch (Exception e) {
+            log.warn("getTopicPartitionNum topic:{} error.", pulsarTopic, e);
+        }
+        return defaultValue;
     }
 }
