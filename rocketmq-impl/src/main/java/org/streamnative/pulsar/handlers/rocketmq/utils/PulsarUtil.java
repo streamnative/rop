@@ -167,11 +167,6 @@ public class PulsarUtil {
                         new RetentionPolicies((int) conf.getOffsetsRetentionMinutes(), -1));
             }
 
-            Long compactionThreshold = namespaces.getCompactionThreshold(ropMetadataNamespace);
-            if (compactionThreshold != null && compactionThreshold != MAX_COMPACTION_THRESHOLD) {
-                namespaces.setCompactionThreshold(ropMetadataNamespace, MAX_COMPACTION_THRESHOLD);
-            }
-
             int targetMessageTTL = conf.getOffsetsMessageTTL();
             Integer messageTTL = namespaces.getNamespaceMessageTTL(ropMetadataNamespace);
             if (messageTTL == null || messageTTL != targetMessageTTL) {
@@ -179,6 +174,8 @@ public class PulsarUtil {
             }
 
             namespaceExists = true;
+
+            createOffsetNamespaceIfNotExist(ropMetadataTenant, cluster, pulsarAdmin, conf);
 
             // Check if the offsets topic exists and create it if not
             createTopicIfNotExist(pulsarAdmin, groupMetaTopic.getPulsarFullName(), partitionNum);
@@ -197,6 +194,48 @@ public class PulsarUtil {
                             + " namespace: {} exists: {}, topic: {} exists: {}",
                     cluster, clusterExists, ropMetadataTenant, tenantExists, ropMetadataNamespace, namespaceExists,
                     groupMetaTopic.getPulsarFullName(), offsetsTopicExists);
+        }
+    }
+
+    private static void createOffsetNamespaceIfNotExist(String ropMetadataTenant, String cluster,
+            PulsarAdmin pulsarAdmin, RocketMQServiceConfiguration conf) throws PulsarAdminException {
+        String ropOffsetNamespace = ropMetadataTenant + "/" + RocketMQTopic.getOffsetNamespace();
+
+        // Check if the metadata namespace exists and create it if not
+        Namespaces namespaces = pulsarAdmin.namespaces();
+        if (!namespaces.getNamespaces(ropMetadataTenant).contains(ropOffsetNamespace)) {
+            log.info("Namespaces: {} does not exist in tenant: {}, creating it ...",
+                    ropOffsetNamespace, ropMetadataTenant);
+            Set<String> replicationClusters = Sets.newHashSet(cluster);
+            namespaces.createNamespace(ropOffsetNamespace, replicationClusters);
+            namespaces.setNamespaceReplicationClusters(ropOffsetNamespace, replicationClusters);
+        } else {
+            List<String> replicationClusters = namespaces.getNamespaceReplicationClusters(ropOffsetNamespace);
+            if (!replicationClusters.contains(cluster)) {
+                log.info("Namespace: {} exists but cluster: {} is not in the replicationClusters list,"
+                        + "updating it ...", ropOffsetNamespace, cluster);
+                Set<String> newReplicationClusters = Sets.newHashSet(replicationClusters);
+                newReplicationClusters.add(cluster);
+                namespaces.setNamespaceReplicationClusters(ropOffsetNamespace, newReplicationClusters);
+            }
+        }
+        // set namespace config if namespace existed
+        int retentionMinutes = (int) conf.getOffsetsRetentionMinutes();
+        RetentionPolicies retentionPolicies = namespaces.getRetention(ropOffsetNamespace);
+        if (retentionPolicies == null || retentionPolicies.getRetentionTimeInMinutes() != retentionMinutes) {
+            namespaces.setRetention(ropOffsetNamespace,
+                    new RetentionPolicies((int) conf.getOffsetsRetentionMinutes(), -1));
+        }
+
+        Long compactionThreshold = namespaces.getCompactionThreshold(ropOffsetNamespace);
+        if (compactionThreshold != null && compactionThreshold != MAX_COMPACTION_THRESHOLD) {
+            namespaces.setCompactionThreshold(ropOffsetNamespace, MAX_COMPACTION_THRESHOLD);
+        }
+
+        int targetMessageTTL = conf.getOffsetsMessageTTL();
+        Integer messageTTL = namespaces.getNamespaceMessageTTL(ropOffsetNamespace);
+        if (messageTTL == null || messageTTL != targetMessageTTL) {
+            namespaces.setNamespaceMessageTTL(ropOffsetNamespace, targetMessageTTL);
         }
     }
 
