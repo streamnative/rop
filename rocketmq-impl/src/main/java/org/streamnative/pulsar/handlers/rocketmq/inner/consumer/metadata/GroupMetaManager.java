@@ -82,7 +82,7 @@ public class GroupMetaManager {
     private volatile CountDownLatch offsetLoadingLatch;
     private volatile ProducerBuilder<ByteBuffer> offsetTopicProducerBuilder;
     private volatile ReaderBuilder<ByteBuffer> offsetTopicReaderBuilder;
-    private final static int MAX_CHECKPOINT_TIMEOUT_MS = 30 * 1000;
+    private static final int MAX_CHECKPOINT_TIMEOUT_MS = 30 * 1000;
 
     /**
      * group offset producer\reader.
