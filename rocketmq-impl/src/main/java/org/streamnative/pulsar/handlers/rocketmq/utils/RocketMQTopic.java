@@ -49,6 +49,8 @@ public class RocketMQTopic {
     @Getter
     private static String metaNamespace = "__rocketmq";
     @Getter
+    private static String offsetNamespace = "offset";
+    @Getter
     private final TopicName pulsarTopicName;
     private String rocketmqTenant = Strings.EMPTY;
     private String rocketmqNs = Strings.EMPTY;
@@ -71,6 +73,9 @@ public class RocketMQTopic {
         if (ROCKETMQ_SYSTEM_TOPICS.contains(rmqTopicName)) {
             realTenant = metaTenant;
             realNs = metaNamespace;
+        }
+        if (GROUP_METADATA_OFFSET_TOPIC_NAME.equals(rmqTopicName)) {
+            realNs = offsetNamespace;
         }
         this.pulsarTopicName = TopicName
                 .get(domain.name(), realTenant, realNs, NamespaceUtil.withoutNamespace(rmqTopicName));
@@ -161,13 +166,8 @@ public class RocketMQTopic {
     }
 
     public static RocketMQTopic getGroupMetaOffsetTopic() {
-        return new RocketMQTopic(RocketMQTopic.metaTenant, RocketMQTopic.metaNamespace,
+        return new RocketMQTopic(RocketMQTopic.metaTenant, RocketMQTopic.offsetNamespace,
                 GROUP_METADATA_OFFSET_TOPIC_NAME);
-    }
-
-    public static RocketMQTopic getTopicRouteChangeTopic() {
-        return new RocketMQTopic(RocketMQTopic.metaTenant, RocketMQTopic.metaNamespace,
-                ROUTE_CHANGE_TOPIC_NAME);
     }
 
 }
