@@ -74,6 +74,7 @@ public class SubscriptionGroupManager implements Closeable {
     }
 
     public void updateSubscriptionGroupConfig(SubscriptionGroupConfig config) {
+        log.info("RoP update subscription group config: [{}]", config);
         Preconditions.checkArgument(isRunning, "SubscriptionGroupManager hasn't been initialized.");
         Preconditions.checkArgument(config != null && Strings.isNotBlank(config.getGroupName()),
                 "GroupName in SubscriptionGroupConfig can't be empty.");
@@ -100,6 +101,7 @@ public class SubscriptionGroupManager implements Closeable {
 
             if (brokerController.getServerConfig().isAutoCreateSubscriptionGroup()
                     || MixAll.isSysConsumerGroup(ropGroup)) {
+                log.info("RoP auto create group: [{}]", ropGroup);
                 SubscriptionGroupConfig subscriptionGroupConfig = new SubscriptionGroupConfig();
                 subscriptionGroupConfig.setGroupName(ropGroup);
                 updateSubscriptionGroupConfig(subscriptionGroupConfig);
@@ -140,6 +142,14 @@ public class SubscriptionGroupManager implements Closeable {
     public void deleteSubscriptionGroupConfig(String group) {
         ClientGroupName clientGroupName = new ClientGroupName(group);
         zkServiceRef.get().deleteGroupConfig(clientGroupName.getPulsarGroupName());
+
+        String retryTopic = MixAll.getRetryTopic(group);
+        log.info("Rop delete group retry topic: [{}]", retryTopic);
+        this.brokerController.getTopicConfigManager().deleteTopic(retryTopic);
+
+        String dlqTopic = MixAll.getDLQTopic(group);
+        log.info("Rop delete group dlq topic: [{}]", dlqTopic);
+        this.brokerController.getTopicConfigManager().deleteTopic(dlqTopic);
     }
 
     public DataVersion getDataVersion() {

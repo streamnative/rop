@@ -441,16 +441,16 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
     /**
      * delete pulsar topic.
      *
-     * @param topic rop topic name
+     * @param rmqTopic rop topic name
      */
-    public void deleteTopic(final String topic) {
-        String fullTopicName = RocketMQTopic.getPulsarOrigNoDomainTopic(topic);
+    public void deleteTopic(final String rmqTopic) {
+        String fullTopicName = RocketMQTopic.getPulsarOrigNoDomainTopic(rmqTopic);
         log.info("Delete topic [{}].", fullTopicName);
 
         try {
             //delete metadata from pulsar system
             PartitionedTopicMetadata topicMetadata = adminClient.topics().getPartitionedTopicMetadata(fullTopicName);
-            if (topicMetadata.partitions > 0) {
+            if (topicMetadata != null && topicMetadata.partitions > 0) {
                 adminClient.topics().deletePartitionedTopic(fullTopicName, true);
             }
 
