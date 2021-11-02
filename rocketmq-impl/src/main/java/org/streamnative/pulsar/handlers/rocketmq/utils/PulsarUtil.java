@@ -38,10 +38,12 @@ import org.apache.pulsar.client.admin.Tenants;
 import org.apache.pulsar.client.api.MessageId;
 import org.apache.pulsar.common.naming.TopicName;
 import org.apache.pulsar.common.partition.PartitionedTopicMetadata;
+import org.apache.pulsar.common.policies.data.AutoTopicCreationOverride;
 import org.apache.pulsar.common.policies.data.ClusterData;
 import org.apache.pulsar.common.policies.data.RetentionPolicies;
 import org.apache.pulsar.common.policies.data.TenantInfo;
 import org.apache.pulsar.common.policies.data.TenantInfoImpl;
+import org.apache.pulsar.common.policies.data.TopicType;
 import org.streamnative.pulsar.handlers.rocketmq.RocketMQServiceConfiguration;
 import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopClusterContent;
 
@@ -172,6 +174,12 @@ public class PulsarUtil {
             if (messageTTL == null || messageTTL != targetMessageTTL) {
                 namespaces.setNamespaceMessageTTL(ropMetadataNamespace, targetMessageTTL);
             }
+
+            namespaces.setAutoTopicCreation(ropMetadataNamespace, AutoTopicCreationOverride.builder()
+                    .allowAutoTopicCreation(true)
+                    .topicType(TopicType.PARTITIONED.toString())
+                    .defaultNumPartitions(1)
+                    .build());
 
             namespaceExists = true;
 
