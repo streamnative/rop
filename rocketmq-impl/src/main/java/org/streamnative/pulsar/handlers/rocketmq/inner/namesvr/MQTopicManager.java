@@ -121,11 +121,13 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
     public Map<String, List<Integer>> getPulsarTopicRoute(TopicName topicName, String listenerName) {
         try {
             String topicConfigKey = joinPath(topicName.getNamespace(), topicName.getLocalName());
-            if (isTBW12Topic(topicName) && this.topicConfigTable.containsKey(topicConfigKey)) {
-                RopClusterContent clusterContent = zkService.getClusterContent();
-                TopicConfig topicConfig = topicConfigTable.get(topicConfigKey);
-                int writeQueueNums = topicConfig.getWriteQueueNums();
-                return clusterContent.createTopicRouteMap(writeQueueNums);
+            if (isTBW12Topic(topicName)) {
+                if (this.topicConfigTable.containsKey(topicConfigKey)) {
+                    RopClusterContent clusterContent = zkService.getClusterContent();
+                    TopicConfig topicConfig = topicConfigTable.get(topicConfigKey);
+                    int writeQueueNums = topicConfig.getWriteQueueNums();
+                    return clusterContent.createTopicRouteMap(writeQueueNums);
+                }
             } else {
                 RopTopicContent ropTopicContent = zkService.getTopicContent(topicName);
                 Preconditions

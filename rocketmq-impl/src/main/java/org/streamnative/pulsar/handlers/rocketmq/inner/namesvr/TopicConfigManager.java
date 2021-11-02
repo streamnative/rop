@@ -147,18 +147,18 @@ public abstract class TopicConfigManager {
         return this.systemTopicList;
     }
 
-    public TopicConfig selectTopicConfig(final String topic) {
+    public TopicConfig selectTopicConfig(final String rmqTopic) {
         if (log.isDebugEnabled()) {
-            log.debug("[TopicConfigManager] The topic{} is in {}.", RocketMQTopic.getPulsarOrigNoDomainTopic(topic),
+            log.debug("[TopicConfigManager] The topic{} is in {}.", RocketMQTopic.getPulsarOrigNoDomainTopic(rmqTopic),
                     this.topicConfigTable);
         }
-        return this.topicConfigTable.get(RocketMQTopic.getPulsarOrigNoDomainTopic(topic));
+        return this.topicConfigTable.get(RocketMQTopic.getPulsarOrigNoDomainTopic(rmqTopic));
     }
 
-    public TopicConfig createTopicInSendMessageMethod(final String topic, final String defaultTopic,
+    public TopicConfig createTopicInSendMessageMethod(final String rmqTopic, final String defaultTopic,
             final String remoteAddress, final int clientDefaultTopicQueueNums, final int topicSysFlag) {
         TopicConfig topicConfig = null;
-        String pulsarTopicName = RocketMQTopic.getPulsarOrigNoDomainTopic(topic);
+        String pulsarTopicName = RocketMQTopic.getPulsarOrigNoDomainTopic(rmqTopic);
 
         try {
             if (this.lockTopicConfigTable.tryLock(LOCK_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)) {
@@ -229,11 +229,11 @@ public abstract class TopicConfigManager {
     protected abstract void createPulsarPartitionedTopic(TopicConfig topicConfig);
 
     public TopicConfig createTopicInSendMessageBackMethod(
-            final String topic,
+            final String rmqTopic,
             final int clientDefaultTopicQueueNums,
             final int perm,
             final int topicSysFlag) {
-        String pulsarTopicName = RocketMQTopic.getPulsarOrigNoDomainTopic(topic);
+        String pulsarTopicName = RocketMQTopic.getPulsarOrigNoDomainTopic(rmqTopic);
         TopicConfig topicConfig = this.topicConfigTable.get(pulsarTopicName);
         if (topicConfig != null) {
             return topicConfig;
@@ -314,8 +314,10 @@ public abstract class TopicConfigManager {
         this.dataVersion.nextVersion();
     }
 
-    public boolean isOrderTopic(final String topic) {
-        TopicConfig topicConfig = this.topicConfigTable.get(topic);
+    public boolean isOrderTopic(final String rmqTopic) {
+        String pulsarTopicName = RocketMQTopic.getPulsarOrigNoDomainTopic(rmqTopic);
+
+        TopicConfig topicConfig = this.topicConfigTable.get(pulsarTopicName);
         if (topicConfig == null) {
             return false;
         } else {
@@ -323,13 +325,15 @@ public abstract class TopicConfigManager {
         }
     }
 
-    public void deleteTopicConfig(final String topic) {
-        TopicConfig old = this.topicConfigTable.remove(topic);
+    public void deleteTopicConfig(final String rmqTopic) {
+        String pulsarTopicName = RocketMQTopic.getPulsarOrigNoDomainTopic(rmqTopic);
+
+        TopicConfig old = this.topicConfigTable.remove(pulsarTopicName);
         if (old != null) {
             log.info("delete topic config OK, topic: {}", old);
             this.dataVersion.nextVersion();
         } else {
-            log.warn("delete topic config failed, topic: {} not exists", topic);
+            log.warn("delete topic config failed, topic: {} not exists", rmqTopic);
         }
     }
 }
