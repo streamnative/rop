@@ -121,11 +121,13 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
     public Map<String, List<Integer>> getPulsarTopicRoute(TopicName topicName, String listenerName) {
         try {
             String topicConfigKey = joinPath(topicName.getNamespace(), topicName.getLocalName());
-            if (isTBW12Topic(topicName) && this.topicConfigTable.containsKey(topicConfigKey)) {
-                RopClusterContent clusterContent = zkService.getClusterContent();
-                TopicConfig topicConfig = topicConfigTable.get(topicConfigKey);
-                int writeQueueNums = topicConfig.getWriteQueueNums();
-                return clusterContent.createTopicRouteMap(writeQueueNums);
+            if (isTBW12Topic(topicName)) {
+                if (this.topicConfigTable.containsKey(topicConfigKey)) {
+                    RopClusterContent clusterContent = zkService.getClusterContent();
+                    TopicConfig topicConfig = topicConfigTable.get(topicConfigKey);
+                    int writeQueueNums = topicConfig.getWriteQueueNums();
+                    return clusterContent.createTopicRouteMap(writeQueueNums);
+                }
             } else {
                 RopTopicContent ropTopicContent = zkService.getTopicContent(topicName);
                 Preconditions
@@ -439,16 +441,16 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
     /**
      * delete pulsar topic.
      *
-     * @param topic rop topic name
+     * @param rmqTopic rop topic name
      */
-    public void deleteTopic(final String topic) {
-        String fullTopicName = RocketMQTopic.getPulsarOrigNoDomainTopic(topic);
+    public void deleteTopic(final String rmqTopic) {
+        String fullTopicName = RocketMQTopic.getPulsarOrigNoDomainTopic(rmqTopic);
         log.info("Delete topic [{}].", fullTopicName);
 
         try {
             //delete metadata from pulsar system
             PartitionedTopicMetadata topicMetadata = adminClient.topics().getPartitionedTopicMetadata(fullTopicName);
-            if (topicMetadata.partitions > 0) {
+            if (topicMetadata != null && topicMetadata.partitions > 0) {
                 adminClient.topics().deletePartitionedTopic(fullTopicName, true);
             }
 

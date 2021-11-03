@@ -225,9 +225,8 @@ public class GroupMetaManager {
                 if (needCountDownOffsetLatch(latch, message, checkedMessageIds)) {
                     latch.countDown();
                     if (latch.getCount() == 0) {
-                        log.info("CountDownOffsetLatch successfully.");
+                        log.info("loadOffsets successfully and CountDownOffsetLatch count == 0.");
                     }
-                    continue;
                 } else if (Objects.nonNull(message.getData()) && message.getData().length > 0) {
                     GroupOffsetKey groupOffsetKey = GroupMetaKey.decodeKey(ByteBuffer.wrap(message.getKeyBytes()));
                     GroupOffsetValue groupOffsetValue = GroupOffsetValue.decodeGroupOffset(message.getValue());
@@ -245,10 +244,12 @@ public class GroupMetaManager {
         if (latch.getCount() > 0) {
             MessageIdImpl checkedMessageId = (MessageIdImpl) ((TopicMessageImpl) checkedMessage)
                     .getInnerMessageId();
-            return checkedMessageIds.stream().anyMatch((msgId) -> {
+            return checkedMessageIds.stream().filter(msgId ->
+                    ((MessageIdImpl) msgId).getPartitionIndex() == checkedMessageId.getPartitionIndex()
+            ).anyMatch((msgId) -> {
                 MessageIdImpl msgIdImpl = (MessageIdImpl) msgId;
-                return checkedMessageId.getLedgerId() == msgIdImpl.getLedgerId()
-                        && checkedMessageId.getEntryId() == msgIdImpl.getEntryId();
+                return checkedMessageId.getLedgerId() >= msgIdImpl.getLedgerId()
+                        && checkedMessageId.getEntryId() >= msgIdImpl.getEntryId();
             });
         }
         return false;
@@ -549,9 +550,10 @@ public class GroupMetaManager {
                         .topic(offsetTopicName.getPartition(pId).toString())
                         .compressionType(CompressionType.SNAPPY)
                         .enableBatching(false)
-                        .blockIfQueueFull(false)
                         .create();
-                return partitionProducer.newMessage().value(ByteBuffer.allocate(0)).send();
+                MessageIdImpl messageId = (MessageIdImpl) partitionProducer.newMessage().value(ByteBuffer.allocate(0))
+                        .send();
+                return new MessageIdImpl(messageId.getLedgerId(), messageId.getEntryId(), pId);
             } catch (PulsarClientException e) {
                 log.warn("sendCheckPointMessages partitionId=[{}] error.", pId);
                 return null;
