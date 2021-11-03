@@ -139,16 +139,17 @@ public class SubscriptionGroupManager implements Closeable {
         }
     }
 
-    public void deleteSubscriptionGroupConfig(String group) {
-        ClientGroupName clientGroupName = new ClientGroupName(group);
+    public void deleteSubscriptionGroupConfig(String rmqGroup) {
+        log.info("RoP delete group: [{}]", rmqGroup);
+        ClientGroupName clientGroupName = new ClientGroupName(rmqGroup);
         zkServiceRef.get().deleteGroupConfig(clientGroupName.getPulsarGroupName());
 
-        String retryTopic = MixAll.getRetryTopic(group);
-        log.info("Rop delete group retry topic: [{}]", retryTopic);
+        String retryTopic = MixAll.getRetryTopic(rmqGroup);
+        log.info("RoP delete group retry topic: [{}]", retryTopic);
         this.brokerController.getTopicConfigManager().deleteTopic(retryTopic);
 
-        String dlqTopic = MixAll.getDLQTopic(group);
-        log.info("Rop delete group dlq topic: [{}]", dlqTopic);
+        String dlqTopic = MixAll.getDLQTopic(rmqGroup);
+        log.info("RoP delete group dlq topic: [{}]", dlqTopic);
         this.brokerController.getTopicConfigManager().deleteTopic(dlqTopic);
     }
 
