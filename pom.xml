@@ -63,6 +63,7 @@
         <maven.compiler.source>8</maven.compiler.source>
         <maven.compiler.target>8</maven.compiler.target>
         <commons-lang.version>2.6</commons-lang.version>
+        <fastjson.version>1.2.76</fastjson.version>
     </properties>
 
     <modules>
@@ -131,14 +132,12 @@
             <groupId>org.apache.pulsar</groupId>
             <artifactId>pulsar-client-admin-original</artifactId>
             <version>${pulsar.version}</version>
-            <!--<scope>provided</scope>-->
         </dependency>
 
         <dependency>
             <groupId>org.apache.pulsar</groupId>
             <artifactId>testmocks</artifactId>
             <version>${pulsar.version}</version>
-            <!--<scope>provided</scope>-->
         </dependency>
 
         <dependency>
@@ -158,6 +157,12 @@
         </dependency>
 
         <dependency>
+            <groupId>com.alibaba</groupId>
+            <artifactId>fastjson</artifactId>
+            <version>${fastjson.version}</version>
+        </dependency>
+
+        <dependency>
             <groupId>org.apache.rocketmq</groupId>
             <artifactId>rocketmq-broker</artifactId>
             <version>${rocketmq.version}</version>
@@ -169,6 +174,10 @@
                 <exclusion>
                     <artifactId>logback-classic</artifactId>
                     <groupId>ch.qos.logback</groupId>
+                </exclusion>
+                <exclusion>
+                    <artifactId>fastjson</artifactId>
+                    <groupId>com.alibaba</groupId>
                 </exclusion>
             </exclusions>
         </dependency>
