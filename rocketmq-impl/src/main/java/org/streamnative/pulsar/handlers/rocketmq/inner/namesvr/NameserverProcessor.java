@@ -39,6 +39,7 @@ import org.apache.pulsar.broker.loadbalance.impl.ModularLoadManagerWrapper;
 import org.apache.pulsar.client.admin.PulsarAdmin;
 import org.apache.pulsar.policies.data.loadbalancer.AdvertisedListener;
 import org.apache.pulsar.policies.data.loadbalancer.LocalBrokerData;
+import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.help.FAQUrl;
 import org.apache.rocketmq.common.protocol.RequestCode;
 import org.apache.rocketmq.common.protocol.ResponseCode;
@@ -216,7 +217,12 @@ public class NameserverProcessor implements NettyRequestProcessor {
                 response.setRemark(null);
                 return response;
             } catch (Exception ex) {
-                log.info("Fetch topic route info of topic: [{}] error.", requestTopic, ex);
+                if (MixAll.AUTO_CREATE_TOPIC_KEY_TOPIC.equals(requestTopic)) {
+                    log.info("Not found system topic [{}] route info, because of autoCreateTopicEnable={}",
+                            requestTopic, config.isAutoCreateTopicEnable());
+                } else {
+                    log.info("Fetch topic route info of topic: [{}] error.", requestTopic, ex);
+                }
             }
         }
 
