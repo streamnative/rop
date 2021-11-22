@@ -61,7 +61,6 @@ import org.apache.pulsar.client.impl.ReaderBuilderImpl;
 import org.apache.pulsar.client.impl.TopicMessageImpl;
 import org.apache.pulsar.common.api.proto.CommandSubscribe.InitialPosition;
 import org.apache.pulsar.common.naming.TopicName;
-import org.apache.rocketmq.common.protocol.heartbeat.MessageModel;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopPersistentTopicException;
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopServerException;
@@ -357,12 +356,15 @@ public class GroupMetaManager {
 
         // Point:/rop/commit
         if (this.brokerController.isTraceEnable()) {
-            TraceContext traceContext = new TraceContext();
-            traceContext.setTopic(pulsarTopic);
-            traceContext.setGroup(pulsarGroup);
-            traceContext.setPartitionId(pulsarPartitionId);
-            traceContext.setOffset(offset);
-            TraceManager.get().traceCommit(traceContext);
+            oldGroupOffset = offsetTable.getIfPresent(groupOffsetKey);
+            if (oldGroupOffset != null && oldGroupOffset.isValid()) {
+                TraceContext traceContext = new TraceContext();
+                traceContext.setTopic(pulsarTopic);
+                traceContext.setGroup(pulsarGroup);
+                traceContext.setPartitionId(pulsarPartitionId);
+                traceContext.setOffset(offset);
+                TraceManager.get().traceCommit(traceContext);
+            }
         }
     }
 

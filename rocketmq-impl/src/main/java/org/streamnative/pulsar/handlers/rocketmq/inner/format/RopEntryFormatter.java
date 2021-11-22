@@ -15,6 +15,7 @@
 package org.streamnative.pulsar.handlers.rocketmq.inner.format;
 
 import static org.apache.pulsar.common.protocol.Commands.hasChecksum;
+import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_MESSAGE_ID;
 
 import com.google.common.base.Preconditions;
 import com.scurrilous.circe.checksum.Crc32cIntChecksum;
@@ -116,7 +117,7 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
         messageMetadata.setProducerName("");
         messageMetadata.setSequenceId(0L);
         messageMetadata.setPublishTime(System.currentTimeMillis());
-        messageMetadata.setUuid(msgId);
+        messageMetadata.addProperty().setKey(ROP_MESSAGE_ID).setValue(msgId);
         return messageMetadata;
     }
 
@@ -166,7 +167,7 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
         MessageMetadata messageMetadata = Commands.parseMessageMetadata(headersAndPayload);
         String msgId = "";
         for (KeyValue keyValue : messageMetadata.getPropertiesList()) {
-            if (keyValue.getKey().equals("msgId")) {
+            if (keyValue.getKey().equals(ROP_MESSAGE_ID)) {
                 msgId = keyValue.getValue();
             }
         }

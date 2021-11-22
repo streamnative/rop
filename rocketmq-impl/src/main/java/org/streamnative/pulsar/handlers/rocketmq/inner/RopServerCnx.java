@@ -17,6 +17,7 @@ package org.streamnative.pulsar.handlers.rocketmq.inner;
 import static org.apache.rocketmq.common.message.MessageConst.PROPERTY_KEYS;
 import static org.apache.rocketmq.common.message.MessageConst.PROPERTY_TAGS;
 import static org.apache.rocketmq.common.message.MessageConst.PROPERTY_UNIQ_CLIENT_MESSAGE_ID_KEYIDX;
+import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_MESSAGE_ID;
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.SLASH_CHAR;
 
 import com.google.api.client.util.Lists;
@@ -214,6 +215,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                     CompletableFuture<MessageId> messageIdFuture = getProducerFromCache(pTopic, producerGroup,
                             producerId).newMessage()
                             .value((body.get(0)))
+                            .property(ROP_MESSAGE_ID, msgId)
                             .sendAsync();
                     offsetFuture = messageIdFuture.thenApply((Function<MessageId, PutMessageResult>) messageId -> {
                         try {
@@ -254,6 +256,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                         .newMessage()
                         .value((body.get(0)))
                         .deliverAt(deliverAtTime)
+                        .property(ROP_MESSAGE_ID, msgId)
                         .sendAsync();
                 offsetFuture = messageIdFuture.thenApply((Function<MessageId, PutMessageResult>) messageId -> {
                     try {
