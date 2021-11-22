@@ -111,8 +111,8 @@ public class TraceManager {
         String encodeGroup = base64Encoder.encode(context.getGroup().getBytes(StandardCharsets.UTF_8));
         encodeGroup = encodeGroup.replaceAll("\r|\n", "");
         String message = buildMessage(GlobalIdGenerator.generate(), 0, 0, System.currentTimeMillis(),
-                context.getEndTime(), TYPE_GET, context.getTopic(), encodeGroup, context.getMsgId(),
-                context.getInstanceName(), context.getMessageModel());
+                context.getEndTime(), TYPE_GET, context.getTopic(), encodeGroup, context.getPartitionId(),
+                context.getOffset(), context.getMsgId(), context.getInstanceName(), context.getMessageModel());
         logToDisk(message);
     }
 

@@ -543,7 +543,8 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                     for (PutMessageResult result : putMessageResults) {
                         traceContext.setOffset(result.getOffset());
                         traceContext.setMsgId(result.getMsgId());
-                        traceContext.setMsgId(result.getMsgId());
+                        traceContext.setMsgKey(result.getMsgKey());
+                        traceContext.setTags(result.getMsgTag());
                         traceContext.setOffsetMsgId(result.getOffsetMsgId());
                         traceContext.setPulsarMsgId(result.getPulsarMsgId());
                         traceContext.setPartitionId(pulsarPartitionId);
