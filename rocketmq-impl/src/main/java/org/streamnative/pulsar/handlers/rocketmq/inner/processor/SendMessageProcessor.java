@@ -14,11 +14,17 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.processor;
 
+import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_INNER_MESSAGE_ID;
+import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_REQUEST_FROM_PROXY;
+import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_TRACE_START_TIME;
+
+import com.alibaba.fastjson.JSON;
 import io.netty.channel.ChannelHandlerContext;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.math.NumberUtils;
 import org.apache.rocketmq.broker.mqtrace.ConsumeMessageContext;
 import org.apache.rocketmq.broker.mqtrace.ConsumeMessageHook;
 import org.apache.rocketmq.broker.mqtrace.SendMessageContext;
@@ -47,11 +53,15 @@ import org.apache.rocketmq.remoting.exception.RemotingCommandException;
 import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.store.MessageExtBrokerInner;
-import org.apache.rocketmq.store.PutMessageResult;
 import org.apache.rocketmq.store.PutMessageStatus;
 import org.apache.rocketmq.store.stats.BrokerStatsManager;
 import org.streamnative.pulsar.handlers.rocketmq.inner.PutMessageCallback;
+import org.streamnative.pulsar.handlers.rocketmq.inner.PutMessageResult;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
+import org.streamnative.pulsar.handlers.rocketmq.inner.RopPutMessageResult;
+import org.streamnative.pulsar.handlers.rocketmq.inner.pulsar.PulsarMessageStore;
+import org.streamnative.pulsar.handlers.rocketmq.inner.trace.TraceContext;
+import org.streamnative.pulsar.handlers.rocketmq.inner.trace.TraceManager;
 import org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils;
 import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 
@@ -83,11 +93,19 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
                 mqtraceContext = buildMsgContext(ctx, requestHeader);
                 this.executeSendMessageHookBefore(ctx, request, mqtraceContext);
 
+                TraceContext traceContext = null;
+                if (this.brokerController.isTraceEnable()) {
+                    traceContext = TraceContext.buildMsgContext(ctx, requestHeader);
+                    traceContext.setPutStartTime(NumberUtils
+                            .toLong(request.getExtFields().get(ROP_TRACE_START_TIME), System.currentTimeMillis()));
+                    traceContext.setFromProxy(request.getExtFields().containsKey(ROP_REQUEST_FROM_PROXY));
+                }
+
                 RemotingCommand response;
                 if (requestHeader.isBatch()) {
-                    response = this.sendBatchMessage(ctx, request, mqtraceContext, requestHeader);
+                    response = this.sendBatchMessage(ctx, request, mqtraceContext, requestHeader, traceContext);
                 } else {
-                    response = this.sendMessage(ctx, request, mqtraceContext, requestHeader);
+                    response = this.sendMessage(ctx, request, mqtraceContext, requestHeader, traceContext);
                 }
 
                 if (response != null) {
@@ -308,7 +326,8 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
     private RemotingCommand sendMessage(final ChannelHandlerContext ctx,
             final RemotingCommand request,
             final SendMessageContext sendMessageContext,
-            final SendMessageRequestHeader requestHeader) throws RemotingCommandException {
+            final SendMessageRequestHeader requestHeader,
+            final TraceContext traceContext) throws RemotingCommandException {
 
         final RemotingCommand response = RemotingCommand.createResponseCommand(SendMessageResponseHeader.class);
         final SendMessageResponseHeader responseHeader = (SendMessageResponseHeader) response.readCustomHeader();
@@ -343,24 +362,27 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         String clusterName = this.brokerController.getServerConfig().getClusterName();
         MessageAccessor.putProperty(msgInner, MessageConst.PROPERTY_CLUSTER, clusterName);
         msgInner.setPropertiesString(MessageDecoder.messageProperties2String(msgInner.getProperties()));
-        PutMessageResult putMessageResult;
+        org.apache.rocketmq.store.PutMessageResult putMessageResult;
         Map<String, String> oriProps = MessageDecoder.string2messageProperties(requestHeader.getProperties());
         String traFlag = oriProps.get(MessageConst.PROPERTY_TRANSACTION_PREPARED);
         if (Boolean.parseBoolean(traFlag)
                 && !(msgInner.getReconsumeTimes() > 0
                 && msgInner.getDelayTimeLevel() > 0)) { //For client under version 4.6.1
-            putMessageResult = new PutMessageResult(PutMessageStatus.MESSAGE_ILLEGAL, null);
+            putMessageResult = new org.apache.rocketmq.store.PutMessageResult(PutMessageStatus.MESSAGE_ILLEGAL, null);
             return handlePutMessageResult(putMessageResult, response, request, msgInner, responseHeader,
                     sendMessageContext, queueIdInt);
         } else {
             try {
-                this.getServerCnxMsgStore(ctx, requestHeader.getProducerGroup())
-                        .putMessage(CommonUtils.getPulsarPartitionIdByRequest(request),
-                                msgInner,
-                                requestHeader.getProducerGroup(),
-                                new SendMessageCallback(response, request, msgInner, responseHeader,
-                                        sendMessageContext,
-                                        ctx, queueIdInt));
+                PulsarMessageStore pulsarMessageStore = this
+                        .getServerCnxMsgStore(ctx, requestHeader.getProducerGroup());
+                if (traceContext != null) {
+                    traceContext.setPersistStartTime(System.currentTimeMillis());
+                }
+                pulsarMessageStore.putMessage(CommonUtils.getPulsarPartitionIdByRequest(request),
+                        msgInner,
+                        requestHeader.getProducerGroup(),
+                        new SendMessageCallback(response, request, msgInner, responseHeader,
+                                sendMessageContext, ctx, queueIdInt, traceContext));
                 return null;
             } catch (Exception e) {
                 log.warn("[{}] sendMessage failed", requestHeader.getTopic(), e);
@@ -371,7 +393,8 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         }
     }
 
-    private RemotingCommand handlePutMessageResult(PutMessageResult putMessageResult, RemotingCommand response,
+    private RemotingCommand handlePutMessageResult(org.apache.rocketmq.store.PutMessageResult putMessageResult,
+            RemotingCommand response,
             RemotingCommand request, MessageExt msg, SendMessageResponseHeader responseHeader,
             SendMessageContext sendMessageContext, int queueIdInt) {
         if (putMessageResult == null) {
@@ -476,7 +499,8 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
     private RemotingCommand sendBatchMessage(final ChannelHandlerContext ctx,
             final RemotingCommand request,
             final SendMessageContext sendMessageContext,
-            final SendMessageRequestHeader requestHeader) throws RemotingCommandException {
+            final SendMessageRequestHeader requestHeader,
+            final TraceContext traceContext) throws RemotingCommandException {
 
         final RemotingCommand response = RemotingCommand.createResponseCommand(SendMessageResponseHeader.class);
         final SendMessageResponseHeader responseHeader = (SendMessageResponseHeader) response.readCustomHeader();
@@ -525,13 +549,16 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         MessageAccessor.putProperty(messageExtBatch, MessageConst.PROPERTY_CLUSTER, clusterName);
 
         try {
-            this.getServerCnxMsgStore(ctx, requestHeader.getProducerGroup())
-                    .putMessages(CommonUtils.getPulsarPartitionIdByRequest(request),
-                            messageExtBatch,
-                            requestHeader.getProducerGroup(),
-                            new SendMessageCallback(response, request, messageExtBatch, responseHeader,
-                                    sendMessageContext,
-                                    ctx, queueIdInt));
+            PulsarMessageStore pulsarMessageStore = this.getServerCnxMsgStore(ctx, requestHeader.getProducerGroup());
+            if (traceContext != null) {
+                traceContext.setPersistStartTime(System.currentTimeMillis());
+            }
+            pulsarMessageStore.putMessages(CommonUtils.getPulsarPartitionIdByRequest(request),
+                    messageExtBatch,
+                    requestHeader.getProducerGroup(),
+                    new SendMessageCallback(response, request, messageExtBatch, responseHeader,
+                            sendMessageContext,
+                            ctx, queueIdInt, traceContext));
             return null;
         } catch (Exception e) {
             log.warn("[{}] sendBatchMessage failed", requestHeader.getTopic(), e);
@@ -573,10 +600,11 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         private final SendMessageContext sendMessageContext;
         private final ChannelHandlerContext ctx;
         private final int queueIdInt;
+        private final TraceContext traceContext;
 
         public SendMessageCallback(RemotingCommand response, RemotingCommand request, MessageExt msg,
                 SendMessageResponseHeader responseHeader, SendMessageContext sendMessageContext,
-                ChannelHandlerContext ctx, int queueIdInt) {
+                ChannelHandlerContext ctx, int queueIdInt, TraceContext traceContext) {
             this.response = response;
             this.request = request;
             this.msg = msg;
@@ -584,9 +612,10 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             this.sendMessageContext = sendMessageContext;
             this.ctx = ctx;
             this.queueIdInt = queueIdInt;
+            this.traceContext = traceContext;
         }
 
-        public void callback(PutMessageResult putMessageResult) {
+        public void callback(org.apache.rocketmq.store.PutMessageResult putMessageResult) {
             try {
                 handlePutMessageResult(putMessageResult, response, request, msg, responseHeader, sendMessageContext,
                         queueIdInt);
@@ -595,10 +624,52 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
                 response.setCode(ResponseCode.SYSTEM_ERROR);
                 response.setRemark("execute callback failed");
             }
+
+            // Point:/rop/persist finish
+            if (traceContext != null && putMessageResult instanceof RopPutMessageResult) {
+                long now = System.currentTimeMillis();
+                RopPutMessageResult ropPutMessageResult = (RopPutMessageResult) putMessageResult;
+                response.addExtField(ROP_INNER_MESSAGE_ID,
+                        JSON.toJSONString(ropPutMessageResult.getPutMessageResults()));
+
+                traceContext.setCode(response.getCode());
+                for (PutMessageResult result : ropPutMessageResult.getPutMessageResults()) {
+                    traceContext.setOffset(result.getOffset());
+                    traceContext.setMsgId(result.getMsgId());
+                    traceContext.setOffsetMsgId(result.getOffsetMsgId());
+                    traceContext.setPulsarMsgId(result.getPulsarMsgId());
+                    traceContext.setEndTime(now);
+                    traceContext.setDuration(now - traceContext.getPersistStartTime());
+                    TraceManager.get().tracePersist(traceContext);
+                }
+            }
+
             doResponse(ctx, request, response);
 
             // execute send message hook
             executeSendMessageHookAfter(response, sendMessageContext);
+
+            // Point:/rop/put finish
+            if (traceContext != null && !traceContext.isFromProxy()
+                    && putMessageResult instanceof RopPutMessageResult) {
+                long now = System.currentTimeMillis();
+                RopPutMessageResult ropPutMessageResult = (RopPutMessageResult) putMessageResult;
+
+                traceContext.setCode(response.getCode());
+                for (PutMessageResult result : ropPutMessageResult.getPutMessageResults()) {
+                    traceContext.setOffset(result.getOffset());
+                    traceContext.setMsgId(result.getMsgId());
+                    traceContext.setMsgKey(result.getMsgKey());
+                    traceContext.setTags(result.getMsgTag());
+                    traceContext.setPartitionId(result.getPartition());
+                    traceContext.setOffsetMsgId(result.getOffsetMsgId());
+                    traceContext.setPulsarMsgId(result.getPulsarMsgId());
+                    traceContext.setEndTime(now);
+                    traceContext.setDuration(now - traceContext.getPutStartTime());
+                    TraceManager.get().tracePut(traceContext);
+                }
+            }
+
         }
     }
 
@@ -623,7 +694,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             this.msgExt = msgExt;
         }
 
-        public void callback(PutMessageResult putMessageResult) {
+        public void callback(org.apache.rocketmq.store.PutMessageResult putMessageResult) {
             try {
                 if (putMessageResult != null) {
                     if (putMessageResult.getPutMessageStatus() == PutMessageStatus.PUT_OK) {

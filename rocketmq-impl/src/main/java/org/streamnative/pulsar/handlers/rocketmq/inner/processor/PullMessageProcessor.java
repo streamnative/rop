@@ -57,11 +57,15 @@ import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.store.stats.BrokerStatsManager;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RopClientChannelCnx;
+import org.streamnative.pulsar.handlers.rocketmq.inner.RopMessage;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.BatchMessageTransfer;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.ConsumerGroupInfo;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.RopGetMessageResult;
 import org.streamnative.pulsar.handlers.rocketmq.inner.format.RopMessageFilter;
+import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupName;
 import org.streamnative.pulsar.handlers.rocketmq.inner.pulsar.PulsarMessageStore;
+import org.streamnative.pulsar.handlers.rocketmq.inner.trace.TraceContext;
+import org.streamnative.pulsar.handlers.rocketmq.inner.trace.TraceManager;
 import org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils;
 
 /**
@@ -198,6 +202,7 @@ public class PullMessageProcessor implements NettyRequestProcessor {
             return response;
         }
 
+        boolean isBroadcasting = false;
         SubscriptionData subscriptionData = null;
         if (hasSubscriptionFlag) {
             try {
@@ -214,6 +219,8 @@ public class PullMessageProcessor implements NettyRequestProcessor {
 
             ConsumerGroupInfo consumerGroupInfo =
                     this.brokerController.getConsumerManager().getConsumerGroupInfo(requestHeader.getConsumerGroup());
+            isBroadcasting =
+                    consumerGroupInfo != null && consumerGroupInfo.getMessageModel() == MessageModel.BROADCASTING;
             if (consumerGroupInfo != null && !subscriptionGroupConfig.isConsumeBroadcastEnable()
                     && consumerGroupInfo.getMessageModel() == MessageModel.BROADCASTING) {
                 response.setCode(ResponseCode.NO_PERMISSION);
@@ -231,6 +238,7 @@ public class PullMessageProcessor implements NettyRequestProcessor {
                         "the consumer's group info not exist" + FAQUrl.suggestTodo(FAQUrl.SAME_GROUP_DIFFERENT_TOPIC));
                 return response;
             }
+            isBroadcasting = consumerGroupInfo.getMessageModel() == MessageModel.BROADCASTING;
 
             if (!subscriptionGroupConfig.isConsumeBroadcastEnable()
                     && consumerGroupInfo.getMessageModel() == MessageModel.BROADCASTING) {
@@ -425,6 +433,24 @@ public class PullMessageProcessor implements NettyRequestProcessor {
                         }
                         response = null;
                     }
+
+                    // Point:/rop/get
+                    if (this.brokerController.isTraceEnable()) {
+                        List<RopMessage> ropMessages = ropGetMessageResult.getMessageBufferList();
+                        for (RopMessage ropMessage : ropMessages) {
+                            TraceContext traceContext = new TraceContext();
+                            traceContext.setTopic(ropGetMessageResult.getPulsarTopic());
+                            traceContext.setGroup(
+                                    new ClientGroupName(requestHeader.getConsumerGroup()).getPulsarGroupName());
+                            traceContext.setPartitionId(ropGetMessageResult.getPartitionId());
+                            traceContext.setOffset(ropMessage.getOffset());
+                            traceContext.setMsgId(ropMessage.getMsgId());
+                            traceContext.setInstanceName(ropGetMessageResult.getInstanceName());
+                            traceContext.setMessageModel(isBroadcasting ? MessageModel.BROADCASTING.getModeCN()
+                                    : MessageModel.CLUSTERING.getModeCN());
+                            TraceManager.get().traceGet(traceContext);
+                        }
+                    }
                     break;
                 case ResponseCode.PULL_NOT_FOUND:
                     if (brokerAllowSuspend && hasSuspendFlag) {
@@ -494,8 +520,9 @@ public class PullMessageProcessor implements NettyRequestProcessor {
         ByteBuffer byteBuffer = ByteBuffer.allocate(getMessageResult.getBufferTotalSize());
         long storeTimestamp = 0;
         try {
-            List<ByteBuf> messageBufferList = getMessageResult.getMessageBufferList();
-            for (ByteBuf bb : messageBufferList) {
+            List<RopMessage> messageBufferList = getMessageResult.getMessageBufferList();
+            for (RopMessage ropMessage : messageBufferList) {
+                ByteBuf bb = ropMessage.getPayload();
                 byteBuffer.put(bb.nioBuffer());
                 int sysFlag = bb.getInt(MessageDecoder.SYSFLAG_POSITION);
                 // bornhost has the IPv4 ip if the MessageSysFlag.BORNHOST_V6_FLAG bit of sysFlag is 0

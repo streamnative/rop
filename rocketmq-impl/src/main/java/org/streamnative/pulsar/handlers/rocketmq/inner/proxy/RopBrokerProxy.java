@@ -32,10 +32,14 @@ import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.PULSAR
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_CACHE_EXPIRE_TIME_MS;
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_CACHE_INITIAL_SIZE;
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_CACHE_MAX_SIZE;
+import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_INNER_MESSAGE_ID;
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_INNER_REMOTE_CLIENT_TAG;
+import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_REQUEST_FROM_PROXY;
+import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_TRACE_START_TIME;
 import static org.streamnative.pulsar.handlers.rocketmq.utils.PulsarUtil.autoExpanseBrokerGroupData;
 import static org.streamnative.pulsar.handlers.rocketmq.utils.PulsarUtil.genBrokerGroupData;
 
+import com.alibaba.fastjson.JSON;
 import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Splitter;
@@ -55,6 +59,7 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bookkeeper.common.util.OrderedExecutor;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.math.NumberUtils;
 import org.apache.logging.log4j.util.Strings;
 import org.apache.pulsar.broker.PulsarService;
 import org.apache.pulsar.broker.ServiceConfiguration;
@@ -95,6 +100,7 @@ import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.ZooDefs.Ids;
 import org.streamnative.pulsar.handlers.rocketmq.RocketMQServiceConfiguration;
+import org.streamnative.pulsar.handlers.rocketmq.inner.PutMessageResult;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQRemoteServer;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.CommitLogOffset;
@@ -110,6 +116,8 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.processor.PullMessageProc
 import org.streamnative.pulsar.handlers.rocketmq.inner.processor.QueryMessageProcessor;
 import org.streamnative.pulsar.handlers.rocketmq.inner.processor.SendMessageProcessor;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientTopicName;
+import org.streamnative.pulsar.handlers.rocketmq.inner.trace.TraceContext;
+import org.streamnative.pulsar.handlers.rocketmq.inner.trace.TraceManager;
 import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopClusterContent;
 import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkUtils;
 
@@ -306,12 +314,19 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                         ctx.writeAndFlush(sendResponse);
                         break;
                     }
+
+                    // TODO: hanmz 2021/11/16 设置请求进入时间和是否是代理过来的请求
+                    cmd.getExtFields().put(ROP_TRACE_START_TIME, String.valueOf(System.currentTimeMillis()));
+                    if (cmd.getExtFields().containsKey(PULSAR_REAL_PARTITION_ID_TAG)) {
+                        cmd.addExtField(ROP_REQUEST_FROM_PROXY, "true");
+                    }
+
                     String topic = sendHeader.getTopic();
                     int queueId = sendHeader.getQueueId();
                     rmqTopic = new ClientTopicName(topic);
                     pulsarTopicName = rmqTopic.toPulsarTopicName();
                     isOwnedBroker = checkTopicOwnerBroker(cmd, pulsarTopicName, queueId);
-                    if (isOwnedBroker) {
+                    if (isOwnedBroker && cmd.getExtFields().containsKey(ROP_INNER_REMOTE_CLIENT_TAG)) {
                         log.trace("process owned broker send request[{}].", cmd);
                         super.processRequestCommand(ctx, cmd);
                     } else {
@@ -499,6 +514,10 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
         log.debug("processNonOwnedBrokerSendRequest [topic={},pid={}] and address=[{}].", pulsarTopicName,
                 pulsarPartitionId, address);
         final int opaque = cmd.getOpaque();
+
+        TraceContext traceContext = this.brokerController.isTraceEnable() ?
+                TraceContext.buildMsgContext(ctx, sendHeader) : null;
+
         try {
             cmd.addExtField(ROP_INNER_REMOTE_CLIENT_TAG, INNER_CLIENT_NAME_PREFIX + sendHeader.getProducerGroup());
             brokerNetworkClients.invokeAsync(address, cmd, timeout, (responseFuture) -> {
@@ -516,6 +535,25 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                     sendResponse.setCode(ResponseCode.SYSTEM_ERROR);
                     sendResponse.setRemark("processNonOwnedBrokerSendRequest invokeAsync error");
                     ctx.writeAndFlush(sendResponse);
+                }
+
+                if (traceContext != null) {
+                    List<PutMessageResult> putMessageResults =
+                            JSON.parseArray(sendResponse.getExtFields().get(ROP_INNER_MESSAGE_ID), PutMessageResult.class);
+                    for (PutMessageResult putMessageResult : putMessageResults) {
+                        traceContext.setOffset(putMessageResult.getOffset());
+                        traceContext.setMsgId(putMessageResult.getMsgId());
+                        traceContext.setOffsetMsgId(putMessageResult.getOffsetMsgId());
+                        traceContext.setPulsarMsgId(putMessageResult.getPulsarMsgId());
+
+                        traceContext.setPartitionId(pulsarPartitionId);
+                        traceContext.setPutStartTime(NumberUtils
+                                .toLong(cmd.getExtFields().get(ROP_TRACE_START_TIME), System.currentTimeMillis()));
+                        traceContext.setEndTime(System.currentTimeMillis());
+                        traceContext.setDuration(System.currentTimeMillis() - traceContext.getPutStartTime());
+                        traceContext.setCode(sendResponse.getCode());
+                        TraceManager.get().tracePut(traceContext);
+                    }
                 }
             });
         } catch (Exception e) {

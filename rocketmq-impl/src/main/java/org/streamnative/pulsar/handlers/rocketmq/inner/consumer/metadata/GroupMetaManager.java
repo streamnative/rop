@@ -61,11 +61,14 @@ import org.apache.pulsar.client.impl.ReaderBuilderImpl;
 import org.apache.pulsar.client.impl.TopicMessageImpl;
 import org.apache.pulsar.common.api.proto.CommandSubscribe.InitialPosition;
 import org.apache.pulsar.common.naming.TopicName;
+import org.apache.rocketmq.common.protocol.heartbeat.MessageModel;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopPersistentTopicException;
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopServerException;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupAndTopicName;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientTopicName;
+import org.streamnative.pulsar.handlers.rocketmq.inner.trace.TraceContext;
+import org.streamnative.pulsar.handlers.rocketmq.inner.trace.TraceManager;
 import org.streamnative.pulsar.handlers.rocketmq.utils.MessageIdUtils;
 import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 
@@ -316,16 +319,31 @@ public class GroupMetaManager {
     }
 
     public void commitOffset(final String group, final String topic, final int queueId, final long offset) {
-        // skip commit offset request if this broker not owner for the request queueId topic
-        log.debug("When commit group[{}] offset, the [topic@queueId] is [{}@{}] and the messageID is: {}",
-                group, topic, queueId, offset);
         ClientGroupAndTopicName groupAndTopicName = new ClientGroupAndTopicName(group, topic);
         String pulsarGroupName = groupAndTopicName.getClientGroupName().getPulsarGroupName();
         String pulsarTopicName = groupAndTopicName.getClientTopicName().getPulsarTopicName();
         int pulsarPartitionId = brokerController.getRopBrokerProxy()
                 .getPulsarTopicPartitionId(TopicName.get(pulsarTopicName), queueId);
 
-        GroupOffsetKey groupOffsetKey = new GroupOffsetKey(pulsarGroupName, pulsarTopicName, pulsarPartitionId);
+        commitOffsetInternal(pulsarGroupName, pulsarTopicName, pulsarPartitionId, offset);
+    }
+
+    public void commitOffsetByPartitionId(final String group, final String topic, final int pulsarPartitionId,
+            final long offset) {
+        ClientGroupAndTopicName groupAndTopicName = new ClientGroupAndTopicName(group, topic);
+        String pulsarGroupName = groupAndTopicName.getClientGroupName().getPulsarGroupName();
+        String pulsarTopicName = groupAndTopicName.getClientTopicName().getPulsarTopicName();
+
+        commitOffsetInternal(pulsarGroupName, pulsarTopicName, pulsarPartitionId, offset);
+    }
+
+    public void commitOffsetInternal(String pulsarGroup, String pulsarTopic, final int pulsarPartitionId,
+            final long offset) {
+        // skip commit offset request if this broker not owner for the request queueId topic
+        log.debug("When commit group[{}] offset, the [topic@partitionId] is [{}@{}] and the messageID is: {}",
+                pulsarGroup, pulsarTopic, pulsarPartitionId, offset);
+
+        GroupOffsetKey groupOffsetKey = new GroupOffsetKey(pulsarGroup, pulsarTopic, pulsarPartitionId);
         GroupOffsetValue oldGroupOffset = offsetTable.getIfPresent(groupOffsetKey);
         long commitTimestamp = System.currentTimeMillis();
         long expireTimestamp = System.currentTimeMillis() + offsetsRetentionMs;
@@ -336,27 +354,15 @@ public class GroupMetaManager {
             // add new group offset
             offsetTable.put(groupOffsetKey, new GroupOffsetValue(offset, commitTimestamp, expireTimestamp));
         }
-    }
 
-    public void commitOffsetByPartitionId(final String group, final String topic, final int partitionId,
-            final long offset) {
-        // skip commit offset request if this broker not owner for the request queueId topic
-        log.debug("When commit group[{}] offset, the [topic@partitionId] is [{}@{}] and the messageID is: {}",
-                group, topic, partitionId, offset);
-        ClientGroupAndTopicName groupAndTopicName = new ClientGroupAndTopicName(group, topic);
-        String pulsarGroupName = groupAndTopicName.getClientGroupName().getPulsarGroupName();
-        String pulsarTopicName = groupAndTopicName.getClientTopicName().getPulsarTopicName();
-
-        GroupOffsetKey groupOffsetKey = new GroupOffsetKey(pulsarGroupName, pulsarTopicName, partitionId);
-        GroupOffsetValue oldGroupOffset = offsetTable.getIfPresent(groupOffsetKey);
-        long commitTimestamp = System.currentTimeMillis();
-        long expireTimestamp = System.currentTimeMillis() + offsetsRetentionMs;
-        if (Objects.nonNull(oldGroupOffset)) {
-            //refresh group offset value and expire time
-            oldGroupOffset.refresh(offset, commitTimestamp, expireTimestamp);
-        } else {
-            // add new group offset
-            offsetTable.put(groupOffsetKey, new GroupOffsetValue(offset, commitTimestamp, expireTimestamp));
+        // Point:/rop/commit
+        if (this.brokerController.isTraceEnable()) {
+            TraceContext traceContext = new TraceContext();
+            traceContext.setTopic(pulsarTopic);
+            traceContext.setGroup(pulsarGroup);
+            traceContext.setPartitionId(pulsarPartitionId);
+            traceContext.setOffset(offset);
+            TraceManager.get().traceCommit(traceContext);
         }
     }
 

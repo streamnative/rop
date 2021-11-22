@@ -14,6 +14,7 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner;
 
+import com.google.common.base.Joiner;
 import io.netty.buffer.ByteBuf;
 import io.netty.util.Recycler;
 import io.netty.util.Recycler.Handle;
@@ -31,10 +32,15 @@ import org.apache.pulsar.common.protocol.Commands;
 @Slf4j
 public final class RopMessagePublishContext implements PublishContext {
 
-    private CompletableFuture<Long> offsetFuture;
+    private CompletableFuture<PutMessageResult> offsetFuture;
     private Topic topic;
+    private int partition;
     private long startTimeNs;
     private long baseOffset = -1L;
+
+    private String msgId;
+    private String msgKey;
+    private String msgTag;
 
     @Override
     public void setMetadataFromEntryData(ByteBuf entryData) {
@@ -77,20 +83,27 @@ public final class RopMessagePublishContext implements PublishContext {
             if (baseOffset < 0) {
                 log.error("Failed to get offset for ({}, {})", ledgerId, entryId);
             }
-            offsetFuture.complete(baseOffset);
+
+            offsetFuture.complete(
+                    new PutMessageResult(msgId, Joiner.on(":").join(ledgerId, entryId, partition), baseOffset, msgKey,
+                            msgTag));
         }
 
         recycle();
     }
 
     // recycler
-    public static RopMessagePublishContext get(CompletableFuture<Long> offsetFuture,
-            Topic topic,
-            long startTimeNs) {
+    public static RopMessagePublishContext get(CompletableFuture<PutMessageResult> offsetFuture, Topic topic,
+            int partition, long startTimeNs, String msgId, String msgKey, String msgTag) {
         RopMessagePublishContext callback = RECYCLER.get();
         callback.offsetFuture = offsetFuture;
         callback.topic = topic;
+        callback.partition = partition;
         callback.startTimeNs = startTimeNs;
+
+        callback.msgId = msgId;
+        callback.msgKey = msgKey;
+        callback.msgTag = msgTag;
         return callback;
     }
 

@@ -22,6 +22,8 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.WritableByteChannel;
 import java.util.List;
+import java.util.stream.Collectors;
+import org.streamnative.pulsar.handlers.rocketmq.inner.RopMessage;
 
 /**
  * write channel using non-heap buffer.
@@ -41,7 +43,8 @@ public class BatchMessageTransfer extends AbstractReferenceCounted implements Fi
     @Override
     public long position() {
         int pos = byteBufferHeader.position();
-        List<ByteBuf> messageBufferList = this.getMessageResult.getMessageBufferList();
+        List<ByteBuf> messageBufferList = this.getMessageResult.getMessageBufferList().stream()
+                .map(RopMessage::getPayload).collect(Collectors.toList());
         for (ByteBuf bb : messageBufferList) {
             pos += bb.readerIndex();
         }
@@ -69,7 +72,8 @@ public class BatchMessageTransfer extends AbstractReferenceCounted implements Fi
             transferred += channel.write(this.byteBufferHeader);
             return transferred;
         } else {
-            List<ByteBuf> messageBufferList = this.getMessageResult.getMessageBufferList();
+            List<ByteBuf> messageBufferList = this.getMessageResult.getMessageBufferList().stream()
+                    .map(RopMessage::getPayload).collect(Collectors.toList());
             for (ByteBuf bb : messageBufferList) {
                 if (bb.readableBytes() > 0) {
                     transferred += channel.write(bb.nioBuffer());

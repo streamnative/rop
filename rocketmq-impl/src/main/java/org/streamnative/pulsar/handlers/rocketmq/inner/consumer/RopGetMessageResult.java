@@ -14,12 +14,12 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.consumer;
 
-import io.netty.buffer.ByteBuf;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.Data;
 import lombok.ToString;
 import org.apache.rocketmq.store.GetMessageStatus;
+import org.streamnative.pulsar.handlers.rocketmq.inner.RopMessage;
 
 /**
  * Rop get message result.
@@ -28,7 +28,7 @@ import org.apache.rocketmq.store.GetMessageStatus;
 @ToString(exclude = "messageBufferList")
 public class RopGetMessageResult {
 
-    private final List<ByteBuf> messageBufferList = new ArrayList<>(100);
+    private final List<RopMessage> messageBufferList = new ArrayList<>(100);
     private GetMessageStatus status;
     private long nextBeginOffset;
     private long minOffset;
@@ -36,18 +36,22 @@ public class RopGetMessageResult {
     private boolean suggestPullingFromSlave = false;
     private int msgCount4Commercial = 0;
 
+    private String pulsarTopic;
+    private int partitionId;
+    private String instanceName;
+
     public int getMessageCount() {
         return messageBufferList.size();
     }
 
     public int getBufferTotalSize() {
         return messageBufferList.stream().reduce(0, (r, item) ->
-                        r += item.readableBytes()
+                        r += item.getPayload().readableBytes()
                 , Integer::sum);
     }
 
-    public void addMessage(final ByteBuf msgBuf) {
-        messageBufferList.add(msgBuf);
+    public void addMessage(final RopMessage ropMessage) {
+        messageBufferList.add(ropMessage);
     }
 
     public int size(){
@@ -55,8 +59,8 @@ public class RopGetMessageResult {
     }
 
     public void release() {
-        for (ByteBuf msgByteBuf : this.messageBufferList) {
-            msgByteBuf.release();
+        for (RopMessage ropMessage : this.messageBufferList) {
+            ropMessage.getPayload().release();
         }
     }
 
