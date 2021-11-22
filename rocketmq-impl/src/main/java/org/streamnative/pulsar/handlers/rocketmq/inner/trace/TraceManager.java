@@ -109,7 +109,7 @@ public class TraceManager {
         // encode group with base64
         String encodeGroup = base64Encoder.encode(context.getGroup().getBytes(StandardCharsets.UTF_8));
         String message = buildMessage(GlobalIdGenerator.generate(), 0, 0, System.currentTimeMillis(),
-                context.getEndTime(), TYPE_GET, context.getTopic(), context.getGroup(), context.getMsgId(),
+                context.getEndTime(), TYPE_GET, context.getTopic(), encodeGroup, context.getMsgId(),
                 context.getInstanceName(), context.getMessageModel());
         logToDisk(message);
     }
@@ -118,7 +118,7 @@ public class TraceManager {
         // encode group with base64
         String encodeGroup = base64Encoder.encode(context.getGroup().getBytes(StandardCharsets.UTF_8));
         String message = buildMessage(GlobalIdGenerator.generate(), 0, 0, System.currentTimeMillis(),
-                context.getEndTime(), TYPE_COMMIT, context.getTopic(), context.getGroup(), context.getPartitionId(),
+                context.getEndTime(), TYPE_COMMIT, context.getTopic(), encodeGroup, context.getPartitionId(),
                 context.getOffset());
         logToDisk(message);
     }
