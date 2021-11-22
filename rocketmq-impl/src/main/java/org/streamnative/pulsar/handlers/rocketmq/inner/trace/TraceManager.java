@@ -90,8 +90,8 @@ public class TraceManager {
         map.put("instance_name", context.getInstanceName());
         map.put("tags", context.getTags());
         String encodeProperties = base64Encoder.encode(JSON.toJSONString(map).getBytes(StandardCharsets.UTF_8));
-        String message = buildMessage(GlobalIdGenerator.generate(), 0, 0, context.getPutStartTime(), TYPE_PUT,
-                context.getEndTime(), context.getTopic(), context.getPartitionId(), context.getOffset(),
+        String message = buildMessage(GlobalIdGenerator.generate(), 0, 0, context.getPutStartTime(),
+                context.getEndTime(), TYPE_PUT, context.getTopic(), context.getPartitionId(), context.getOffset(),
                 context.getMsgId(), context.getPulsarMsgId(), context.getCode(), context.getDuration(),
                 encodeProperties);
         logToDisk(message);
