@@ -83,13 +83,14 @@ public class TraceManager {
     public void tracePut(TraceContext context) {
         // encode other properties with base64
         Map<String, Object> map = Maps.newHashMap();
-        map.put("broker_tag", context.getBrokerTag());
-        map.put("queue_id", context.getQueueId());
+//        map.put("broker_tag", context.getBrokerTag());
+//        map.put("queue_id", context.getQueueId());
         map.put("offset_msg_id", context.getOffsetMsgId());
         map.put("msg_key", context.getMsgKey());
         map.put("instance_name", context.getInstanceName());
         map.put("tags", context.getTags());
         String encodeProperties = base64Encoder.encode(JSON.toJSONString(map).getBytes(StandardCharsets.UTF_8));
+        encodeProperties = encodeProperties.replaceAll("\r|\n", "");
         String message = buildMessage(GlobalIdGenerator.generate(), 0, 0, context.getPutStartTime(),
                 context.getEndTime(), TYPE_PUT, context.getTopic(), context.getPartitionId(), context.getOffset(),
                 context.getMsgId(), context.getPulsarMsgId(), context.getCode(), context.getDuration(),
@@ -108,6 +109,7 @@ public class TraceManager {
     public void traceGet(TraceContext context) {
         // encode group with base64
         String encodeGroup = base64Encoder.encode(context.getGroup().getBytes(StandardCharsets.UTF_8));
+        encodeGroup = encodeGroup.replaceAll("\r|\n", "");
         String message = buildMessage(GlobalIdGenerator.generate(), 0, 0, System.currentTimeMillis(),
                 context.getEndTime(), TYPE_GET, context.getTopic(), encodeGroup, context.getMsgId(),
                 context.getInstanceName(), context.getMessageModel());
@@ -117,6 +119,7 @@ public class TraceManager {
     public void traceCommit(TraceContext context) {
         // encode group with base64
         String encodeGroup = base64Encoder.encode(context.getGroup().getBytes(StandardCharsets.UTF_8));
+        encodeGroup = encodeGroup.replaceAll("\r|\n", "");
         String message = buildMessage(GlobalIdGenerator.generate(), 0, 0, System.currentTimeMillis(),
                 context.getEndTime(), TYPE_COMMIT, context.getTopic(), encodeGroup, context.getPartitionId(),
                 context.getOffset());

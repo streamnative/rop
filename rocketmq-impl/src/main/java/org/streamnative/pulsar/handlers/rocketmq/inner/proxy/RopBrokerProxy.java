@@ -326,7 +326,7 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                     rmqTopic = new ClientTopicName(topic);
                     pulsarTopicName = rmqTopic.toPulsarTopicName();
                     isOwnedBroker = checkTopicOwnerBroker(cmd, pulsarTopicName, queueId);
-                    if (isOwnedBroker && cmd.getExtFields().containsKey(ROP_INNER_REMOTE_CLIENT_TAG)) {
+                    if (isOwnedBroker) {
                         log.trace("process owned broker send request[{}].", cmd);
                         super.processRequestCommand(ctx, cmd);
                     } else {
@@ -538,14 +538,14 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                 }
 
                 if (traceContext != null) {
-                    List<PutMessageResult> putMessageResults =
-                            JSON.parseArray(sendResponse.getExtFields().get(ROP_INNER_MESSAGE_ID), PutMessageResult.class);
-                    for (PutMessageResult putMessageResult : putMessageResults) {
-                        traceContext.setOffset(putMessageResult.getOffset());
-                        traceContext.setMsgId(putMessageResult.getMsgId());
-                        traceContext.setOffsetMsgId(putMessageResult.getOffsetMsgId());
-                        traceContext.setPulsarMsgId(putMessageResult.getPulsarMsgId());
-
+                    List<PutMessageResult> putMessageResults = JSON
+                            .parseArray(sendResponse.getExtFields().get(ROP_INNER_MESSAGE_ID), PutMessageResult.class);
+                    for (PutMessageResult result : putMessageResults) {
+                        traceContext.setOffset(result.getOffset());
+                        traceContext.setMsgId(result.getMsgId());
+                        traceContext.setMsgId(result.getMsgId());
+                        traceContext.setOffsetMsgId(result.getOffsetMsgId());
+                        traceContext.setPulsarMsgId(result.getPulsarMsgId());
                         traceContext.setPartitionId(pulsarPartitionId);
                         traceContext.setPutStartTime(NumberUtils
                                 .toLong(cmd.getExtFields().get(ROP_TRACE_START_TIME), System.currentTimeMillis()));
