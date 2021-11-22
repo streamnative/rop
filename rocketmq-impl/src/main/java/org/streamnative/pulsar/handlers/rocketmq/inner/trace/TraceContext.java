@@ -53,7 +53,7 @@ public class TraceContext {
     private boolean fromProxy;
 
     /**
-     * 构建发送轨迹上下文
+     * Build message trace context.
      */
     public static TraceContext buildMsgContext(ChannelHandlerContext ctx, SendMessageRequestHeader requestHeader) {
         TraceContext traceContext = new TraceContext();

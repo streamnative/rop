@@ -90,7 +90,7 @@ public class TraceManager {
         map.put("instance_name", context.getInstanceName());
         map.put("tags", context.getTags());
         String encodeProperties = base64Encoder.encode(JSON.toJSONString(map).getBytes(StandardCharsets.UTF_8));
-        String message = buildMessage(GlobalIdGenerator.generate(), 0, 0, TYPE_PUT, context.getPutStartTime(),
+        String message = buildMessage(GlobalIdGenerator.generate(), 0, 0, context.getPutStartTime(), TYPE_PUT,
                 context.getEndTime(), context.getTopic(), context.getPartitionId(), context.getOffset(),
                 context.getMsgId(), context.getPulsarMsgId(), context.getCode(), context.getDuration(),
                 encodeProperties);
@@ -98,8 +98,9 @@ public class TraceManager {
     }
 
     public void tracePersist(TraceContext context) {
-        String message = buildMessage(GlobalIdGenerator.generate(), 0, 0, TYPE_PERSIST,
-                context.getPersistStartTime(), context.getEndTime(), context.getTopic(), context.getMsgId(),
+        String message = buildMessage(GlobalIdGenerator.generate(), 0, 0,
+                context.getPersistStartTime(), context.getEndTime(), TYPE_PERSIST, context.getTopic(),
+                context.getMsgId(),
                 context.getCode(), context.getDuration());
         logToDisk(message);
     }
@@ -107,8 +108,8 @@ public class TraceManager {
     public void traceGet(TraceContext context) {
         // encode group with base64
         String encodeGroup = base64Encoder.encode(context.getGroup().getBytes(StandardCharsets.UTF_8));
-        String message = buildMessage(GlobalIdGenerator.generate(), 0, 0, TYPE_GET, System.currentTimeMillis(),
-                context.getEndTime(), context.getTopic(), context.getGroup(), context.getMsgId(),
+        String message = buildMessage(GlobalIdGenerator.generate(), 0, 0, System.currentTimeMillis(),
+                context.getEndTime(), TYPE_GET, context.getTopic(), context.getGroup(), context.getMsgId(),
                 context.getInstanceName(), context.getMessageModel());
         logToDisk(message);
     }
@@ -116,8 +117,8 @@ public class TraceManager {
     public void traceCommit(TraceContext context) {
         // encode group with base64
         String encodeGroup = base64Encoder.encode(context.getGroup().getBytes(StandardCharsets.UTF_8));
-        String message = buildMessage(GlobalIdGenerator.generate(), 0, 0, TYPE_COMMIT, System.currentTimeMillis(),
-                context.getEndTime(), context.getTopic(), context.getGroup(), context.getPartitionId(),
+        String message = buildMessage(GlobalIdGenerator.generate(), 0, 0, System.currentTimeMillis(),
+                context.getEndTime(), TYPE_COMMIT, context.getTopic(), context.getGroup(), context.getPartitionId(),
                 context.getOffset());
         logToDisk(message);
     }
