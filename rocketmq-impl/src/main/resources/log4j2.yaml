@@ -75,6 +75,29 @@ Configuration:
           IfLastModified:
             age: 30d
 
+    RollingRandomAccessFile:
+      - name: MessageTraceAppender
+        fileName: "${sys:pulsar.log.dir}/traces/traces.log"
+        filePattern: "${sys:pulsar.log.dir}/traces/traces-%d{yyyy-MM-dd}-%i.log"
+        immediateFlush: false
+        PatternLayout:
+          Pattern: "%msg%n"
+        Policies:
+          TimeBasedTriggeringPolicy:
+            interval: 1
+            modulate: true
+          SizeBasedTriggeringPolicy:
+            size: 2 GB
+        DefaultRolloverStrategy:
+          fileIndex: "nomax"
+          Delete:
+            basePath: "${sys:pulsar.log.dir}/traces"
+            maxDepth: 2
+            IfFileName:
+              glob: "traces-*.log"
+            IfLastModified:
+              age: 3d
+
     Prometheus:
       name: Prometheus
 
@@ -149,14 +172,10 @@ Configuration:
         additivity: false
         AppenderRef:
           - ref: Console
-    # Logger to inject filter script
-#     - name: org.apache.bookkeeper.mledger.impl.ManagedLedgerImpl
-#       level: debug
-#       additivity: false
-#       AppenderRef:
-#         ref: "${sys:pulsar.log.appender}"
-#         ScriptFilter:
-#           onMatch: ACCEPT
-#           onMisMatch: DENY
-#           ScriptRef:
-#             ref: filter.js
+
+#    AsyncLogger:
+#      - name: tdmq.trace
+#        additivity: false
+#        level: info
+#        AppenderRef:
+#          - ref: MessageTraceAppender
