@@ -82,6 +82,7 @@ public abstract class AbstractSendMessageProcessor implements NettyRequestProces
                 }
             }
         }
+        channelCnx.setLastUpdateTimestamp(System.currentTimeMillis());
         return channelCnx.getServerCnx();
     }
 

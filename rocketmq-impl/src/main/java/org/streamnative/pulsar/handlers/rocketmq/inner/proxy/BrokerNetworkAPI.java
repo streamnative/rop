@@ -39,15 +39,14 @@ import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 @Slf4j
 public class BrokerNetworkAPI implements AutoCloseable {
 
-    private final RopBrokerProxy ropBrokerProxy;
     private final Map<String, RemotingClient[]> innerClients = new ConcurrentHashMap<>();
     private final Map<String, AtomicInteger> innerOpaques = new ConcurrentHashMap<>();
     private final int clientCapacity;
-
+    private final int internalClientWorkerThreads;
 
     public BrokerNetworkAPI(RopBrokerProxy ropBrokerProxy, int capacity) {
-        this.ropBrokerProxy = ropBrokerProxy;
         this.clientCapacity = capacity > 0 ? capacity : 1;
+        this.internalClientWorkerThreads = ropBrokerProxy.getConfig().getRopInternalClientWorkerThreads();
     }
 
     private RemotingClient getRemoteClientByConn(String conn, String requestTag) {
@@ -72,6 +71,7 @@ public class BrokerNetworkAPI implements AutoCloseable {
                 if (remotingClients[index] == null) {
                     NettyClientConfig clientConfig = new NettyClientConfig();
                     clientConfig.setUseTLS(false);
+                    clientConfig.setClientWorkerThreads(internalClientWorkerThreads);
                     clientConfig.setConnectTimeoutMillis(15 * 1000);
                     remotingClient = new NettyRemotingClient(clientConfig);
                     remotingClient.start();
