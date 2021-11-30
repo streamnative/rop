@@ -161,7 +161,8 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
         this.brokerNetworkClients = new BrokerNetworkAPI(this, config.getRopRemotingClientPoolSize());
 
         this.internalRedirectTimeoutMs = brokerController.getServerConfig().getRopInternalRedirectTimeoutMs();
-        this.internalRedirectPullMsgTimeoutMs = brokerController.getServerConfig().getRopInternalRedirectPullMsgTimeoutMs();
+        this.internalRedirectPullMsgTimeoutMs = brokerController.getServerConfig()
+                .getRopInternalRedirectPullMsgTimeoutMs();
     }
 
     private boolean checkTopicOwnerBroker(RemotingCommand cmd, TopicName pulsarTopicName, int queueId) {
