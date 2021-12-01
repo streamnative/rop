@@ -51,6 +51,7 @@ import org.apache.pulsar.common.policies.data.RetentionPolicies;
 import org.apache.pulsar.common.policies.data.TenantInfo;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.TopicConfig;
+import org.apache.zookeeper.KeeperException;
 import org.streamnative.pulsar.handlers.rocketmq.inner.InternalProducer;
 import org.streamnative.pulsar.handlers.rocketmq.inner.InternalServerCnx;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
@@ -74,7 +75,6 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
     private PulsarService pulsarService;
     private BrokerService brokerService;
     private PulsarAdmin adminClient;
-    private RopZookeeperCacheService zkService;
 
     public MQTopicManager(RocketMQBrokerController brokerController) {
         super(brokerController);
@@ -104,8 +104,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                 ClientTopicName clientTopicName = new ClientTopicName(rmqTopicName);
                 RopTopicContent ropTopicContent = zkService.getTopicContent(clientTopicName.toPulsarTopicName());
                 if (ropTopicContent != null) {
-                    topicConfig = ropTopicContent.getConfig();
-                    this.topicConfigTable.put(clientTopicName.getPulsarTopicName(), topicConfig);
+                    return ropTopicContent.getConfig();
                 }
             }
         } catch (Exception e) {
@@ -122,9 +121,9 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
         try {
             String topicConfigKey = joinPath(topicName.getNamespace(), topicName.getLocalName());
             if (isTBW12Topic(topicName)) {
-                if (this.topicConfigTable.containsKey(topicConfigKey)) {
+                if (this.sysTopicConfigTable.containsKey(topicConfigKey)) {
                     RopClusterContent clusterContent = zkService.getClusterContent();
-                    TopicConfig topicConfig = topicConfigTable.get(topicConfigKey);
+                    TopicConfig topicConfig = sysTopicConfigTable.get(topicConfigKey);
                     int writeQueueNums = topicConfig.getWriteQueueNums();
                     return clusterContent.createTopicRouteMap(writeQueueNums);
                 }
@@ -133,7 +132,6 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                 Preconditions
                         .checkNotNull(ropTopicContent, "RopTopicContent[" + topicName.toString() + "] can't be null.");
                 brokerController.getRopBrokerProxy().getPulsarClient().getLookup().getBroker(topicName);
-                this.topicConfigTable.put(topicConfigKey, ropTopicContent.getConfig());
                 return ropTopicContent.getRouteMap();
             }
         } catch (Exception e) {
@@ -239,8 +237,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
 
         //for test
         createPulsarNamespaceIfNeeded(brokerService, cluster, "test1", "InstanceTest");
-        for (TopicConfig topicConfig : this.topicConfigTable.values()) {
-            //createOrUpdateTopic(topicConfig);
+        for (TopicConfig topicConfig : this.sysTopicConfigTable.values()) {
             createOrUpdateInnerTopic(topicConfig);
         }
     }
@@ -322,7 +319,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
      */
     public void createOrUpdateTopic(final TopicConfig tc) {
         String fullTopicName = tc.getTopicName();
-        log.info("Create or update topic [{}], config: [{}].", fullTopicName, tc);
+        log.info("[{}] Create or update topic, config: [{}].", fullTopicName, tc);
 
         TopicName topicName = TopicName.get(fullTopicName);
         String tenant = topicName.getTenant();
@@ -346,7 +343,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
         try {
             topicMetadata = adminClient.topics().getPartitionedTopicMetadata(fullTopicName);
         } catch (Exception e) {
-            log.warn("get partitioned topic metadata[{}] error:", fullTopicName, e);
+            log.warn("Get partitioned topic metadata[{}], error: {}", fullTopicName, e.getMessage());
         }
 
         currentPartitionNum = topicMetadata != null ? topicMetadata.partitions : currentPartitionNum;
@@ -355,7 +352,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
             // get cluster brokers list
             clusterBrokers = zkService.getClusterContent();
         } catch (Exception e) {
-            log.warn("clusterBrokers haven't been created, error: ", e);
+            log.warn("Rop clusterBrokers haven't been created.", e);
             throw new RuntimeException("cluster config haven't been created.");
         }
         Preconditions.checkNotNull(clusterBrokers, "clusterBrokers can't be null.");
@@ -368,7 +365,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                 adminClient.lookups().lookupPartitionedTopic(fullTopicName);
                 currentPartitionNum = tc.getWriteQueueNums();
             } catch (PulsarAdminException e) {
-                log.warn("create or get partitioned topic metadata [{}] error: ", fullTopicName, e);
+                log.info("[{}] Create or update topic metadata failed", fullTopicName, e);
                 throw new RuntimeException("Create topic error.");
             }
 
@@ -387,7 +384,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                 try {
                     zkService.createTopicContent(topicName, topicContent);
                 } catch (Exception exception) {
-                    log.error("createTopicContent [{}] error. caused by: {}", topicName, exception);
+                    log.info("[{}] Create or update topic failed", fullTopicName, exception);
                     throw new RuntimeException("createTopicContent error.");
                 }
             }
@@ -403,7 +400,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                     currentPartitionNum = tc.getWriteQueueNums();
                 }
             } catch (PulsarAdminException e) {
-                log.warn("Expend partitioned for topic [{}] error.", fullTopicName, e);
+                log.info("[{}] Expend partitioned failed", fullTopicName, e);
                 throw new RuntimeException("Update topic error.");
             }
 
@@ -429,13 +426,14 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                 try {
                     zkService.createTopicContent(topicName, topicContent);
                 } catch (Exception exception) {
-                    log.error("createTopicContent [{}] error. caused by: {}", topicName, exception);
+                    log.info("[{}] Create or update topic failed", fullTopicName, exception);
                     throw new RuntimeException("createTopicContent error.");
                 }
             }
         }
 
         updateTopicConfig(tc);
+        log.info("[{}] Create or update topic success.", fullTopicName);
     }
 
     /**
@@ -445,11 +443,17 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
      */
     public void deleteTopic(final String rmqTopic) {
         String fullTopicName = RocketMQTopic.getPulsarOrigNoDomainTopic(rmqTopic);
-        log.info("Delete topic [{}].", fullTopicName);
+        log.info("[{}] Rop delete topic.", fullTopicName);
 
         try {
             //delete metadata from pulsar system
-            PartitionedTopicMetadata topicMetadata = adminClient.topics().getPartitionedTopicMetadata(fullTopicName);
+            PartitionedTopicMetadata topicMetadata = null;
+            try {
+                topicMetadata = adminClient.topics().getPartitionedTopicMetadata(fullTopicName);
+            } catch (Exception e) {
+                log.info("Get partitioned topic metadata[{}] failed.", fullTopicName);
+            }
+
             if (topicMetadata != null && topicMetadata.partitions > 0) {
                 adminClient.topics().deletePartitionedTopic(fullTopicName, true);
             }
@@ -459,10 +463,12 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                     .format(RopZkUtils.TOPIC_BASE_PATH_MATCH,
                             PulsarUtil.getNoDomainTopic(TopicName.get(fullTopicName)));
             zkService.deleteFullPath(topicNodePath);
+            log.warn("[DELETE] [{}] Rop topic delete success.", fullTopicName);
+        } catch (KeeperException.NoNodeException e) {
+            //
         } catch (Exception e) {
-            log.warn("[DELETE] Topic {} create or update partition failed", fullTopicName, e);
+            log.warn("[DELETE] [{}] Rop topic delete failed", fullTopicName, e);
         }
-
     }
 
     @Getter

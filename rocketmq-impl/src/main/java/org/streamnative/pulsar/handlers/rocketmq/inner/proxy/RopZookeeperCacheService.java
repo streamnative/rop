@@ -29,6 +29,7 @@ import org.apache.bookkeeper.util.ZkUtils;
 import org.apache.pulsar.common.naming.TopicName;
 import org.apache.pulsar.common.util.ObjectMapperFactory;
 import org.apache.pulsar.zookeeper.ZooKeeperDataCache;
+import org.apache.rocketmq.common.TopicConfig;
 import org.apache.rocketmq.common.subscription.SubscriptionGroupConfig;
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException;
@@ -118,7 +119,12 @@ public class RopZookeeperCacheService implements AutoCloseable {
         this.topicDataCache.close();
     }
 
-    public RopTopicContent getTopicContent(TopicName topicName) throws Exception {
+    public TopicConfig getTopicConfig(String topic) {
+        RopTopicContent ropTopicContent = getTopicContent(TopicName.get(topic));
+        return ropTopicContent == null ? null : ropTopicContent.getConfig();
+    }
+
+    public RopTopicContent getTopicContent(TopicName topicName) {
         Preconditions.checkNotNull(topicName);
         String topicZNodePath = String.format(RopZkUtils.TOPIC_BASE_PATH_MATCH,
                 PulsarUtil.getNoDomainTopic(topicName));
