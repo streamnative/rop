@@ -221,7 +221,7 @@ public class NameserverProcessor implements NettyRequestProcessor {
                     log.info("Not found system topic [{}] route info, because of autoCreateTopicEnable={}",
                             requestTopic, config.isAutoCreateTopicEnable());
                 } else {
-                    log.info("Fetch topic route info of topic: [{}] error.", requestTopic, ex);
+                    log.info("Fetch topic route info of topic: [{}] error.", requestTopic);
                 }
             }
         }
