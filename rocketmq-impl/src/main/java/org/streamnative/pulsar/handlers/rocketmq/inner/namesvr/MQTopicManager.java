@@ -432,7 +432,6 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
             }
         }
 
-        updateTopicConfig(tc);
         log.info("[{}] Create or update topic success.", fullTopicName);
     }
 

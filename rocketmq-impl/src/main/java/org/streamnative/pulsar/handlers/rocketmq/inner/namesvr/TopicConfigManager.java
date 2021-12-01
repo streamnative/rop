@@ -299,17 +299,6 @@ public abstract class TopicConfigManager {
         return topicConfig;
     }
 
-    public void updateTopicConfig(final TopicConfig topicConfig) {
-//        TopicConfig old = this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);
-//        if (old != null) {
-//            log.info("update topic config, old:[{}] new:[{}]", old, topicConfig);
-//        } else {
-//            log.info("create new topic [{}]", topicConfig);
-//        }
-//
-//        this.dataVersion.nextVersion();
-    }
-
     public boolean isOrderTopic(final String rmqTopic) {
         String pulsarTopicName = RocketMQTopic.getPulsarOrigNoDomainTopic(rmqTopic);
 
@@ -319,18 +308,6 @@ public abstract class TopicConfigManager {
         } else {
             return topicConfig.isOrder();
         }
-    }
-
-    public void deleteTopicConfig(final String rmqTopic) {
-//        String pulsarTopicName = RocketMQTopic.getPulsarOrigNoDomainTopic(rmqTopic);
-//
-//        TopicConfig old = this.topicConfigTable.remove(pulsarTopicName);
-//        if (old != null) {
-//            log.info("delete topic config OK, topic: {}", old);
-//            this.dataVersion.nextVersion();
-//        } else {
-//            log.warn("delete topic config failed, topic: {} not exists", rmqTopic);
-//        }
     }
 
     public TopicConfig getTopicConfig(String pulsarTopicName) {
