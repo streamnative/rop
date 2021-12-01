@@ -16,6 +16,7 @@ package org.streamnative.pulsar.handlers.rocketmq.inner.processor;
 
 import static org.apache.rocketmq.common.protocol.heartbeat.ConsumeType.CONSUME_PASSIVELY;
 import static org.apache.rocketmq.common.protocol.heartbeat.MessageModel.CLUSTERING;
+import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_INNER_CLIENT_ADDRESS;
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_INNER_REMOTE_CLIENT_TAG;
 
 import io.netty.buffer.ByteBuf;
@@ -445,7 +446,11 @@ public class PullMessageProcessor implements NettyRequestProcessor {
                             traceContext.setPartitionId(ropGetMessageResult.getPartitionId());
                             traceContext.setOffset(ropMessage.getOffset());
                             traceContext.setMsgId(ropMessage.getMsgId());
-                            traceContext.setInstanceName(ropGetMessageResult.getInstanceName());
+                            if (request.getExtFields().containsKey(ROP_INNER_CLIENT_ADDRESS)) {
+                                traceContext.setInstanceName(request.getExtFields().get(ROP_INNER_CLIENT_ADDRESS));
+                            } else {
+                                traceContext.setInstanceName(ropGetMessageResult.getInstanceName());
+                            }
                             traceContext.setMessageModel(isBroadcasting ? MessageModel.BROADCASTING.getModeCN()
                                     : MessageModel.CLUSTERING.getModeCN());
                             TraceManager.get().traceGet(traceContext);

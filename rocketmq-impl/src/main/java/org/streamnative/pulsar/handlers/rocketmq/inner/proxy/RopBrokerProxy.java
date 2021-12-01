@@ -32,6 +32,7 @@ import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.PULSAR
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_CACHE_EXPIRE_TIME_MS;
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_CACHE_INITIAL_SIZE;
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_CACHE_MAX_SIZE;
+import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_INNER_CLIENT_ADDRESS;
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_INNER_MESSAGE_ID;
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_INNER_REMOTE_CLIENT_TAG;
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_REQUEST_FROM_PROXY;
@@ -703,6 +704,7 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
             // The change fo rop acl, for new cmd, the access key is null.
             newCmd.getExtFields().putAll(cmd.getExtFields());
             newCmd.addExtField(PULSAR_REAL_PARTITION_ID_TAG, String.valueOf(pulsarPartitionId));
+            newCmd.addExtField(ROP_INNER_CLIENT_ADDRESS, ctx.channel().remoteAddress().toString());
             brokerNetworkClients.invokeAsync(address, newCmd, timeout, (responseFuture) -> {
                 RemotingCommand pullResponse = responseFuture.getResponseCommand();
                 if (pullResponse != null) {
