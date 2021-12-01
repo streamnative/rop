@@ -22,7 +22,6 @@ import static org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkUti
 import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
 import java.nio.charset.StandardCharsets;
-import java.util.Objects;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bookkeeper.util.ZkUtils;
@@ -130,11 +129,16 @@ public class RopZookeeperCacheService implements AutoCloseable {
                 PulsarUtil.getNoDomainTopic(topicName));
         RopTopicContent topicContent = topicDataCache.getDataIfPresent(topicZNodePath);
         try {
-            topicContent = Objects.isNull(topicContent) ? topicDataCache.get(topicZNodePath).get() : topicContent;
+            if (topicContent != null) {
+                return topicContent;
+            }
+            if (cache.exists(topicZNodePath)) {
+                return topicDataCache.get(topicZNodePath).get();
+            }
         } catch (Exception e) {
             log.warn("RopTopicContent[topicPath:{}] isn't exists in metadata.", topicZNodePath, e);
         }
-        return topicContent;
+        return null;
     }
 
     public void setTopicContent(TopicName topicName, Object jsonObj) throws Exception {
