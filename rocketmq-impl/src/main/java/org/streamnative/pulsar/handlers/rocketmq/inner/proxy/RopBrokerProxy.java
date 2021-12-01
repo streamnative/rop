@@ -795,11 +795,11 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                         if (brokerInfo.isPresent()) {
                             log.info("broker[{}] is already exists, delete it first.",
                                     hostName);
-                            deleteFullPathOptimistic(zkService.getCache().getZooKeeper(), localAddressPath,
+                            deleteFullPathOptimistic(zkService.getZookeeperCache().getZooKeeper(), localAddressPath,
                                     -1);
                         }
 
-                        createFullPathOptimistic(zkService.getCache().getZooKeeper(),
+                        createFullPathOptimistic(zkService.getZookeeperCache().getZooKeeper(),
                                 localAddressPath,
                                 hostName.getBytes(StandardCharsets.UTF_8),
                                 Ids.OPEN_ACL_UNSAFE,
