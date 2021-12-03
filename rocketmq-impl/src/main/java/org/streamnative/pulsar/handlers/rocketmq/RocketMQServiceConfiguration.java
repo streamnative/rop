@@ -486,7 +486,7 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
             category = CATEGORY_ROCKETMQ,
             doc = "Whether enable rop trace.\n"
     )
-    private boolean ropTraceTopicEnable = false;
+    private boolean ropTraceTopicEnable = true;
 
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
