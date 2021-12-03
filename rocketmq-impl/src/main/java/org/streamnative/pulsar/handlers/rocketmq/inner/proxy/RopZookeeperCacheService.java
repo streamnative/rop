@@ -22,13 +22,13 @@ import static org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkUti
 import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
 import java.nio.charset.StandardCharsets;
-import java.util.Objects;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bookkeeper.util.ZkUtils;
 import org.apache.pulsar.common.naming.TopicName;
 import org.apache.pulsar.common.util.ObjectMapperFactory;
 import org.apache.pulsar.zookeeper.ZooKeeperDataCache;
+import org.apache.rocketmq.common.TopicConfig;
 import org.apache.rocketmq.common.subscription.SubscriptionGroupConfig;
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException;
@@ -50,14 +50,14 @@ import org.streamnative.pulsar.handlers.rocketmq.utils.PulsarUtil;
 @Data
 public class RopZookeeperCacheService implements AutoCloseable {
 
-    private final RopZookeeperCache cache;
+    private final RopZookeeperCache zookeeperCache;
     private final ZooKeeperDataCache<RopTopicContent> topicDataCache;
     private final ZooKeeperDataCache<RopClusterContent> clusterDataCache;
     private final ZooKeeperDataCache<String> brokerCache;
     private final ZooKeeperDataCache<RopGroupContent> subscribeGroupConfigCache;
 
-    public RopZookeeperCacheService(RopZookeeperCache cache) throws RopServerException {
-        this.cache = cache;
+    public RopZookeeperCacheService(RopZookeeperCache cache) {
+        this.zookeeperCache = cache;
         this.topicDataCache = new ZooKeeperDataCache<RopTopicContent>(cache) {
             @Override
             public RopTopicContent deserialize(String key, byte[] content) throws Exception {
@@ -88,9 +88,9 @@ public class RopZookeeperCacheService implements AutoCloseable {
     private void initZK() throws RopServerException {
         String[] paths = new String[]{BROKERS_PATH, TOPIC_BASE_PATH, GROUP_BASE_PATH, BROKER_CLUSTER_PATH};
         try {
-            ZooKeeper zk = cache.getZooKeeper();
+            ZooKeeper zk = zookeeperCache.getZooKeeper();
             for (String path : paths) {
-                if (cache.exists(path)) {
+                if (zookeeperCache.exists(path)) {
                     continue;
                 }
 
@@ -108,27 +108,40 @@ public class RopZookeeperCacheService implements AutoCloseable {
     }
 
     public void start() throws RopServerException {
-        cache.start();
+        zookeeperCache.start();
         initZK();
     }
 
     @Override
-    public void close() throws Exception {
-        this.cache.stop();
+    public void close() {
+        this.zookeeperCache.stop();
         this.topicDataCache.close();
+        this.clusterDataCache.close();
+        this.brokerCache.close();
+        this.subscribeGroupConfigCache.close();
     }
 
-    public RopTopicContent getTopicContent(TopicName topicName) throws Exception {
+    public TopicConfig getTopicConfig(String topic) {
+        RopTopicContent ropTopicContent = getTopicContent(TopicName.get(topic));
+        return ropTopicContent == null ? null : ropTopicContent.getConfig();
+    }
+
+    public RopTopicContent getTopicContent(TopicName topicName) {
         Preconditions.checkNotNull(topicName);
         String topicZNodePath = String.format(RopZkUtils.TOPIC_BASE_PATH_MATCH,
                 PulsarUtil.getNoDomainTopic(topicName));
         RopTopicContent topicContent = topicDataCache.getDataIfPresent(topicZNodePath);
         try {
-            topicContent = Objects.isNull(topicContent) ? topicDataCache.get(topicZNodePath).get() : topicContent;
+            if (topicContent != null) {
+                return topicContent;
+            }
+            if (zookeeperCache.exists(topicZNodePath)) {
+                return topicDataCache.get(topicZNodePath).get();
+            }
         } catch (Exception e) {
             log.warn("RopTopicContent[topicPath:{}] isn't exists in metadata.", topicZNodePath, e);
         }
-        return topicContent;
+        return null;
     }
 
     public void setTopicContent(TopicName topicName, Object jsonObj) throws Exception {
@@ -151,20 +164,21 @@ public class RopZookeeperCacheService implements AutoCloseable {
             throws Exception {
         Preconditions.checkNotNull(jsonObj, "json object can't be null.");
         String strContent = ObjectMapperFactory.getThreadLocal().writeValueAsString(jsonObj);
-        cache.getZooKeeper().setData(zNodePath, strContent.getBytes(StandardCharsets.UTF_8), -1);
+        zookeeperCache.getZooKeeper().setData(zNodePath, strContent.getBytes(StandardCharsets.UTF_8), -1);
     }
 
     public void createFullPathWithJsonObject(String zNodePath, Object jsonObj)
             throws Exception {
         Preconditions.checkNotNull(jsonObj, "json object can't be null.");
         String strContent = ObjectMapperFactory.getThreadLocal().writeValueAsString(jsonObj);
-        ZkUtils.createFullPathOptimistic(cache.getZooKeeper(), zNodePath, strContent.getBytes(StandardCharsets.UTF_8),
+        ZkUtils.createFullPathOptimistic(zookeeperCache.getZooKeeper(), zNodePath,
+                strContent.getBytes(StandardCharsets.UTF_8),
                 ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
     }
 
     public void deleteFullPath(String zNodePath) throws Exception {
         if (!Strings.isNullOrEmpty(zNodePath)) {
-            ZkUtils.deleteFullPathOptimistic(cache.getZooKeeper(), zNodePath, -1);
+            ZkUtils.deleteFullPathOptimistic(zookeeperCache.getZooKeeper(), zNodePath, -1);
         }
     }
 
@@ -182,11 +196,16 @@ public class RopZookeeperCacheService implements AutoCloseable {
         String groupNodePath = String.format(RopZkUtils.GROUP_BASE_PATH_MATCH, clientGroupName.getPulsarGroupName());
         RopGroupContent groupContent = subscribeGroupConfigCache.getDataIfPresent(groupNodePath);
         try {
-            groupContent = (groupContent == null) ? subscribeGroupConfigCache.get(groupNodePath).get() : groupContent;
+            if (groupContent != null) {
+                return groupContent;
+            }
+            if (zookeeperCache.exists(groupNodePath)) {
+                return subscribeGroupConfigCache.get(groupNodePath).get();
+            }
         } catch (Exception e) {
             log.warn("GroupConfig[{}] and zkPath[{}] isn't exists in metadata.", group, groupNodePath);
         }
-        return groupContent;
+        return null;
     }
 
     public RopGroupContent getGroupConfig(SubscriptionGroupConfig groupConfig) {

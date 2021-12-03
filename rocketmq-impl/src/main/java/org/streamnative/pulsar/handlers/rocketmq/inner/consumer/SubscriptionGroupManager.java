@@ -118,14 +118,14 @@ public class SubscriptionGroupManager implements Closeable {
             throws RemotingCommandException {
         ConcurrentMap<ClientGroupName, SubscriptionGroupConfig> result = new ConcurrentHashMap<>();
         try {
-            Set<String> tenants = zkServiceRef.get().getCache().getChildren(RopZkUtils.GROUP_BASE_PATH);
+            Set<String> tenants = zkServiceRef.get().getZookeeperCache().getChildren(RopZkUtils.GROUP_BASE_PATH);
             for (String tenant : tenants) {
                 String tenantNodePath = String.format(RopZkUtils.GROUP_BASE_PATH_MATCH, tenant);
-                Set<String> namespaces = zkServiceRef.get().getCache().getChildren(tenantNodePath);
+                Set<String> namespaces = zkServiceRef.get().getZookeeperCache().getChildren(tenantNodePath);
                 for (String namespace : namespaces) {
                     String namespaceNodePath = String
                             .format(RopZkUtils.GROUP_BASE_PATH_MATCH, tenant + "/" + namespace);
-                    Set<String> groups = zkServiceRef.get().getCache().getChildren(namespaceNodePath);
+                    Set<String> groups = zkServiceRef.get().getZookeeperCache().getChildren(namespaceNodePath);
                     for (String group : groups) {
                         String fullGroupName = tenant + "|" + namespace + "%" + group;
                         ClientGroupName clientGroupName = new ClientGroupName(fullGroupName);

@@ -269,8 +269,6 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
 
         log.info("deleteTopic called by {}", RemotingHelper.parseChannelRemoteAddr(ctx.channel()));
 
-        this.brokerController.getTopicConfigManager().deleteTopicConfig(requestHeader.getTopic());
-
         this.brokerController.getTopicConfigManager().deleteTopic(requestHeader.getTopic());
 
         response.setCode(ResponseCode.SUCCESS);

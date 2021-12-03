@@ -684,8 +684,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                                         entry.getDataBuffer(), messageFilter);
                         if (byteBuffer != null) {
                             getResult.addMessage(byteBuffer);
-                            nextBeginOffset = currentOffset + 1;
                         }
+                        nextBeginOffset = currentOffset + 1;
                     } finally {
                         entry.release();
                     }

@@ -170,7 +170,8 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
         this.brokerNetworkClients = new BrokerNetworkAPI(this, config.getRopRemotingClientPoolSize());
 
         this.internalRedirectTimeoutMs = brokerController.getServerConfig().getRopInternalRedirectTimeoutMs();
-        this.internalRedirectPullMsgTimeoutMs = brokerController.getServerConfig().getRopInternalRedirectPullMsgTimeoutMs();
+        this.internalRedirectPullMsgTimeoutMs = brokerController.getServerConfig()
+                .getRopInternalRedirectPullMsgTimeoutMs();
     }
 
     private boolean checkTopicOwnerBroker(RemotingCommand cmd, TopicName pulsarTopicName, int queueId) {
@@ -524,6 +525,10 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
 
         try {
             cmd.addExtField(ROP_INNER_REMOTE_CLIENT_TAG, INNER_CLIENT_NAME_PREFIX + sendHeader.getProducerGroup());
+            if (cmd.isOnewayRPC()) {
+                brokerNetworkClients.invokeOneway(address, cmd, timeout);
+                return;
+            }
             brokerNetworkClients.invokeAsync(address, cmd, timeout, (responseFuture) -> {
                 RemotingCommand sendResponse = responseFuture.getResponseCommand();
                 if (sendResponse != null) {
@@ -835,11 +840,11 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                         if (brokerInfo.isPresent()) {
                             log.info("broker[{}] is already exists, delete it first.",
                                     hostName);
-                            deleteFullPathOptimistic(zkService.getCache().getZooKeeper(), localAddressPath,
+                            deleteFullPathOptimistic(zkService.getZookeeperCache().getZooKeeper(), localAddressPath,
                                     -1);
                         }
 
-                        createFullPathOptimistic(zkService.getCache().getZooKeeper(),
+                        createFullPathOptimistic(zkService.getZookeeperCache().getZooKeeper(),
                                 localAddressPath,
                                 hostName.getBytes(StandardCharsets.UTF_8),
                                 Ids.OPEN_ACL_UNSAFE,
