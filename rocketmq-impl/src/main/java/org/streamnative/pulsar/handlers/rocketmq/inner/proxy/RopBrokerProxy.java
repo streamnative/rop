@@ -505,6 +505,10 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
         long startTime = System.currentTimeMillis();
         try {
             cmd.addExtField(ROP_INNER_REMOTE_CLIENT_TAG, INNER_CLIENT_NAME_PREFIX + sendHeader.getProducerGroup());
+            if (cmd.isOnewayRPC()) {
+                brokerNetworkClients.invokeOneway(address, cmd, timeout);
+                return;
+            }
             brokerNetworkClients.invokeAsync(address, cmd, timeout, (responseFuture) -> {
                 RemotingCommand sendResponse = responseFuture.getResponseCommand();
                 if (sendResponse != null) {

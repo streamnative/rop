@@ -99,6 +99,14 @@ public class BrokerNetworkAPI implements AutoCloseable {
         getRemoteClientByConn(conn, innerRemoteClientTag).invokeAsync(conn, remotingCommand, timeout, invokeCallback);
     }
 
+    public void invokeOneway(String conn, RemotingCommand remotingCommand, long timeout)
+            throws InterruptedException, RemotingConnectException,
+            RemotingSendRequestException, RemotingTimeoutException, RemotingTooMuchRequestException {
+        String innerRemoteClientTag = getInnerRemoteClientTag(remotingCommand);
+        remotingCommand.setOpaque(getOpaques(conn));
+        getRemoteClientByConn(conn, innerRemoteClientTag).invokeOneway(conn, remotingCommand, timeout);
+    }
+
     private int getOpaques(String conn) {
         AtomicInteger atomicLong = innerOpaques.computeIfAbsent(conn, k -> new AtomicInteger());
         return atomicLong.getAndIncrement();
