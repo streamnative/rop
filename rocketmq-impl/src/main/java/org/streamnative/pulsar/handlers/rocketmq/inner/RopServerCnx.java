@@ -349,8 +349,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
 
     @Override
     public void putMessages(int realPartitionID, MessageExtBatch batchMessage, String producerGroup,
-            PutMessageCallback callback)
-            throws Exception {
+            PutMessageCallback callback, boolean traceEnable) throws Exception {
 
         Preconditions.checkNotNull(batchMessage);
         Preconditions.checkNotNull(producerGroup);
@@ -363,7 +362,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             int messageNum = 0;
 
             List<CompletableFuture<PutMessageResult>> batchMessageFutures = new ArrayList<>();
-            List<RopMessage> bodies = this.entryFormatter.encodeBatch(batchMessage);
+            List<RopMessage> bodies = this.entryFormatter.encodeBatch(batchMessage, traceEnable);
 
             /*
              * Optimize the production performance of batch publish messages.

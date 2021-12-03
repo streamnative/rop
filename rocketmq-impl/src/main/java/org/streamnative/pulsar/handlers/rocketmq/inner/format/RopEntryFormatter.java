@@ -96,9 +96,9 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
     }
 
     @Override
-    public List<RopMessage> encodeBatch(MessageExtBatch record) throws RopEncodeException {
+    public List<RopMessage> encodeBatch(MessageExtBatch record, boolean traceEnable) throws RopEncodeException {
         Preconditions.checkNotNull(record);
-        return convertRocketmq2Pulsar(record);
+        return convertRocketmq2Pulsar(record, traceEnable);
     }
 
     public ByteBuf encode(byte[] record, String msgId) {
@@ -194,7 +194,7 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
         return new RopMessage(msgId, partitionedTopicName.getPartitionIndex(), index, slice);
     }
 
-    private List<RopMessage> convertRocketmq2Pulsar(final MessageExtBatch messageExtBatch) throws RopEncodeException {
+    private List<RopMessage> convertRocketmq2Pulsar(final MessageExtBatch messageExtBatch, boolean traceEnable) throws RopEncodeException {
         ByteBuffer msgStoreItemMemory = msgStoreItemMemoryThreadLocal.get();
         List<RopMessage> result = new ArrayList<>();
         int totalMsgLen = 0;
@@ -304,20 +304,25 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
             msgStoreItemMemory.putShort(propertiesLen);
             if (propertiesLen > 0) {
                 msgStoreItemMemory.put(messagesByteBuff.array(), propertiesPos, propertiesLen);
+                if (traceEnable) {
+                    try {
+                        ByteBuffer byteBuffer = ByteBuffer.allocate(propertiesLen);
+                        byteBuffer.put(messagesByteBuff.array(), propertiesPos, propertiesLen);
+                        byteBuffer.flip();
+                        Map<String, String> properties = MessageDecoder
+                                .string2messageProperties(StandardCharsets.UTF_8.decode(byteBuffer).toString());
 
-                ByteBuffer byteBuffer = ByteBuffer.allocate(propertiesLen);
-                byteBuffer.put(messagesByteBuff.array(), propertiesPos, propertiesLen);
-                byteBuffer.flip();
-                Map<String, String> properties = MessageDecoder
-                        .string2messageProperties(StandardCharsets.UTF_8.decode(byteBuffer).toString());
+                        String msgId = properties.get(MessageConst.PROPERTY_UNIQ_CLIENT_MESSAGE_ID_KEYIDX);
+                        String msgKey = properties.get(MessageConst.PROPERTY_KEYS);
+                        String msgTag = properties.get(MessageConst.PROPERTY_TAGS);
 
-                String msgId = properties.get(MessageConst.PROPERTY_UNIQ_CLIENT_MESSAGE_ID_KEYIDX);
-                String msgKey = properties.get(MessageConst.PROPERTY_KEYS);
-                String msgTag = properties.get(MessageConst.PROPERTY_TAGS);
-
-                ropMessage.setMsgId(msgId);
-                ropMessage.setMsgKey(msgKey);
-                ropMessage.setMsgTag(msgTag);
+                        ropMessage.setMsgId(msgId);
+                        ropMessage.setMsgKey(msgKey);
+                        ropMessage.setMsgTag(msgTag);
+                    } catch (Exception e) {
+                        log.info("RoP parse batch message properties failed, err msg: {}.", e.getMessage());
+                    }
+                }
             }
 
             // Write messages to the queue buffer

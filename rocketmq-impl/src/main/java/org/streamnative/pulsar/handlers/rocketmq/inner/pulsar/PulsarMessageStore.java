@@ -40,8 +40,8 @@ public interface PulsarMessageStore {
     RopGetMessageResult getMessage(int partition, RemotingCommand request, PullMessageRequestHeader requestHeader,
             RopMessageFilter messageFilter);
 
-    void putMessages(int partitionID, MessageExtBatch batchMessage, String producerGroup, PutMessageCallback callback)
-            throws Exception;
+    void putMessages(int partitionID, MessageExtBatch batchMessage, String producerGroup, PutMessageCallback callback,
+            boolean traceEnable) throws Exception;
 
     MessageExt lookMessageByMessageId(String topic, String msgId);
 

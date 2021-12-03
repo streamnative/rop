@@ -564,7 +564,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
                     requestHeader.getProducerGroup(),
                     new SendMessageCallback(response, request, messageExtBatch, responseHeader,
                             sendMessageContext,
-                            ctx, queueIdInt, traceContext));
+                            ctx, queueIdInt, traceContext), traceContext != null);
             return null;
         } catch (Exception e) {
             log.warn("[{}] sendBatchMessage failed", requestHeader.getTopic(), e);
@@ -631,7 +631,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
                 response.setRemark("execute callback failed");
             }
 
-            // Point:/rop/persist finish
+            // Trace point:/rop/persist finish
             if (traceContext != null && putMessageResult instanceof RopPutMessageResult) {
                 long now = System.currentTimeMillis();
                 RopPutMessageResult ropPutMessageResult = (RopPutMessageResult) putMessageResult;
@@ -655,7 +655,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             // execute send message hook
             executeSendMessageHookAfter(response, sendMessageContext);
 
-            // Point:/rop/put finish
+            // Trace point:/rop/put finish
             if (traceContext != null && !traceContext.isFromProxy()
                     && putMessageResult instanceof RopPutMessageResult) {
                 long now = System.currentTimeMillis();
