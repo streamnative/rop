@@ -14,14 +14,17 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner;
 
-import com.google.api.client.util.Lists;
+import java.util.ArrayList;
 import java.util.List;
 import org.apache.rocketmq.store.AppendMessageResult;
 import org.apache.rocketmq.store.PutMessageStatus;
 
+/**
+ * Rop put message result.
+ */
 public class RopPutMessageResult extends org.apache.rocketmq.store.PutMessageResult {
 
-    private final List<PutMessageResult> putMessageResults = Lists.newArrayList();
+    private final List<PutMessageResult> putMessageResults = new ArrayList<>();
 
     public RopPutMessageResult(PutMessageStatus putMessageStatus, AppendMessageResult appendMessageResult) {
         super(putMessageStatus, appendMessageResult);

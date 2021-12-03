@@ -22,6 +22,9 @@ import org.apache.rocketmq.common.protocol.header.SendMessageRequestHeader;
 import org.apache.rocketmq.remoting.common.RemotingHelper;
 import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 
+/**
+ * Trace context.
+ */
 @Data
 @AllArgsConstructor
 @NoArgsConstructor

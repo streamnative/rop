@@ -24,6 +24,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import org.testng.util.Strings;
 
+/**
+ * Trace stats report service.
+ */
 @Slf4j
 public class TraceStatsReportService implements Runnable {
 
@@ -36,7 +39,6 @@ public class TraceStatsReportService implements Runnable {
     public void boot() {
         scheduledReportExecutor = Executors.newSingleThreadScheduledExecutor()
                 .scheduleAtFixedRate(this, 30, 30, TimeUnit.SECONDS);
-        logDir = new File(RocketMQBrokerController.ropTraceLogDir);
     }
 
     public void shutdown() {
@@ -55,8 +57,8 @@ public class TraceStatsReportService implements Runnable {
     @Override
     public void run() {
         try {
-            if (logDir == null && Strings.isNullOrEmpty(RocketMQBrokerController.ropTraceLogDir)) {
-                logDir = new File(RocketMQBrokerController.ropTraceLogDir);
+            if (logDir == null && Strings.isNullOrEmpty(RocketMQBrokerController.ropTraceLogDir())) {
+                logDir = new File(RocketMQBrokerController.ropTraceLogDir());
             }
             if (logDir != null) {
                 int remainDiskPercentage = (int) ((((double) logDir.getFreeSpace()) / logDir.getTotalSpace()) * 100);

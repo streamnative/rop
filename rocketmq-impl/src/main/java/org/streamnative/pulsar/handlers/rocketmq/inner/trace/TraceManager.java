@@ -23,6 +23,9 @@ import org.apache.logging.log4j.Logger;
 import org.apache.skywalking.apm.agent.core.context.ids.GlobalIdGenerator;
 import sun.misc.BASE64Encoder;
 
+/**
+ * Trace manager.
+ */
 public class TraceManager {
 
     static {
@@ -34,7 +37,8 @@ public class TraceManager {
     private static final Logger LOGGER = LogManager.getLogger("tdmq.trace");
     private static final char SEPARATOR = '|';
 
-    private final ThreadLocal<StringBuilder> BUILDER = ThreadLocal.withInitial(() -> new StringBuilder(518));
+    private final ThreadLocal<StringBuilder> stringBuilderThreadLocal = ThreadLocal
+            .withInitial(() -> new StringBuilder(518));
 
     public static TraceManager get() {
         return instance;
@@ -52,7 +56,7 @@ public class TraceManager {
     private final BASE64Encoder base64Encoder = new BASE64Encoder();
 
     private String buildMessage(Object... args) {
-        StringBuilder builder = BUILDER.get();
+        StringBuilder builder = stringBuilderThreadLocal.get();
         builder.append(PROTOCOL_VERSION);
         builder.append(SEPARATOR);
         for (Object arg : args) {

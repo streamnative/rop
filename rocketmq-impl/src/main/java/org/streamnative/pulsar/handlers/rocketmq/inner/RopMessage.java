@@ -14,10 +14,15 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.netty.buffer.ByteBuf;
 import lombok.Data;
 
+/**
+ * RoP message.
+ */
 @Data
+@SuppressFBWarnings
 public class RopMessage {
 
     private String msgId;
@@ -27,7 +32,7 @@ public class RopMessage {
 
     private String msgKey;
     private String msgTag;
-    private byte[] body;
+    private byte[] msgBody;
 
     public RopMessage() {
     }
@@ -39,11 +44,11 @@ public class RopMessage {
         this.payload = payload;
     }
 
-    public RopMessage(String msgId, String msgKey, String msgTag, byte[] body) {
+    public RopMessage(String msgId, String msgKey, String msgTag, byte[] msgBody) {
         this.msgId = msgId;
         this.msgKey = msgKey;
         this.msgTag = msgTag;
-        this.body = body;
+        this.msgBody = msgBody;
     }
 
 }

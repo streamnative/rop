@@ -18,6 +18,9 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+/**
+ * Put message result.
+ */
 @Data
 @AllArgsConstructor
 @NoArgsConstructor

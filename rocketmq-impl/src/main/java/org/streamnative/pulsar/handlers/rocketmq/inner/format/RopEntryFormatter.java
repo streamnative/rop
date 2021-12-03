@@ -324,7 +324,7 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
             msgStoreItemMemory.flip();
             byte[] msgBytes = new byte[msgStoreItemMemory.limit()];
             msgStoreItemMemory.get(msgBytes);
-            ropMessage.setBody(msgBytes);
+            ropMessage.setMsgBody(msgBytes);
 
             result.add(ropMessage);
         }

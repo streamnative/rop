@@ -24,7 +24,6 @@ import org.apache.rocketmq.store.MessageExtBrokerInner;
 import org.streamnative.pulsar.handlers.rocketmq.inner.PutMessageCallback;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.RopGetMessageResult;
 import org.streamnative.pulsar.handlers.rocketmq.inner.format.RopMessageFilter;
-import org.streamnative.pulsar.handlers.rocketmq.inner.trace.TraceContext;
 
 /**
  * Pulsar message store interface.
