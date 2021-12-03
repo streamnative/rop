@@ -14,6 +14,7 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.processor;
 
+import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_INNER_CLIENT_ADDRESS;
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_INNER_MESSAGE_ID;
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_REQUEST_FROM_PROXY;
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_TRACE_START_TIME;
@@ -98,7 +99,12 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
                     traceContext = TraceContext.buildMsgContext(ctx, requestHeader);
                     traceContext.setPutStartTime(NumberUtils
                             .toLong(request.getExtFields().get(ROP_TRACE_START_TIME), System.currentTimeMillis()));
-                    traceContext.setFromProxy(request.getExtFields().containsKey(ROP_REQUEST_FROM_PROXY));
+                    if (request.getExtFields().containsKey(ROP_INNER_CLIENT_ADDRESS)) {
+                        traceContext.setInstanceName(request.getExtFields().get(ROP_INNER_CLIENT_ADDRESS));
+                    }
+                    if (!request.isOnewayRPC()) {
+                        traceContext.setFromProxy(request.getExtFields().containsKey(ROP_REQUEST_FROM_PROXY));
+                    }
                 }
 
                 RemotingCommand response;

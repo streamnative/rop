@@ -83,8 +83,6 @@ public class TraceManager {
     public void tracePut(TraceContext context) {
         // encode other properties with base64
         Map<String, Object> map = Maps.newHashMap();
-//        map.put("broker_tag", context.getBrokerTag());
-//        map.put("queue_id", context.getQueueId());
         map.put("offset_msg_id", context.getOffsetMsgId());
         map.put("msg_key", context.getMsgKey());
         map.put("instance_name", context.getInstanceName());

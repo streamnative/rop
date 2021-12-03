@@ -481,4 +481,16 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
             doc = "internal client worker threads."
     )
     private int ropInternalClientWorkerThreads = 10;
+
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
+            doc = "Whether enable rop trace.\n"
+    )
+    private boolean ropTraceTopicEnable = false;
+
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
+            doc = "RoP trace log dir.\n"
+    )
+    private String ropTraceLogDir = "/usr/local/services/tdmq_broker-1.0/logs";
 }

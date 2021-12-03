@@ -94,6 +94,7 @@ import org.apache.rocketmq.common.protocol.heartbeat.SubscriptionData;
 import org.apache.rocketmq.common.subscription.SubscriptionGroupConfig;
 import org.apache.rocketmq.common.sysflag.PullSysFlag;
 import org.apache.rocketmq.remoting.ChannelEventListener;
+import org.apache.rocketmq.remoting.common.RemotingHelper;
 import org.apache.rocketmq.remoting.exception.RemotingCommandException;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.remoting.protocol.RemotingSysResponseCode;
@@ -308,6 +309,12 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                 case SEND_MESSAGE:
                 case SEND_MESSAGE_V2:
                 case SEND_BATCH_MESSAGE:
+                    // mark trace start time and proxy info
+                    cmd.getExtFields().put(ROP_TRACE_START_TIME, String.valueOf(System.currentTimeMillis()));
+                    if (cmd.getExtFields().containsKey(PULSAR_REAL_PARTITION_ID_TAG)) {
+                        cmd.addExtField(ROP_REQUEST_FROM_PROXY, "true");
+                    }
+
                     RemotingCommand sendResponse = sendResponseThreadLocal.get();
                     SendMessageRequestHeader sendHeader = SendMessageProcessor.parseRequestHeader(cmd);
                     sendResponse.setCode(-1);
@@ -318,12 +325,6 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                         //fail to msgCheck and flush error at once;
                         ctx.writeAndFlush(sendResponse);
                         break;
-                    }
-
-                    // TODO: hanmz 2021/11/16 设置请求进入时间和是否是代理过来的请求
-                    cmd.getExtFields().put(ROP_TRACE_START_TIME, String.valueOf(System.currentTimeMillis()));
-                    if (cmd.getExtFields().containsKey(PULSAR_REAL_PARTITION_ID_TAG)) {
-                        cmd.addExtField(ROP_REQUEST_FROM_PROXY, "true");
                     }
 
                     String topic = sendHeader.getTopic();
@@ -520,15 +521,15 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
         final int opaque = cmd.getOpaque();
         long startTime = System.currentTimeMillis();
 
-        TraceContext traceContext = this.brokerController.isTraceEnable() ?
-                TraceContext.buildMsgContext(ctx, sendHeader) : null;
-
         try {
             cmd.addExtField(ROP_INNER_REMOTE_CLIENT_TAG, INNER_CLIENT_NAME_PREFIX + sendHeader.getProducerGroup());
+            cmd.addExtField(ROP_INNER_CLIENT_ADDRESS, RemotingHelper.parseChannelRemoteAddr(ctx.channel()));
             if (cmd.isOnewayRPC()) {
                 brokerNetworkClients.invokeOneway(address, cmd, timeout);
                 return;
             }
+            TraceContext traceContext = this.brokerController.isTraceEnable() ?
+                    TraceContext.buildMsgContext(ctx, sendHeader) : null;
             brokerNetworkClients.invokeAsync(address, cmd, timeout, (responseFuture) -> {
                 RemotingCommand sendResponse = responseFuture.getResponseCommand();
                 if (sendResponse != null) {
@@ -709,7 +710,7 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
             // The change fo rop acl, for new cmd, the access key is null.
             newCmd.getExtFields().putAll(cmd.getExtFields());
             newCmd.addExtField(PULSAR_REAL_PARTITION_ID_TAG, String.valueOf(pulsarPartitionId));
-            newCmd.addExtField(ROP_INNER_CLIENT_ADDRESS, ctx.channel().remoteAddress().toString());
+            newCmd.addExtField(ROP_INNER_CLIENT_ADDRESS, RemotingHelper.parseChannelRemoteAddr(ctx.channel()));
             brokerNetworkClients.invokeAsync(address, newCmd, timeout, (responseFuture) -> {
                 RemotingCommand pullResponse = responseFuture.getResponseCommand();
                 if (pullResponse != null) {

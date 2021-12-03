@@ -14,18 +14,33 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.trace;
 
+import java.io.File;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import lombok.extern.slf4j.Slf4j;
+import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
+import org.testng.util.Strings;
 
-public class TraceStatsReportService {
+@Slf4j
+public class TraceStatsReportService implements Runnable {
 
     private final AtomicLong writeDiskCounter = new AtomicLong(0);
     private final AtomicBoolean diskCanWrite = new AtomicBoolean(true);
 
+    private ScheduledFuture<?> scheduledReportExecutor;
+    private File logDir;
+
     public void boot() {
+        scheduledReportExecutor = Executors.newSingleThreadScheduledExecutor()
+                .scheduleAtFixedRate(this, 30, 30, TimeUnit.SECONDS);
+        logDir = new File(RocketMQBrokerController.traceLogDir);
     }
 
     public void shutdown() {
+        scheduledReportExecutor.cancel(true);
     }
 
 
@@ -35,5 +50,28 @@ public class TraceStatsReportService {
 
     public boolean canWriteDisk() {
         return this.diskCanWrite.get();
+    }
+
+    @Override
+    public void run() {
+        try {
+            if (logDir == null && Strings.isNullOrEmpty(RocketMQBrokerController.traceLogDir)) {
+                logDir = new File(RocketMQBrokerController.traceLogDir);
+            }
+            if (logDir != null) {
+                int remainDiskPercentage = (int) ((((double) logDir.getFreeSpace()) / logDir.getTotalSpace()) * 100);
+                log.info("RoP trace remaining disk usage [{}%].", remainDiskPercentage);
+                if (remainDiskPercentage < 10) {
+                    diskCanWrite.set(false);
+                    log.warn("RoP trace stop writing disk due to free space is low.");
+                } else {
+                    if (diskCanWrite.compareAndSet(false, true)) {
+                        log.info("RoP trace restore writing.");
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.info("RoP trace disk check error.", e);
+        }
     }
 }

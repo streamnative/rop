@@ -435,7 +435,7 @@ public class PullMessageProcessor implements NettyRequestProcessor {
                         response = null;
                     }
 
-                    // Point:/rop/get
+                    // Trace point:/rop/get
                     if (this.brokerController.isTraceEnable()) {
                         List<RopMessage> ropMessages = ropGetMessageResult.getMessageBufferList();
                         for (RopMessage ropMessage : ropMessages) {
