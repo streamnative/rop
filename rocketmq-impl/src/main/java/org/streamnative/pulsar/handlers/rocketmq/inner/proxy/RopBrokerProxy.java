@@ -528,7 +528,7 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                 brokerNetworkClients.invokeOneway(address, cmd, timeout);
                 return;
             }
-            TraceContext traceContext = this.brokerController.isTraceEnable() ?
+            TraceContext traceContext = this.brokerController.isRopTraceEnable() ?
                     TraceContext.buildMsgContext(ctx, sendHeader) : null;
             brokerNetworkClients.invokeAsync(address, cmd, timeout, (responseFuture) -> {
                 RemotingCommand sendResponse = responseFuture.getResponseCommand();

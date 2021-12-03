@@ -36,7 +36,7 @@ public class TraceStatsReportService implements Runnable {
     public void boot() {
         scheduledReportExecutor = Executors.newSingleThreadScheduledExecutor()
                 .scheduleAtFixedRate(this, 30, 30, TimeUnit.SECONDS);
-        logDir = new File(RocketMQBrokerController.traceLogDir);
+        logDir = new File(RocketMQBrokerController.ropTraceLogDir);
     }
 
     public void shutdown() {
@@ -55,12 +55,12 @@ public class TraceStatsReportService implements Runnable {
     @Override
     public void run() {
         try {
-            if (logDir == null && Strings.isNullOrEmpty(RocketMQBrokerController.traceLogDir)) {
-                logDir = new File(RocketMQBrokerController.traceLogDir);
+            if (logDir == null && Strings.isNullOrEmpty(RocketMQBrokerController.ropTraceLogDir)) {
+                logDir = new File(RocketMQBrokerController.ropTraceLogDir);
             }
             if (logDir != null) {
                 int remainDiskPercentage = (int) ((((double) logDir.getFreeSpace()) / logDir.getTotalSpace()) * 100);
-                log.info("RoP trace remaining disk usage [{}%].", remainDiskPercentage);
+                log.info("RoP trace remaining disk usage:{}%", remainDiskPercentage);
                 if (remainDiskPercentage < 10) {
                     diskCanWrite.set(false);
                     log.warn("RoP trace stop writing disk due to free space is low.");

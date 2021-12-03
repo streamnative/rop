@@ -95,7 +95,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
                 this.executeSendMessageHookBefore(ctx, request, mqtraceContext);
 
                 TraceContext traceContext = null;
-                if (this.brokerController.isTraceEnable()) {
+                if (this.brokerController.isRopTraceEnable()) {
                     traceContext = TraceContext.buildMsgContext(ctx, requestHeader);
                     traceContext.setPutStartTime(NumberUtils
                             .toLong(request.getExtFields().get(ROP_TRACE_START_TIME), System.currentTimeMillis()));

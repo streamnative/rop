@@ -355,7 +355,7 @@ public class GroupMetaManager {
         }
 
         // Point:/rop/commit
-        if (this.brokerController.isTraceEnable()) {
+        if (this.brokerController.isRopTraceEnable()) {
             oldGroupOffset = offsetTable.getIfPresent(groupOffsetKey);
             if (oldGroupOffset != null && oldGroupOffset.isValid()) {
                 TraceContext traceContext = new TraceContext();

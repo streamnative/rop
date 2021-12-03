@@ -121,8 +121,8 @@ public class RocketMQBrokerController {
     private volatile BrokerService brokerService;
     private ScheduleMessageService delayedMessageService;
     private volatile boolean isRunning = false;
-    private volatile boolean traceEnable;
-    public static String traceLogDir;
+    private volatile boolean ropTraceEnable;
+    public static String ropTraceLogDir;
 
     public RocketMQBrokerController(final RocketMQServiceConfiguration serverConfig) throws PulsarServerException {
         this.serverConfig = serverConfig;
@@ -160,8 +160,8 @@ public class RocketMQBrokerController {
         this.brokerStatsManager = new BrokerStatsManager(serverConfig.getBrokerName());
         this.delayedMessageService = new ScheduleMessageService(this, serverConfig);
         this.ropBrokerProxy = new RopBrokerProxy(this.serverConfig, this, this.clientHousekeepingService);
-        this.traceEnable = this.serverConfig.isRopTraceTopicEnable();
-        RocketMQBrokerController.traceLogDir = this.serverConfig.getRopTraceLogDir();
+        this.ropTraceEnable = this.serverConfig.isRopTraceTopicEnable();
+        RocketMQBrokerController.ropTraceLogDir = this.serverConfig.getRopTraceLogDir();
     }
 
     public void initialize() throws Exception {
