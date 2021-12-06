@@ -172,10 +172,10 @@ Configuration:
         additivity: false
         AppenderRef:
           - ref: Console
-
-    AsyncLogger:
-      - name: tdmq.trace
-        additivity: false
-        level: info
-        AppenderRef:
-          - ref: MessageTraceAppender
+#
+#    AsyncLogger:
+#      - name: tdmq.trace
+#        additivity: false
+#        level: info
+#        AppenderRef:
+#          - ref: MessageTraceAppender

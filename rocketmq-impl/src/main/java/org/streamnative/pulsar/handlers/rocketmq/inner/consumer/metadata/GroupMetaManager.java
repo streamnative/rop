@@ -354,7 +354,7 @@ public class GroupMetaManager {
             offsetTable.put(groupOffsetKey, new GroupOffsetValue(offset, commitTimestamp, expireTimestamp));
         }
 
-        // Point:/rop/commit
+        // Trace point:/rop/commit
         if (this.brokerController.isRopTraceEnable()) {
             oldGroupOffset = offsetTable.getIfPresent(groupOffsetKey);
             if (oldGroupOffset != null && oldGroupOffset.isValid()) {
