@@ -483,6 +483,7 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
         final int opaque = cmd.getOpaque();
         try {
             cmd.addExtField(ROP_INNER_REMOTE_CLIENT_TAG, INNER_CLIENT_NAME_PREFIX + requestHeader.getGroup());
+            cmd.addExtField(ROP_INNER_CLIENT_ADDRESS, RemotingHelper.parseChannelRemoteAddr(ctx.channel()));
             brokerNetworkClients.invokeAsync(address, cmd, timeout, (responseFuture) -> {
                 RemotingCommand response = responseFuture.getResponseCommand();
                 if (response != null) {

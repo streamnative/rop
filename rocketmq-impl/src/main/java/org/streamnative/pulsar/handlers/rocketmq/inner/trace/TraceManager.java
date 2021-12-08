@@ -48,6 +48,7 @@ public class TraceManager {
     public static final int TYPE_PERSIST = 1;
     public static final int TYPE_GET = 2;
     public static final int TYPE_COMMIT = 3;
+    public static final int TYPE_DLQ = 4;
 
     public static final int PROTOCOL_VERSION = 1;
 
@@ -125,6 +126,15 @@ public class TraceManager {
         String message = buildMessage(GlobalIdGenerator.generate(), 0, 0, System.currentTimeMillis(),
                 context.getEndTime(), TYPE_COMMIT, context.getTopic(), encodeGroup, context.getPartitionId(),
                 context.getOffset());
+        logToDisk(message);
+    }
+
+    public void traceQlq(TraceContext context) {
+        // encode group with base64
+        String encodeGroup = base64Encoder.encode(context.getGroup().getBytes(StandardCharsets.UTF_8));
+        String message = buildMessage(GlobalIdGenerator.generate(), 0, 0, System.currentTimeMillis(),
+                context.getEndTime(), TYPE_DLQ, context.getTopic(), encodeGroup, context.getMsgId(),
+                context.getInstanceName());
         logToDisk(message);
     }
 

@@ -50,6 +50,7 @@ import org.apache.rocketmq.common.protocol.header.SendMessageResponseHeader;
 import org.apache.rocketmq.common.subscription.SubscriptionGroupConfig;
 import org.apache.rocketmq.common.sysflag.MessageSysFlag;
 import org.apache.rocketmq.common.sysflag.TopicSysFlag;
+import org.apache.rocketmq.remoting.common.RemotingHelper;
 import org.apache.rocketmq.remoting.exception.RemotingCommandException;
 import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
@@ -60,6 +61,7 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.PutMessageCallback;
 import org.streamnative.pulsar.handlers.rocketmq.inner.PutMessageResult;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RopPutMessageResult;
+import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientTopicName;
 import org.streamnative.pulsar.handlers.rocketmq.inner.pulsar.PulsarMessageStore;
 import org.streamnative.pulsar.handlers.rocketmq.inner.trace.TraceContext;
 import org.streamnative.pulsar.handlers.rocketmq.inner.trace.TraceManager;
@@ -226,8 +228,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
                     : requestHeader.getMaxReconsumeTimes();
         }
 
-        if (msgExt.getReconsumeTimes() >= maxReconsumeTimes
-                || delayLevel < 0) {
+        if (msgExt.getReconsumeTimes() >= maxReconsumeTimes || delayLevel < 0) {
             newTopic = MixAll.getDLQTopic(requestHeader.getGroup());
             queueIdInt = 0;
 
@@ -267,6 +268,8 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
 
         String originMsgId = MessageAccessor.getOriginMessageId(msgExt);
         MessageAccessor.setOriginMessageId(msgInner, UtilAll.isBlank(originMsgId) ? msgExt.getMsgId() : originMsgId);
+
+        traceDlq(msgInner.getTopic(), MessageAccessor.getOriginMessageId(msgInner), ctx, request);
 
         try {
             CompletableFuture<RemotingCommand> responseFuture = new CompletableFuture<>();
@@ -371,6 +374,9 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         org.apache.rocketmq.store.PutMessageResult putMessageResult;
         Map<String, String> oriProps = MessageDecoder.string2messageProperties(requestHeader.getProperties());
         String traFlag = oriProps.get(MessageConst.PROPERTY_TRANSACTION_PREPARED);
+
+        traceDlq(msgInner.getTopic(), MessageAccessor.getOriginMessageId(msgInner), ctx, request);
+
         if (Boolean.parseBoolean(traFlag)
                 && !(msgInner.getReconsumeTimes() > 0
                 && msgInner.getDelayTimeLevel() > 0)) { //For client under version 4.6.1
@@ -728,6 +734,25 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
                 response.setRemark("execute callback failed");
             }
             doResponse(ctx, request, response);
+        }
+    }
+
+    /**
+     * Trace point:/rop/dlq
+     */
+    private void traceDlq(String rmqTopic, String msgId, ChannelHandlerContext ctx, RemotingCommand request) {
+        if (this.brokerController.isRopTraceEnable() && rmqTopic.startsWith(MixAll.DLQ_GROUP_TOPIC_PREFIX)) {
+            TraceContext traceContext = new TraceContext();
+            String dlqTopic = new ClientTopicName(rmqTopic).getPulsarTopicName();
+            traceContext.setTopic(dlqTopic);
+            traceContext.setGroup(dlqTopic.replace(MixAll.DLQ_GROUP_TOPIC_PREFIX, ""));
+            traceContext.setMsgId(msgId);
+            if (request.getExtFields().containsKey(ROP_INNER_CLIENT_ADDRESS)) {
+                traceContext.setInstanceName(request.getExtFields().get(ROP_INNER_CLIENT_ADDRESS));
+            } else {
+                traceContext.setInstanceName(RemotingHelper.parseChannelRemoteAddr(ctx.channel()));
+            }
+            TraceManager.get().traceQlq(traceContext);
         }
     }
 }
