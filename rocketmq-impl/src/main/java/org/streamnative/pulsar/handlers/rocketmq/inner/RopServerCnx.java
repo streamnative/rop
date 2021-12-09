@@ -19,6 +19,9 @@ import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.SLASH_
 import com.google.common.base.Function;
 import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.RemovalListener;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
@@ -29,7 +32,6 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.locks.ReentrantLock;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bookkeeper.mledger.AsyncCallbacks.ReadEntryCallback;
@@ -94,14 +96,23 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
     private static final int maxPendingMessages = 30000;
     private static final int fetchTimeoutInMs = 3000; // 3 sec
     private static final String ropHandlerName = "RopServerCnxHandler";
+    private static final Cache<String, Producer<byte[]>> producers = CacheBuilder.newBuilder()
+            .expireAfterAccess(5, TimeUnit.MINUTES)
+            .initialCapacity(1024)
+            .removalListener((RemovalListener<String, Producer<byte[]>>) listener -> {
+                log.info("remove internal producer from caches [name={}].", listener.getKey());
+                Producer<byte[]> producer = listener.getValue();
+                if (producer != null) {
+                    producer.closeAsync();
+                }
+            })
+            .build();
     private final BrokerService service;
-    private final ConcurrentLongHashMap<Producer<byte[]>> producers;
     private final ConcurrentLongHashMap<Long> nextBeginOffsets;
     private final ConcurrentHashMap<String, ManagedCursor> cursors;
     private final HashMap<Long, Reader<byte[]>> lookMsgReaders;
     private final RopEntryFormatter entryFormatter = new RopEntryFormatter();
-    private final ReentrantLock readLock = new ReentrantLock();
-    private final ReentrantLock lookMsgLock = new ReentrantLock();
+
     private final SystemClock systemClock = new SystemClock();
     private final RocketMQBrokerController brokerController;
     private final ChannelHandlerContext ctx;
@@ -118,7 +129,6 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         this.ctx = ctx;
         this.remoteAddress = ctx.channel().remoteAddress();
         this.state = State.Connected;
-        this.producers = new ConcurrentLongHashMap<>(2, 1);
         this.nextBeginOffsets = new ConcurrentLongHashMap<>(2, 1);
         this.lookMsgReaders = new HashMap<>();
         this.cursors = new ConcurrentHashMap<>(4);
@@ -139,9 +149,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         super.channelInactive(ctx);
         log.info("Closed connection from {}", remoteAddress);
         // Connection is gone, close the resources immediately
-        producers.values().forEach(Producer::closeAsync);
         cursors.forEach((s, managedCursor) -> closeCursor(s));
-        producers.clear();
         nextBeginOffsets.clear();
     }
 
@@ -202,10 +210,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 if (messageInner.getDelayTimeLevel() > 0) {
                     log.trace("Send delay level message topic: {}, messageInner: {}", messageInner.getTopic(),
                             messageInner);
-                    long producerId = buildPulsarProducerId(producerGroup, pTopic,
-                            ctx.channel().remoteAddress().toString());
-                    CompletableFuture<MessageId> messageIdFuture = getProducerFromCache(pTopic, producerGroup,
-                            producerId).newMessage()
+                    CompletableFuture<MessageId> messageIdFuture = getProducerFromCache(pTopic, producerGroup)
+                            .newMessage()
                             .value((body.get(0)))
                             .sendAsync();
                     offsetFuture = messageIdFuture.thenApply((Function<MessageId, Long>) messageId -> {
@@ -238,9 +244,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 /*
                  * Use pulsar producer send delay message.
                  */
-                long producerId = buildPulsarProducerId(producerGroup, pTopic,
-                        ctx.channel().remoteAddress().toString());
-                CompletableFuture<MessageId> messageIdFuture = getProducerFromCache(pTopic, producerGroup, producerId)
+                CompletableFuture<MessageId> messageIdFuture = getProducerFromCache(pTopic, producerGroup)
                         .newMessage()
                         .value((body.get(0)))
                         .deliverAt(deliverAtTime)
@@ -306,8 +310,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             RemotingCommand response, CompletableFuture<RemotingCommand> cmdFuture) {
         try {
             String pTopic = handleReconsumeDelayedMessage(messageInner);
-            long producerId = buildPulsarProducerId(pTopic);
-            Producer<byte[]> producer = getProducerFromCache(pTopic, producerGroup, producerId);
+            Producer<byte[]> producer = getProducerFromCache(pTopic, producerGroup);
             List<byte[]> body = this.entryFormatter.encode(messageInner, 1);
             CompletableFuture<MessageId> messageIdFuture = producer.newMessage()
                     .value((body.get(0)))
@@ -368,29 +371,6 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             }
 
             /*
-             * Use pulsar producer send message.
-             * We uniformly use a single message to send messages, so as to avoid the problem of batch message parsing.
-             */
-            if (batchMessageFutures.isEmpty()) {
-                long producerId = buildPulsarProducerId(producerGroup, pTopic, this.remoteAddress.toString());
-                Producer<byte[]> putMsgProducer = this.producers.get(producerId);
-                if (putMsgProducer == null) {
-                    synchronized (this.producers) {
-                        if (this.producers.get(producerId) == null) {
-                            log.info("[{}] putMessages creating producer[id={}].", pTopic, producerId);
-                            putMsgProducer = createNewProducer(pTopic, producerGroup, producerId);
-                            Producer<byte[]> oldProducer = this.producers.put(producerId, putMsgProducer);
-                            if (oldProducer != null) {
-                                oldProducer.closeAsync();
-                            }
-                        }
-                    }
-                }
-
-                log.info("The producer [{}] putMessages begin to send message.", producerId);
-            }
-
-            /*
              * Handle future list async by brokerController.getSendCallbackExecutor().
              */
             final int messageNumFinal = messageNum;
@@ -439,7 +419,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         }
     }
 
-    private Producer<byte[]> createNewProducer(String pTopic, String producerGroup, long producerId)
+    private Producer<byte[]> createNewProducer(String pTopic, String producerGroup)
             throws PulsarClientException {
         ProducerBuilder<byte[]> producerBuilder = brokerController.getRopBrokerProxy().getPulsarClient()
                 .newProducer()
@@ -716,8 +696,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         return (Joiner.on(SLASH_CHAR).join(tags)).hashCode();
     }
 
-    private long buildPulsarProducerId(String... tags) {
-        return (Joiner.on(SLASH_CHAR).join(tags)).hashCode();
+    private String buildPulsarProducerName(String... tags) {
+        return Joiner.on(SLASH_CHAR).join(tags);
     }
 
     enum State {
@@ -741,18 +721,16 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         return deliverAtTime > System.currentTimeMillis();
     }
 
-    private Producer<byte[]> getProducerFromCache(String pulsarTopic, String producerGroup, long producerKey) {
-        Producer<byte[]> producer = producers.computeIfAbsent(producerKey, key -> {
-            log.info("getProducerFromCache [{}] producer[id={}] and channel=[{}].",
-                    pulsarTopic, producerKey, ctx.channel());
-            try {
-                return createNewProducer(pulsarTopic, producerGroup, producerKey);
-            } catch (Exception e) {
-                log.warn("getProducerFromCache[topic={},producerGroup={}] error.", pulsarTopic, producerGroup, e);
-            }
-            return null;
-        });
-        return producer;
+    private Producer<byte[]> getProducerFromCache(String pulsarTopic, String producerGroup) {
+        try {
+            String pulsarProducerName = buildPulsarProducerName(pulsarTopic, producerGroup);
+            Producer<byte[]> producer = producers
+                    .get(pulsarProducerName, () -> createNewProducer(pulsarTopic, producerGroup));
+            return producer;
+        } catch (Exception e) {
+            log.warn("getProducerFromCache[topic={},producerGroup={}] error.", pulsarTopic, producerGroup, e);
+        }
+        return null;
     }
 
     private String handleReconsumeDelayedMessage(MessageExtBrokerInner messageInner) {
