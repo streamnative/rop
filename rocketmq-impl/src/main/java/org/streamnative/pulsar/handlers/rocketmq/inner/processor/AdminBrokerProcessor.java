@@ -811,9 +811,9 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
                 offsetWrapper.setBrokerOffset(brokerOffset);
                 offsetWrapper.setConsumerOffset(consumerOffset);
                 if (consumerOffset == 0) {
-                    offsetWrapper.setMsgBacklog(brokerOffset);
+                    offsetWrapper.setMsgBacklog(Math.max(0, brokerOffset));
                 } else {
-                    offsetWrapper.setMsgBacklog(brokerOffset - consumerOffset + 1);
+                    offsetWrapper.setMsgBacklog(Math.max(0, brokerOffset - consumerOffset + 1));
                 }
 
                 if (consumerOffset >= 1) {
