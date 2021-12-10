@@ -33,6 +33,7 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.acl.common.AclException;
 import org.apache.rocketmq.remoting.ChannelEventListener;
 import org.apache.rocketmq.remoting.InvokeCallback;
 import org.apache.rocketmq.remoting.RPCHook;
@@ -220,7 +221,9 @@ public abstract class NettyRemotingAbstract {
                             }
                         }
                     } catch (Throwable e) {
-                        log.error("process request[{}] exception", cmd, e);
+                        if (!(e instanceof AclException)) {
+                            log.error("process request[{}] exception", cmd, e);
+                        }
 
                         if (!cmd.isOnewayRPC()) {
                             final RemotingCommand response = RemotingCommand.createResponseCommand(
