@@ -34,11 +34,13 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.bookkeeper.mledger.AsyncCallbacks.MarkDeleteCallback;
 import org.apache.bookkeeper.mledger.AsyncCallbacks.ReadEntryCallback;
 import org.apache.bookkeeper.mledger.Entry;
 import org.apache.bookkeeper.mledger.ManagedCursor;
 import org.apache.bookkeeper.mledger.ManagedLedger;
 import org.apache.bookkeeper.mledger.ManagedLedgerException;
+import org.apache.bookkeeper.mledger.impl.NonDurableCursorImpl;
 import org.apache.bookkeeper.mledger.impl.PositionImpl;
 import org.apache.commons.lang.exception.ExceptionUtils;
 import org.apache.commons.lang3.math.NumberUtils;
@@ -623,6 +625,15 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         if (managedCursor != null) {
             try {
                 List<Entry> entries = managedCursor.readEntries(maxMsgNums);
+
+                // commit the offset, so backlog not affect by this cursor.
+                if (!entries.isEmpty()) {
+                    final Entry lastEntry = entries.get(entries.size() - 1);
+                    final PositionImpl currentPosition = PositionImpl.get(
+                            lastEntry.getLedgerId(), lastEntry.getEntryId());
+                    commitOffset((NonDurableCursorImpl) managedCursor, currentPosition);
+                }
+
                 for (Entry entry : entries) {
                     if (entry == null) {
                         continue;
@@ -772,5 +783,23 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
 
     private String getFullCursorName(Triple<Long, String, String> triple) {
         return String.format(cursorBaseName, triple.getLeft(), triple.getMiddle());
+    }
+
+    // commit the offset, so backlog not affect by this cursor.
+    private static void commitOffset(NonDurableCursorImpl cursor, PositionImpl currentPosition) {
+        cursor.asyncMarkDelete(currentPosition, new MarkDeleteCallback() {
+            @Override
+            public void markDeleteComplete(Object ctx) {
+                if (log.isDebugEnabled()) {
+                    log.debug("Mark delete success for position: {}", currentPosition);
+                }
+            }
+
+            // this is OK, since this is kind of cumulative ack, following commit will come.
+            @Override
+            public void markDeleteFailed(ManagedLedgerException e, Object ctx) {
+                log.warn("Mark delete success for position: {} with error:", currentPosition, e);
+            }
+        }, null);
     }
 }
