@@ -115,7 +115,7 @@ public class ConsumerGroupInfo {
         if (null == infoOld) {
             ClientChannelInfo prev = this.channelInfoTable.put(infoNew.getChannel(), infoNew);
             if (null == prev) {
-                log.info("new consumer connected, group: {} {} {} channel: {}", this.groupName, consumeType,
+                log.trace("new consumer connected, group: {} {} {} channel: {}", this.groupName, consumeType,
                         messageModel, infoNew.toString());
                 updated = true;
             }
@@ -147,13 +147,13 @@ public class ConsumerGroupInfo {
                 SubscriptionData prev = this.subscriptionTable.putIfAbsent(sub.getTopic(), sub);
                 if (null == prev) {
                     updated = true;
-                    log.info("subscription changed, add new topic, group: {} {}",
+                    log.trace("subscription changed, add new topic, group: {} {}",
                             this.groupName,
                             sub.toString());
                 }
             } else if (sub.getSubVersion() > old.getSubVersion()) {
                 if (this.consumeType == ConsumeType.CONSUME_PASSIVELY) {
-                    log.info("subscription changed, group: {} OLD: {} NEW: {}",
+                    log.trace("subscription changed, group: {} OLD: {} NEW: {}",
                             this.groupName,
                             old.toString(),
                             sub.toString()
@@ -178,7 +178,7 @@ public class ConsumerGroupInfo {
             }
 
             if (!exist) {
-                log.warn("subscription changed, group: {} remove topic {} {}",
+                log.trace("subscription changed, group: {} remove topic {} {}",
                         this.groupName,
                         oldTopic,
                         next.getValue().toString()

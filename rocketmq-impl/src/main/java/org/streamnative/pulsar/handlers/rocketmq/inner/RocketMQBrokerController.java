@@ -346,14 +346,14 @@ public class RocketMQBrokerController {
                                         roleSubject,
                                         authCommand).get();
                         if (!authOK) {
-                            log.error("[PRODUCE] Token authentication failed, please check");
+                            log.trace("[PRODUCE] Token authentication failed, please check");
                             throw new AclException("[PRODUCE] Token authentication failed, please check");
                         }
 
                         log.trace("Successfully for send auth: {}", authOK);
                     } catch (Exception e) {
-                        log.error("[PRODUCE] Throws exception:{}", e.getMessage());
-                        throw new RuntimeException(e);
+                        log.trace("[PRODUCE] Throws exception:{}", e.getMessage());
+                        throw new AclException("[PRODUCE] Token authentication failed, please check");
                     }
                 } else if (RequestCode.PULL_MESSAGE == request.getCode()) {
                     try {
@@ -374,13 +374,13 @@ public class RocketMQBrokerController {
                                         roleSubject,
                                         authCommand).get();
                         if (!authOK) {
-                            log.error("[CONSUME] Token authentication failed, please check");
+                            log.trace("[CONSUME] Token authentication failed, please check");
                             throw new AclException("[CONSUME] Token authentication failed, please check");
                         }
                         log.trace("Successfully for receive auth");
                     } catch (Exception e) {
-                        log.error("[CONSUME] Throws exception:{}", e.getMessage());
-                        throw new RuntimeException(e);
+                        log.trace("[CONSUME] Throws exception:{}", e.getMessage());
+                        throw new AclException("Token authentication failed, please check");
                     }
                 } else if (RequestCode.UPDATE_AND_CREATE_TOPIC == request.getCode()
                         || RequestCode.DELETE_TOPIC_IN_BROKER == request.getCode()

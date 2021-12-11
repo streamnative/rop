@@ -97,12 +97,14 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
 
     public ByteBuf encode(byte[] record) {
         final ByteBuf recordsWrapper = Unpooled.wrappedBuffer(record);
-        final ByteBuf buf = Commands.serializeMetadataAndPayload(
-                Commands.ChecksumType.None,
-                getDefaultMessageMetadata(),
-                recordsWrapper);
-        recordsWrapper.release();
-        return buf;
+        try {
+            return Commands.serializeMetadataAndPayload(
+                    Commands.ChecksumType.None,
+                    getDefaultMessageMetadata(),
+                    recordsWrapper);
+        } finally {
+            recordsWrapper.release();
+        }
     }
 
 
