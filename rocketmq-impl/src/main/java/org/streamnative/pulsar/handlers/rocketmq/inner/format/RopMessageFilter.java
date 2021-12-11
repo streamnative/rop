@@ -38,7 +38,7 @@ public class RopMessageFilter implements Predicate<ByteBuf> {
                 return true;
             }
 
-            long tagsCode = payload.slice().readLong();
+            long tagsCode = payload.getLong(payload.readerIndex());
             return subscriptionData.getCodeSet().contains((int) tagsCode);
         }
         return true;
