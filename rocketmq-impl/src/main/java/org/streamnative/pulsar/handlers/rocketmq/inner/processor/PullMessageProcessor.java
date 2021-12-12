@@ -272,7 +272,7 @@ public class PullMessageProcessor implements NettyRequestProcessor {
             responseHeader.setNextBeginOffset(requestHeader.getQueueOffset());
             responseHeader.setMinOffset(requestHeader.getQueueOffset());
             responseHeader.setSuggestWhichBrokerId(0L);
-            response.setRemark("store getMessage return null");
+            response.setRemark("Get serverCnx failed.");
             return response;
         }
 
@@ -513,6 +513,7 @@ public class PullMessageProcessor implements NettyRequestProcessor {
                         + bornHostLength; // 10 BORNHOST
                 storeTimestamp = bb.getLong(msgStoreTimePos);
             }
+
         } finally {
         }
         return byteBuffer.array();

@@ -154,6 +154,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         // Connection is gone, close the resources immediately
         cursors.forEach((triple, managedCursor) -> closeCursor(triple));
         nextBeginOffsets.clear();
+        lookMsgReaders.clear();
     }
 
     @Override
