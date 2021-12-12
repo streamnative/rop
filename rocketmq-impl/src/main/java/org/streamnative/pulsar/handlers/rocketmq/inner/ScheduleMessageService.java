@@ -35,8 +35,8 @@ import org.apache.pulsar.broker.PulsarServerException;
 import org.apache.pulsar.client.admin.PulsarAdmin;
 import org.apache.pulsar.client.api.Consumer;
 import org.apache.pulsar.client.api.DeadLetterPolicy;
+import org.apache.pulsar.client.api.Message;
 import org.apache.pulsar.client.api.MessageId;
-import org.apache.pulsar.client.api.Messages;
 import org.apache.pulsar.client.api.Producer;
 import org.apache.pulsar.client.api.ProducerBuilder;
 import org.apache.pulsar.client.api.SubscriptionInitialPosition;
@@ -212,82 +212,67 @@ public class ScheduleMessageService {
                 while (msgNum.get() < config.getMaxScheduleMsgBatchSize()
                         && timeoutTimer.size() < config.getMaxScheduleMsgBatchSize()
                         && ScheduleMessageService.this.isStarted()) {
-                    Messages<byte[]> messages = null;
-                    try {
-                        CompletableFuture<Messages<byte[]>> messagesFuture = this.delayedConsumer
-                                .batchReceiveAsync();
-                        messages = messagesFuture.get(PULL_MESSAGE_TIMEOUT_MS, TimeUnit.MILLISECONDS);
-                    } catch (Exception e) {
-                        log.warn("DeliverDelayedMessageTimerTask pull message exception, for: {}.", e.getMessage());
-                    }
-
-                    if (Objects.isNull(messages) || messages.size() == 0) {
+                    Message<byte[]> message = this.delayedConsumer.receive();
+                    if (Objects.isNull(message)) {
                         break;
                     }
 
-                    messages.forEach(message -> {
-                        MessageExt messageExt = this.formatter.decodePulsarMessage(message);
-                        long deliveryTime = computeDeliverTimestamp(this.delayLevel,
-                                messageExt.getStoreTimestamp());
-                        long diff = deliveryTime - Instant.now().toEpochMilli();
-                        diff = diff < 0 ? 0 : diff;
-                        log.debug(
-                                "Retry delayedTime: delayLeve=[{}], delayTime=[{}], "
-                                        + "bornTime=[{}], storeTime=[{}], deliveryTime=[{}].",
-                                new Object[]{delayLevel, delayLevelTable.get(delayLevel),
-                                        messageExt.getBornTimestamp(),
-                                        messageExt.getStoreTimestamp(), deliveryTime});
-                        timeoutTimer
-                                .add(new org.streamnative.pulsar.handlers.rocketmq.inner.timer.TimerTask(diff) {
-                                    @Override
-                                    public void run() {
-                                        try {
-                                            log.debug("Retry delayedTime: needDelayMs=[{}],real diff =[{}].",
-                                                    this.delayMs,
-                                                    deliveryTime - Instant.now().toEpochMilli());
-                                            MessageExtBrokerInner msgInner = messageTimeup(messageExt);
-                                            if (MixAll.RMQ_SYS_TRANS_HALF_TOPIC.equals(messageExt.getTopic())) {
-                                                log.error("[BUG] the real topic of schedule msg is {}, "
-                                                                + "discard the msg. msg={}",
-                                                        messageExt.getTopic(), messageExt);
-                                                return;
-                                            }
-
-                                            RocketMQTopic rmqTopic = new RocketMQTopic(msgInner.getTopic());
-                                            String pTopic = rmqTopic.getPulsarFullName();
-                                            Producer<byte[]> producer = getProducerFromCache(pTopic);
-                                            producer.newMessage()
-                                                    .value(formatter.encode(msgInner, 1).get(0))
-                                                    .sendAsync()
-                                                    .whenCompleteAsync((msgId, ex) -> {
-                                                        if (ex == null) {
-                                                            /*TODO: how to notify RetryTopic consumer pull message
-                                                             * at once. need rpc to notify, for some partition isn't
-                                                             * on current broker.
-                                                             */
-                                                            delayedConsumer.acknowledgeAsync(message);
-                                                        } else {
-                                                            log.warn("DelayedMessageSender send message[{}] failed.",
-                                                                    message);
-                                                            delayedConsumer.negativeAcknowledge(message);
-                                                        }
-                                                    });
-                                        } catch (RopTopicNotExistsException topicNotExistsException) {
-                                            log.warn(
-                                                    "DelayedMessageSender discard sending message[{}], because: {}.",
-                                                    message.getMessageId(), topicNotExistsException.getMessage());
-                                            delayedConsumer.acknowledgeAsync(message);
-                                        } catch (Exception ex) {
-                                            log.warn("DelayedMessageSender send message[{}] failed.",
-                                                    message.getMessageId(), ex);
-                                            delayedConsumer.negativeAcknowledge(message);
+                    MessageExt messageExt = this.formatter.decodePulsarMessage(message);
+                    long deliveryTime = computeDeliverTimestamp(this.delayLevel,
+                            messageExt.getStoreTimestamp());
+                    long diff = deliveryTime - Instant.now().toEpochMilli();
+                    diff = diff < 0 ? 0 : diff;
+                    timeoutTimer
+                            .add(new org.streamnative.pulsar.handlers.rocketmq.inner.timer.TimerTask(diff) {
+                                @Override
+                                public void run() {
+                                    try {
+                                        log.debug("Retry delayedTime: needDelayMs=[{}],real diff =[{}].",
+                                                this.delayMs,
+                                                deliveryTime - Instant.now().toEpochMilli());
+                                        MessageExtBrokerInner msgInner = messageTimeup(messageExt);
+                                        if (MixAll.RMQ_SYS_TRANS_HALF_TOPIC.equals(messageExt.getTopic())) {
+                                            log.error("[BUG] the real topic of schedule msg is {}, "
+                                                            + "discard the msg. msg={}",
+                                                    messageExt.getTopic(), messageExt);
+                                            return;
                                         }
+
+                                        RocketMQTopic rmqTopic = new RocketMQTopic(msgInner.getTopic());
+                                        String pTopic = rmqTopic.getPulsarFullName();
+                                        Producer<byte[]> producer = getProducerFromCache(pTopic);
+                                        producer.newMessage()
+                                                .value(formatter.encode(msgInner, 1).get(0))
+                                                .sendAsync()
+                                                .whenCompleteAsync((msgId, ex) -> {
+                                                    if (ex == null) {
+                                                        /*TODO: how to notify RetryTopic consumer pull message
+                                                         * at once. need rpc to notify, for some partition isn't
+                                                         * on current broker.
+                                                         */
+                                                        delayedConsumer.acknowledgeAsync(message);
+                                                    } else {
+                                                        log.warn("DelayedMessageSender send message[{}] failed.",
+                                                                message);
+                                                        delayedConsumer.negativeAcknowledge(message);
+                                                    }
+                                                });
+                                    } catch (RopTopicNotExistsException topicNotExistsException) {
+                                        log.warn(
+                                                "DelayedMessageSender discard sending message[{}], because: {}.",
+                                                message.getMessageId(), topicNotExistsException.getMessage());
+                                        delayedConsumer.acknowledgeAsync(message);
+                                    } catch (Exception ex) {
+                                        log.warn("DelayedMessageSender send message[{}] failed.",
+                                                message.getMessageId(), ex);
+                                        delayedConsumer.negativeAcknowledge(message);
                                     }
-                                });
-                    });
-                    msgNum.addAndGet(messages.size());
+                                }
+                            });
+                    msgNum.incrementAndGet();
                 }
-            } catch (Exception e) {
+            } catch (
+                    Exception e) {
                 log.warn("DeliverDelayedMessageTimerTask[delayLevel={}] pull message exception.", this.delayLevel,
                         e);
                 if (!ScheduleMessageService.this.isStarted()) {
@@ -309,15 +294,16 @@ public class ScheduleMessageService {
                     if (Objects.nonNull(topicMeta) && topicMeta.partitions > 0) {
                         ProducerBuilder<byte[]> producerBuilder = rocketBroker.getRopBrokerProxy().getPulsarClient()
                                 .newProducer()
-                                .maxPendingMessages(2000);
+                                .maxPendingMessages(config.getMaxScheduleMsgBatchSize());
 
                         return producerBuilder.clone()
                                 .topic(pulsarTopic)
-                                .producerName(pulsarTopic + "_delayedMessageSender" + System.currentTimeMillis())
+                                .producerName(pulsarTopic + "_delayedMessageSender_" + System.currentTimeMillis())
                                 .enableBatching(false)
                                 .sendTimeout(SEND_MESSAGE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
                                 .create();
                     } else {
+                        log.warn("getProducerFromCache failed, for [topic = {}] not exists, and remove.", pulsarTopic);
                         topicNotExists.set(true);
                         return null;
                     }
@@ -336,7 +322,7 @@ public class ScheduleMessageService {
                     producer.closeAsync();
                 }
                 sendBackProducers.remove(pulsarTopic);
-                throw new RopServerException("[ScheduleMessageService]getProducerFromCache error.");
+                throw new RopServerException("[ScheduleMessageService] getProducerFromCache error, maybe producer is wrong.");
             }
         }
 
@@ -351,7 +337,7 @@ public class ScheduleMessageService {
                 this.delayedConsumer = rocketBroker.getRopBrokerProxy().getPulsarClient()
                         .newConsumer()
                         .ackTimeout(2, TimeUnit.HOURS)
-                        .receiverQueueSize(MAX_FETCH_MESSAGE_NUM)
+                        .receiverQueueSize(config.getMaxScheduleMsgBatchSize())
                         .subscriptionMode(SubscriptionMode.Durable)
                         .subscriptionType(SubscriptionType.Shared)
                         .subscriptionName(getDelayedTopicConsumerName(delayLevel))
@@ -394,6 +380,7 @@ public class ScheduleMessageService {
             msgInner.setQueueId(queueId);
             return msgInner;
         }
+
     }
 
     private void createDelayedSubscription() throws PulsarServerException {
