@@ -76,7 +76,8 @@ public class ScheduleMessageService {
     private final AtomicBoolean started = new AtomicBoolean(false);
     private final RocketMQServiceConfiguration config;
     private final RocketMQBrokerController rocketBroker;
-    private final ScheduledExecutorService timer = Executors.newScheduledThreadPool(4);
+    private final ScheduledExecutorService timer = Executors.newScheduledThreadPool(8);
+    private final ScheduledExecutorService advancedTimer = Executors.newSingleThreadScheduledExecutor();
     private final Map<String, Producer<byte[]>> sendBackProducers;
     private final String scheduleTopicPrefix;
     private String[] delayLevelArray;
@@ -131,7 +132,7 @@ public class ScheduleMessageService {
                         this.timer
                                 .scheduleWithFixedDelay(task, FIRST_DELAY_TIME, DELAY_FOR_A_WHILE,
                                         TimeUnit.MILLISECONDS);
-                        this.timer.scheduleWithFixedDelay(() -> task.advanceClock(ADVANCE_TIME_INTERVAL),
+                        this.advancedTimer.scheduleWithFixedDelay(() -> task.advanceClock(ADVANCE_TIME_INTERVAL),
                                 FIRST_DELAY_TIME,
                                 ADVANCE_TIME_INTERVAL, TimeUnit.MILLISECONDS);
                     });
@@ -143,6 +144,7 @@ public class ScheduleMessageService {
             deliverDelayedMessageManager.forEach(DeliverDelayedMessageTimerTask::close);
             sendBackProducers.values().forEach(Producer::closeAsync);
             timer.shutdownNow();
+            advancedTimer.shutdownNow();
         }
     }
 
@@ -212,7 +214,7 @@ public class ScheduleMessageService {
                 while (msgNum.get() < config.getMaxScheduleMsgBatchSize()
                         && timeoutTimer.size() < config.getMaxScheduleMsgBatchSize()
                         && ScheduleMessageService.this.isStarted()) {
-                    Message<byte[]> message = this.delayedConsumer.receive();
+                    Message<byte[]> message = this.delayedConsumer.receive(MAX_FETCH_MESSAGE_NUM,TimeUnit.MILLISECONDS);
                     if (Objects.isNull(message)) {
                         break;
                     }
