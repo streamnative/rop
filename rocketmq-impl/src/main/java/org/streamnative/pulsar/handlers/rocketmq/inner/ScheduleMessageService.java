@@ -28,7 +28,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.IntStream;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.pulsar.broker.PulsarServerException;
@@ -187,7 +187,8 @@ public class ScheduleMessageService {
         private final RopEntryFormatter formatter = new RopEntryFormatter();
         private final SystemTimer timeoutTimer;
         private Consumer<byte[]> delayedConsumer = null;
-        final AtomicInteger msgNum = new AtomicInteger(0);
+        final AtomicLong msgNum = new AtomicLong(0L);
+        final AtomicLong msgAckedNum = new AtomicLong(0L);
 
         public DeliverDelayedMessageTimerTask(int delayLevel) {
             this.delayLevel = delayLevel;
@@ -210,11 +211,10 @@ public class ScheduleMessageService {
         public void run() {
             try {
                 createConsumerIfNotExists();
-                msgNum.set(0);
-                while (msgNum.get() < config.getMaxScheduleMsgBatchSize()
-                        && timeoutTimer.size() < config.getMaxScheduleMsgBatchSize()
+                while (timeoutTimer.size() < config.getMaxScheduleMsgBatchSize()
                         && ScheduleMessageService.this.isStarted()) {
-                    Message<byte[]> message = this.delayedConsumer.receive(MAX_FETCH_MESSAGE_NUM,TimeUnit.MILLISECONDS);
+                    Message<byte[]> message = this.delayedConsumer
+                            .receive(MAX_FETCH_MESSAGE_NUM, TimeUnit.MILLISECONDS);
                     if (Objects.isNull(message)) {
                         break;
                     }
@@ -253,6 +253,10 @@ public class ScheduleMessageService {
                                                          * on current broker.
                                                          */
                                                         delayedConsumer.acknowledgeAsync(message);
+                                                        if (msgAckedNum.incrementAndGet() % 1000 == 0) {
+                                                            log.info("ScheduleSendMessage [delayedLevel={}] have acked [{}] messages.", delayLevel,
+                                                                    msgAckedNum.get());
+                                                        }
                                                     } else {
                                                         log.warn("DelayedMessageSender send message[{}] failed.",
                                                                 message);
@@ -264,6 +268,10 @@ public class ScheduleMessageService {
                                                 "DelayedMessageSender discard sending message[{}], because: {}.",
                                                 message.getMessageId(), topicNotExistsException.getMessage());
                                         delayedConsumer.acknowledgeAsync(message);
+                                        if (msgAckedNum.incrementAndGet() % 1000 == 0) {
+                                            log.info("ScheduleSendMessage [delayedLevel={}] have acked [{}] messages.", delayLevel,
+                                                    msgAckedNum.get());
+                                        }
                                     } catch (Exception ex) {
                                         log.warn("DelayedMessageSender send message[{}] failed.",
                                                 message.getMessageId(), ex);
@@ -271,7 +279,10 @@ public class ScheduleMessageService {
                                     }
                                 }
                             });
-                    msgNum.incrementAndGet();
+                    if (msgNum.incrementAndGet() % 1000 == 0) {
+                        log.info("ScheduleSendMessage [delayedLevel={}] have processed [{}] messages.", delayLevel,
+                                msgNum.get());
+                    }
                 }
             } catch (
                     Exception e) {
@@ -300,7 +311,7 @@ public class ScheduleMessageService {
 
                         return producerBuilder.clone()
                                 .topic(pulsarTopic)
-                                .producerName(pulsarTopic + "_delayedMessageSender_" + System.currentTimeMillis())
+                                .producerName(pulsarTopic + "_ScheduleMessageSender_" + System.currentTimeMillis())
                                 .enableBatching(false)
                                 .sendTimeout(SEND_MESSAGE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
                                 .create();
@@ -324,7 +335,8 @@ public class ScheduleMessageService {
                     producer.closeAsync();
                 }
                 sendBackProducers.remove(pulsarTopic);
-                throw new RopServerException("[ScheduleMessageService] getProducerFromCache error, maybe producer is wrong.");
+                throw new RopServerException(
+                        "[ScheduleMessageService] getProducerFromCache error, maybe producer is wrong.");
             }
         }
 
@@ -338,7 +350,6 @@ public class ScheduleMessageService {
                         delayLevel, pulsarClient.getConfiguration());
                 this.delayedConsumer = rocketBroker.getRopBrokerProxy().getPulsarClient()
                         .newConsumer()
-                        .ackTimeout(2, TimeUnit.HOURS)
                         .receiverQueueSize(config.getMaxScheduleMsgBatchSize())
                         .subscriptionMode(SubscriptionMode.Durable)
                         .subscriptionType(SubscriptionType.Shared)

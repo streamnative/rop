@@ -753,9 +753,9 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
 
     private Producer<byte[]> getProducerFromCache(String pulsarTopic, String producerGroup) {
         try {
-            String pulsarProducerName = buildPulsarProducerName(pulsarTopic, producerGroup);
+            String pulsarProducerName = buildPulsarProducerName(pulsarTopic, producerGroup, "SendProcessor");
             Producer<byte[]> producer = producers
-                    .get(pulsarProducerName, () -> createNewProducer(pulsarTopic, producerGroup));
+                    .get(pulsarProducerName, () -> createNewProducer(pulsarTopic, pulsarProducerName));
             return producer;
         } catch (Exception e) {
             log.warn("getProducerFromCache[topic={},producerGroup={}] error.", pulsarTopic, producerGroup, e);
