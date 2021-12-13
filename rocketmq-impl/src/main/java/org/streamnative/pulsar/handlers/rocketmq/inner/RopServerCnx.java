@@ -599,13 +599,6 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         String consumerGroupName = requestHeader.getConsumerGroup();
         String topicName = requestHeader.getTopic();
 
-        // TODO: hanmz 2021/12/13 test
-//        if (topicName.contains("%RETRY%")) {
-//            getResult.setStatus(GetMessageStatus.NO_MATCHED_MESSAGE);
-//            getResult.setNextBeginOffset(requestHeader.getQueueOffset());
-//            return getResult;
-//        }
-
         // hang pull request if this broker not owner for the request partitionId topicName
         RocketMQTopic rmqTopic = new RocketMQTopic(topicName);
         if (!this.brokerController.getTopicConfigManager()
