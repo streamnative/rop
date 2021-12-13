@@ -197,10 +197,10 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
 
         int delayLevel = requestHeader.getDelayLevel();
         int maxReconsumeTimes = subscriptionGroupConfig.getRetryMaxTimes();
-        if (request.getVersion() >= MQVersion.Version.V3_4_9.ordinal()) {
-            maxReconsumeTimes = requestHeader.getMaxReconsumeTimes() == null ? maxReconsumeTimes
-                    : requestHeader.getMaxReconsumeTimes();
-        }
+//        if (request.getVersion() >= MQVersion.Version.V3_4_9.ordinal()) {
+//            maxReconsumeTimes = requestHeader.getMaxReconsumeTimes() == null ? maxReconsumeTimes
+//                    : requestHeader.getMaxReconsumeTimes();
+//        }
 
         if (msgExt.getReconsumeTimes() >= maxReconsumeTimes
                 || delayLevel < 0) {
@@ -276,10 +276,10 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             }
 
             int maxReconsumeTimes = subscriptionGroupConfig.getRetryMaxTimes();
-            if (request.getVersion() >= MQVersion.Version.V3_4_9.ordinal()) {
-                maxReconsumeTimes = requestHeader.getMaxReconsumeTimes() != null ? requestHeader.getMaxReconsumeTimes()
-                        : maxReconsumeTimes;
-            }
+//            if (request.getVersion() >= MQVersion.Version.V3_4_9.ordinal()) {
+//                maxReconsumeTimes = requestHeader.getMaxReconsumeTimes() != null ? requestHeader.getMaxReconsumeTimes()
+//                        : maxReconsumeTimes;
+//            }
             int reconsumeTimes = requestHeader.getReconsumeTimes() == null ? 0 : requestHeader.getReconsumeTimes();
             if (reconsumeTimes >= maxReconsumeTimes) {
                 newTopic = MixAll.getDLQTopic(groupName);

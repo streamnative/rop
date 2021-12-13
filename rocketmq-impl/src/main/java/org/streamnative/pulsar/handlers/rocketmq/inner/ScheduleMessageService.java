@@ -210,6 +210,12 @@ public class ScheduleMessageService {
         @Override
         public void run() {
             try {
+
+                // TODO: hanmz 2021/12/12 临时测试
+//                if (delayLevel >= 0) {
+//                    return;
+//                }
+
                 createConsumerIfNotExists();
                 while (timeoutTimer.size() < config.getMaxScheduleMsgBatchSize()
                         && ScheduleMessageService.this.isStarted()) {
@@ -356,9 +362,9 @@ public class ScheduleMessageService {
                         .subscriptionName(getDelayedTopicConsumerName(delayLevel))
                         .topic(getDelayedTopicName(delayLevel))
                         .subscriptionInitialPosition(SubscriptionInitialPosition.Earliest)
-                        .deadLetterPolicy(DeadLetterPolicy.builder()
-                                .maxRedeliverCount(delayLevel).build())
-                        .enableRetry(true)
+//                        .deadLetterPolicy(DeadLetterPolicy.builder()
+//                                .maxRedeliverCount(delayLevel).build())
+//                        .enableRetry(true)
                         .subscribe();
                 log.info("The client config value: [{}]", pulsarClient.getConfiguration());
             } catch (Exception e) {
