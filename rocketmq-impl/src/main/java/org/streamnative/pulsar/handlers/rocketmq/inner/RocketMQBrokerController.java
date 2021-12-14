@@ -161,8 +161,8 @@ public class RocketMQBrokerController {
 
         this.getScheduledExecutorService().scheduleAtFixedRate(
                 () -> log.info("Show current cursor count: {}, addCursorCount: {}, delCursorCount: {}.",
-                        RopServerCnx.addCursorCount.get() - RopServerCnx.delCursorCount.get(),
-                        RopServerCnx.addCursorCount.get(), RopServerCnx.delCursorCount.get()), 30, 30,
+                        RopServerCnx.ADD_CURSOR_COUNT.get() - RopServerCnx.DEL_CURSOR_COUNT.get(),
+                        RopServerCnx.ADD_CURSOR_COUNT.get(), RopServerCnx.DEL_CURSOR_COUNT.get()), 30, 30,
                 TimeUnit.SECONDS);
     }
 

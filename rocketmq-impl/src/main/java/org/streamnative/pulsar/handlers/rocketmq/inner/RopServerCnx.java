@@ -96,8 +96,8 @@ import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 @Getter
 public class RopServerCnx extends ChannelInboundHandlerAdapter implements PulsarMessageStore {
 
-    public static final AtomicLong addCursorCount = new AtomicLong();
-    public static final AtomicLong delCursorCount = new AtomicLong();
+    public static final AtomicLong ADD_CURSOR_COUNT = new AtomicLong();
+    public static final AtomicLong DEL_CURSOR_COUNT = new AtomicLong();
 
     private static final int sendTimeoutInSec = 3;
     private static final int maxPendingMessages = 30000;
@@ -634,7 +634,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         Long lastNextBeginOffset = nextBeginOffsets.get(readerId);
         if (lastNextBeginOffset != null && lastNextBeginOffset != queueOffset) {
             log.info("[{}] Seek offset from [{}] to [{}].", triple, lastNextBeginOffset, queueOffset);
-            delCursorCount.incrementAndGet();
+            DEL_CURSOR_COUNT.incrementAndGet();
             closeCursor(triple, managedLedger);
         }
         ManagedCursor managedCursor = getOrCreateCursor(triple, managedLedger, startPosition);
@@ -702,7 +702,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         }
         return cursors.computeIfAbsent(triple, (Function<Triple<Long, String, String>, ManagedCursor>) t -> {
             try {
-                addCursorCount.incrementAndGet();
+                ADD_CURSOR_COUNT.incrementAndGet();
                 log.info("RoP create cursor for [{}], startPosition: [{}]", t, startPosition);
                 try {
                     managedLedger.deleteCursor(getFullCursorName(t));
@@ -724,7 +724,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
 
     private void closeCursor(Triple<Long, String, String> triple, ManagedLedger managedLedger) {
         try {
-            delCursorCount.incrementAndGet();
+            DEL_CURSOR_COUNT.incrementAndGet();
             log.info("RoP close cursor for [{}].", triple);
             cursors.remove(triple);
             managedLedger.deleteCursor(getFullCursorName(triple));
@@ -737,7 +737,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
 
     private void closeCursor(Triple<Long, String, String> triple) {
         try {
-            delCursorCount.incrementAndGet();
+            DEL_CURSOR_COUNT.incrementAndGet();
             log.info("RoP close cursor for [{}].", triple);
             cursors.remove(triple);
             TopicName topicName = TopicName.get(triple.getRight());
