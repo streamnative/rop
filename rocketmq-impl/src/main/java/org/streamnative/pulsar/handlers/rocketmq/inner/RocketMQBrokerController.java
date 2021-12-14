@@ -345,7 +345,7 @@ public class RocketMQBrokerController {
             @Override
             public void doBeforeRequest(String remoteAddr, RemotingCommand request) {
                 if (request.getExtFields() == null) {
-                    throw new AclException("No accessKey is configured");
+                    return;
                 }
 
                 // token authorization logic
@@ -363,10 +363,6 @@ public class RocketMQBrokerController {
                     try {
                         SendMessageRequestHeader requestHeader = SendMessageProcessor
                                 .parseRequestHeader(request);
-                        if (requestHeader == null) {
-                            log.warn("Parse send message request header.");
-                            return;
-                        }
 
                         ClientTopicName clientTopicName = new ClientTopicName(requestHeader.getTopic());
                         String topicName = clientTopicName.getPulsarTopicName();
