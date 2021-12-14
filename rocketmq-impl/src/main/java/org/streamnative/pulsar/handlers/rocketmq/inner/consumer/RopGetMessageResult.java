@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.List;
 import lombok.Data;
 import lombok.ToString;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.store.GetMessageStatus;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RopMessage;
 
@@ -26,6 +27,7 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.RopMessage;
  */
 @Data
 @ToString(exclude = "messageBufferList")
+@Slf4j
 public class RopGetMessageResult {
 
     private final List<RopMessage> messageBufferList = new ArrayList<>(100);
@@ -54,13 +56,17 @@ public class RopGetMessageResult {
         messageBufferList.add(ropMessage);
     }
 
-    public int size(){
+    public int size() {
         return messageBufferList.size();
     }
 
     public void release() {
         for (RopMessage ropMessage : this.messageBufferList) {
-            ropMessage.getPayload().release();
+            try {
+                ropMessage.getPayload().release();
+            } catch (Exception e) {
+                log.warn("RoP release get message failed.", e);
+            }
         }
     }
 

@@ -103,12 +103,14 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
 
     public ByteBuf encode(byte[] record, String msgId) {
         final ByteBuf recordsWrapper = Unpooled.wrappedBuffer(record);
-        final ByteBuf buf = Commands.serializeMetadataAndPayload(
-                Commands.ChecksumType.None,
-                getDefaultMessageMetadata(msgId),
-                recordsWrapper);
-        recordsWrapper.release();
-        return buf;
+        try {
+            return Commands.serializeMetadataAndPayload(
+                    Commands.ChecksumType.None,
+                    getDefaultMessageMetadata(msgId),
+                    recordsWrapper);
+        } finally {
+            recordsWrapper.release();
+        }
     }
 
 
@@ -160,7 +162,7 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
 
     public RopMessage decodePulsarMessage(TopicName partitionedTopicName, ByteBuf headersAndPayload,
             Predicate<ByteBuf> predicate) {
-        BrokerEntryMetadata brokerEntryMetadata = Commands.parseBrokerEntryMetadataIfExist(headersAndPayload);
+        BrokerEntryMetadata brokerEntryMetadata = Commands.peekBrokerEntryMetadataIfExist(headersAndPayload);
         long index = (brokerEntryMetadata != null) ? brokerEntryMetadata.getIndex() : -1L;
         Preconditions.checkArgument(index >= 0, "the version of broker must be > 2.8.0");
 

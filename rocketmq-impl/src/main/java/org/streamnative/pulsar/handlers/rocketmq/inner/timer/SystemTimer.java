@@ -21,8 +21,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Consumer;
 import javax.annotation.concurrent.ThreadSafe;
 import lombok.SneakyThrows;
@@ -41,9 +39,6 @@ public class SystemTimer implements Timer {
     private final AtomicInteger taskCounter;
     private final TimingWheel timingWheel;
     // Locks used to protect data structures while ticking
-    private final ReentrantReadWriteLock readWriteLock;
-    private final Lock readLock;
-    private final Lock writeLock;
     private final Consumer<TimerTaskEntry> reinsert;
 
     private SystemTimer(String executorName,
@@ -65,9 +60,6 @@ public class SystemTimer implements Timer {
                 taskCounter,
                 delayQueue
         );
-        this.readWriteLock = new ReentrantReadWriteLock();
-        this.readLock = readWriteLock.readLock();
-        this.writeLock = readWriteLock.writeLock();
         this.reinsert = timerTaskEntry -> addTimerTaskEntry(timerTaskEntry);
     }
 
@@ -82,14 +74,9 @@ public class SystemTimer implements Timer {
 
     @Override
     public void add(TimerTask timerTask) {
-        readLock.lock();
-        try {
-            addTimerTaskEntry(new TimerTaskEntry(
-                    timerTask, timerTask.delayMs + Time.SYSTEM.hiResClockMs()
-            ));
-        } finally {
-            readLock.unlock();
-        }
+        addTimerTaskEntry(new TimerTaskEntry(
+                timerTask, timerTask.delayMs + Time.SYSTEM.hiResClockMs()
+        ));
     }
 
     private void addTimerTaskEntry(TimerTaskEntry timerTaskEntry) {
@@ -106,15 +93,10 @@ public class SystemTimer implements Timer {
     public boolean advanceClock(long timeoutMs) {
         TimerTaskList bucket = delayQueue.poll(timeoutMs, TimeUnit.MILLISECONDS);
         if (null != bucket) {
-            writeLock.lock();
-            try {
-                while (null != bucket) {
-                    timingWheel.advanceClock(bucket.getExpiration());
-                    bucket.flush(reinsert);
-                    bucket = delayQueue.poll();
-                }
-            } finally {
-                writeLock.unlock();
+            while (null != bucket) {
+                timingWheel.advanceClock(bucket.getExpiration());
+                bucket.flush(reinsert);
+                bucket = delayQueue.poll();
             }
             return true;
         } else {

@@ -23,6 +23,9 @@ import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.SLASH_
 import com.google.common.base.Function;
 import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.RemovalListener;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
@@ -33,17 +36,20 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.atomic.AtomicLong;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.bookkeeper.mledger.AsyncCallbacks.MarkDeleteCallback;
 import org.apache.bookkeeper.mledger.AsyncCallbacks.ReadEntryCallback;
 import org.apache.bookkeeper.mledger.Entry;
 import org.apache.bookkeeper.mledger.ManagedCursor;
 import org.apache.bookkeeper.mledger.ManagedLedger;
 import org.apache.bookkeeper.mledger.ManagedLedgerException;
+import org.apache.bookkeeper.mledger.impl.NonDurableCursorImpl;
 import org.apache.bookkeeper.mledger.impl.PositionImpl;
 import org.apache.commons.lang.exception.ExceptionUtils;
 import org.apache.commons.lang3.math.NumberUtils;
+import org.apache.commons.lang3.tuple.Triple;
 import org.apache.pulsar.broker.service.BrokerService;
 import org.apache.pulsar.broker.service.persistent.PersistentTopic;
 import org.apache.pulsar.client.api.MessageId;
@@ -93,25 +99,38 @@ import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 @Getter
 public class RopServerCnx extends ChannelInboundHandlerAdapter implements PulsarMessageStore {
 
+    public static final AtomicLong ADD_CURSOR_COUNT = new AtomicLong();
+    public static final AtomicLong DEL_CURSOR_COUNT = new AtomicLong();
+
     private static final int sendTimeoutInSec = 3;
     private static final int maxPendingMessages = 30000;
     private static final int fetchTimeoutInMs = 3000; // 3 sec
     private static final String ropHandlerName = "RopServerCnxHandler";
+    private static final Cache<String, Producer<byte[]>> producers = CacheBuilder.newBuilder()
+            .expireAfterAccess(5, TimeUnit.MINUTES)
+            .initialCapacity(1024)
+            .removalListener((RemovalListener<String, Producer<byte[]>>) listener -> {
+                log.info("remove internal producer from caches [name={}].", listener.getKey());
+                Producer<byte[]> producer = listener.getValue();
+                if (producer != null) {
+                    producer.closeAsync();
+                }
+            })
+            .build();
     private final BrokerService service;
-    private final ConcurrentLongHashMap<Producer<byte[]>> producers;
     private final ConcurrentLongHashMap<Long> nextBeginOffsets;
-    private final ConcurrentHashMap<String, ManagedCursor> cursors;
+    private final ConcurrentHashMap<Triple<Long, String, String>, ManagedCursor> cursors;
     private final HashMap<Long, Reader<byte[]>> lookMsgReaders;
     private final RopEntryFormatter entryFormatter = new RopEntryFormatter();
-    private final ReentrantLock readLock = new ReentrantLock();
-    private final ReentrantLock lookMsgLock = new ReentrantLock();
+
     private final SystemClock systemClock = new SystemClock();
     private final RocketMQBrokerController brokerController;
     private final ChannelHandlerContext ctx;
     private final SocketAddress remoteAddress;
     private final int localListenPort;
     private State state;
-    private final String cursorName = "rop-cursor";
+    private final String cursorBaseName = "rop-cursor_%d_%s";
+    private volatile boolean isInactive = false;
 
     public RopServerCnx(RocketMQBrokerController brokerController, ChannelHandlerContext ctx) {
         this.brokerController = brokerController;
@@ -121,7 +140,6 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         this.ctx = ctx;
         this.remoteAddress = ctx.channel().remoteAddress();
         this.state = State.Connected;
-        this.producers = new ConcurrentLongHashMap<>(2, 1);
         this.nextBeginOffsets = new ConcurrentLongHashMap<>(2, 1);
         this.lookMsgReaders = new HashMap<>();
         this.cursors = new ConcurrentHashMap<>(4);
@@ -140,12 +158,12 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
     @Override
     public void channelInactive(ChannelHandlerContext ctx) throws Exception {
         super.channelInactive(ctx);
+        this.isInactive = true;
         log.info("Closed connection from {}", remoteAddress);
         // Connection is gone, close the resources immediately
-        producers.values().forEach(Producer::closeAsync);
-        cursors.forEach((s, managedCursor) -> closeCursor(s));
-        producers.clear();
+        cursors.forEach((triple, managedCursor) -> closeCursor(triple));
         nextBeginOffsets.clear();
+        lookMsgReaders.clear();
     }
 
     @Override
@@ -164,6 +182,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         } else if (log.isDebugEnabled()) {
             log.debug("[{}] Got exception: {}", this.remoteAddress, cause);
         }
+        log.warn("RoP server cnx occur an exception, message: {}.", cause.getMessage());
+        cursors.forEach((triple, managedCursor) -> closeCursor(triple));
         this.ctx.close();
     }
 
@@ -209,10 +229,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 if (messageInner.getDelayTimeLevel() > 0) {
                     log.trace("Send delay level message topic: {}, messageInner: {}", messageInner.getTopic(),
                             messageInner);
-                    long producerId = buildPulsarProducerId(producerGroup, pTopic,
-                            ctx.channel().remoteAddress().toString());
-                    CompletableFuture<MessageId> messageIdFuture = getProducerFromCache(pTopic, producerGroup,
-                            producerId).newMessage()
+                    CompletableFuture<MessageId> messageIdFuture = getProducerFromCache(pTopic, producerGroup)
+                            .newMessage()
                             .value((body.get(0)))
                             .property(ROP_MESSAGE_ID, msgId)
                             .sendAsync();
@@ -249,9 +267,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 /*
                  * Use pulsar producer send delay message.
                  */
-                long producerId = buildPulsarProducerId(producerGroup, pTopic,
-                        ctx.channel().remoteAddress().toString());
-                CompletableFuture<MessageId> messageIdFuture = getProducerFromCache(pTopic, producerGroup, producerId)
+                CompletableFuture<MessageId> messageIdFuture = getProducerFromCache(pTopic, producerGroup)
                         .newMessage()
                         .value((body.get(0)))
                         .deliverAt(deliverAtTime)
@@ -324,8 +340,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             RemotingCommand response, CompletableFuture<RemotingCommand> cmdFuture) {
         try {
             String pTopic = handleReconsumeDelayedMessage(messageInner);
-            long producerId = buildPulsarProducerId(pTopic);
-            Producer<byte[]> producer = getProducerFromCache(pTopic, producerGroup, producerId);
+            Producer<byte[]> producer = getProducerFromCache(pTopic, producerGroup);
             List<byte[]> body = this.entryFormatter.encode(messageInner, 1);
             CompletableFuture<MessageId> messageIdFuture = producer.newMessage()
                     .value((body.get(0)))
@@ -383,29 +398,6 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                         totalBytesSize += ropMessage.getMsgBody().length;
                     }
                 }
-            }
-
-            /*
-             * Use pulsar producer send message.
-             * We uniformly use a single message to send messages, so as to avoid the problem of batch message parsing.
-             */
-            if (batchMessageFutures.isEmpty()) {
-                long producerId = buildPulsarProducerId(producerGroup, pTopic, this.remoteAddress.toString());
-                Producer<byte[]> putMsgProducer = this.producers.get(producerId);
-                if (putMsgProducer == null) {
-                    synchronized (this.producers) {
-                        if (this.producers.get(producerId) == null) {
-                            log.info("[{}] putMessages creating producer[id={}].", pTopic, producerId);
-                            putMsgProducer = createNewProducer(pTopic, producerGroup, producerId);
-                            Producer<byte[]> oldProducer = this.producers.put(producerId, putMsgProducer);
-                            if (oldProducer != null) {
-                                oldProducer.closeAsync();
-                            }
-                        }
-                    }
-                }
-
-                log.info("The producer [{}] putMessages begin to send message.", producerId);
             }
 
             /*
@@ -467,7 +459,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         }
     }
 
-    private Producer<byte[]> createNewProducer(String pTopic, String producerGroup, long producerId)
+    private Producer<byte[]> createNewProducer(String pTopic, String producerGroup)
             throws PulsarClientException {
         ProducerBuilder<byte[]> producerBuilder = brokerController.getRopBrokerProxy().getPulsarClient()
                 .newProducer()
@@ -576,10 +568,17 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                     new ReadEntryCallback() {
                         @Override
                         public void readEntryComplete(Entry entry, Object ctx) {
-                            MessageExt messageExt = RopServerCnx.this.entryFormatter
-                                    .decodeMessageByPulsarEntry(clientTopicName.toPulsarTopicName()
-                                            .getPartition(commitLogOffset.getPartitionId()), entry);
-                            messageFuture.complete(messageExt);
+                            try {
+                                MessageExt messageExt = RopServerCnx.this.entryFormatter
+                                        .decodeMessageByPulsarEntry(clientTopicName.toPulsarTopicName()
+                                                .getPartition(commitLogOffset.getPartitionId()), entry);
+                                messageFuture.complete(messageExt);
+                            } catch (Exception e) {
+                                log.warn("RoP lookMessageByCommitLogOffset [topic = {}] and [offset={}].", topic,
+                                        commitLogOffset, e);
+                            } finally {
+                                entry.release();
+                            }
                         }
 
                         @Override
@@ -664,33 +663,56 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         String pTopic = rmqTopic.getPartitionName(pulsarPartitionId);
         long readerId = buildPulsarReaderId(consumerGroupName, pTopic, this.ctx.channel().id().asLongText());
 
+        Triple<Long, String, String> triple = Triple
+                .of(readerId, new RocketMQTopic(consumerGroupName).getPulsarTopicName().getLocalName(), pTopic);
         Long lastNextBeginOffset = nextBeginOffsets.get(readerId);
-        if (lastNextBeginOffset != null && !lastNextBeginOffset.equals(queueOffset)) {
-            log.info("[{}] [{}] Seek offset to [{}]", consumerGroupName, pTopic, queueOffset);
-            cursors.remove(pTopic);
+        if (lastNextBeginOffset != null && lastNextBeginOffset != queueOffset) {
+            log.info("[{}] Seek offset from [{}] to [{}].", triple, lastNextBeginOffset, queueOffset);
+            DEL_CURSOR_COUNT.incrementAndGet();
+            closeCursor(triple, managedLedger);
         }
-        ManagedCursor managedCursor = getOrCreateCursor(pTopic, managedLedger, startPosition);
+        ManagedCursor managedCursor = getOrCreateCursor(triple, managedLedger, startPosition);
 
         if (managedCursor != null) {
             try {
                 List<Entry> entries = managedCursor.readEntries(maxMsgNums);
+
+                // commit the offset, so backlog not affect by this cursor.
+                if (!entries.isEmpty()) {
+                    final Entry lastEntry = entries.get(entries.size() - 1);
+                    final PositionImpl currentPosition = PositionImpl.get(
+                            lastEntry.getLedgerId(), lastEntry.getEntryId());
+                    commitOffset((NonDurableCursorImpl) managedCursor, currentPosition);
+                }
+
                 for (Entry entry : entries) {
+                    if (entry == null) {
+                        continue;
+                    }
                     try {
-                        long currentOffset = MessageIdUtils.peekOffsetFromEntry(entry);
-                        RopMessage byteBuffer = this.entryFormatter
-                                .decodePulsarMessage(rmqTopic.getPulsarTopicName().getPartition(pulsarPartitionId),
-                                        entry.getDataBuffer(), messageFilter);
-                        if (byteBuffer != null) {
-                            getResult.addMessage(byteBuffer);
+                        if (entry.getDataBuffer().isReadable()) {
+                            long currentOffset = MessageIdUtils.peekOffsetFromEntry(entry);
+                            try {
+                                RopMessage byteBuffer = this.entryFormatter
+                                        .decodePulsarMessage(
+                                                rmqTopic.getPulsarTopicName().getPartition(pulsarPartitionId),
+                                                entry.getDataBuffer(), messageFilter);
+                                if (byteBuffer != null) {
+                                    getResult.addMessage(byteBuffer);
+                                }
+                            } catch (Exception e) {
+                                log.warn("[{}] [{}] RoP pulsar entry parse failed, msgId: [{}:{}]", pTopic,
+                                        consumerGroupName, entry.getLedgerId(), entry.getEntryId(), e);
+                            }
+                            nextBeginOffset = currentOffset + 1;
                         }
-                        nextBeginOffset = currentOffset + 1;
                     } finally {
                         entry.release();
                     }
                 }
             } catch (Exception e) {
                 log.warn("[{}] [{}] Fetch message error.", pTopic, consumerGroupName, e);
-                closeCursor(pTopic, managedLedger);
+                closeCursor(triple, managedLedger);
             }
         }
 
@@ -703,46 +725,59 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         return getResult;
     }
 
-    private ManagedCursor getOrCreateCursor(String pTopic, ManagedLedger managedLedger,
+    private ManagedCursor getOrCreateCursor(Triple<Long, String, String> triple, ManagedLedger managedLedger,
             PositionImpl startPosition) {
-        return cursors.computeIfAbsent(pTopic, (Function<String, ManagedCursor>) s -> {
+        if (this.isInactive) {
+            return null;
+        }
+        return cursors.computeIfAbsent(triple, (Function<Triple<Long, String, String>, ManagedCursor>) t -> {
             try {
+                ADD_CURSOR_COUNT.incrementAndGet();
+                log.info("RoP create cursor for [{}], startPosition: [{}]", t, startPosition);
                 try {
-                    managedLedger.deleteCursor(cursorName);
-                } catch (ManagedLedgerException.CursorNotFoundException e) {
-                    log.warn("Cursor NotFound Exception: ", e);
+                    managedLedger.deleteCursor(getFullCursorName(t));
+                } catch (ManagedLedgerException.CursorNotFoundException ignore) {
+
                 }
 
                 PositionImpl cursorStartPosition = startPosition;
                 if (startPosition.getEntryId() > -1) {
                     cursorStartPosition = new PositionImpl(startPosition.getLedgerId(), startPosition.getEntryId() - 1);
                 }
-                return managedLedger.newNonDurableCursor(cursorStartPosition, cursorName);
+                return managedLedger.newNonDurableCursor(cursorStartPosition, getFullCursorName(t));
             } catch (Exception e) {
-                log.warn("Topic [{}] create nonDurableCursor failed", pTopic, e);
+                log.warn("RoP create cursor for [{}] failed.", t, e);
             }
             return null;
         });
     }
 
-    private void closeCursor(String pTopic, ManagedLedger managedLedger) {
+    private void closeCursor(Triple<Long, String, String> triple, ManagedLedger managedLedger) {
         try {
-            cursors.remove(pTopic);
-            managedLedger.deleteCursor(cursorName);
+            DEL_CURSOR_COUNT.incrementAndGet();
+            log.info("RoP close cursor for [{}].", triple);
+            cursors.remove(triple);
+            managedLedger.deleteCursor(getFullCursorName(triple));
+        } catch (ManagedLedgerException.CursorNotFoundException ignore) {
+
         } catch (Exception e) {
-            log.error("delete cursor error of pTopic[{}]", pTopic, e);
+            log.error("RoP close cursor for [{}] failed.", triple, e);
         }
     }
 
-    private void closeCursor(String pTopic) {
+    private void closeCursor(Triple<Long, String, String> triple) {
         try {
-            cursors.remove(pTopic);
-            TopicName topicName = TopicName.get(pTopic);
+            DEL_CURSOR_COUNT.incrementAndGet();
+            log.info("RoP close cursor for [{}].", triple);
+            cursors.remove(triple);
+            TopicName topicName = TopicName.get(triple.getRight());
             PersistentTopic persistentTopic = brokerController.getConsumerOffsetManager()
                     .getPulsarPersistentTopic(new ClientTopicName(topicName), topicName.getPartitionIndex());
-            persistentTopic.getManagedLedger().deleteCursor(cursorName);
+            persistentTopic.getManagedLedger().deleteCursor(getFullCursorName(triple));
+        } catch (ManagedLedgerException.CursorNotFoundException ignore) {
+
         } catch (Exception e) {
-            log.error("delete cursor error of pTopic[{}]", pTopic, e);
+            log.error("RoP close cursor for [{}] failed.", triple, e);
         }
     }
 
@@ -750,8 +785,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         return (Joiner.on(SLASH_CHAR).join(tags)).hashCode();
     }
 
-    private long buildPulsarProducerId(String... tags) {
-        return (Joiner.on(SLASH_CHAR).join(tags)).hashCode();
+    private String buildPulsarProducerName(String... tags) {
+        return Joiner.on(SLASH_CHAR).join(tags);
     }
 
     enum State {
@@ -775,18 +810,16 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         return deliverAtTime > System.currentTimeMillis();
     }
 
-    private Producer<byte[]> getProducerFromCache(String pulsarTopic, String producerGroup, long producerKey) {
-        Producer<byte[]> producer = producers.computeIfAbsent(producerKey, key -> {
-            log.info("getProducerFromCache [{}] producer[id={}] and channel=[{}].",
-                    pulsarTopic, producerKey, ctx.channel());
-            try {
-                return createNewProducer(pulsarTopic, producerGroup, producerKey);
-            } catch (Exception e) {
-                log.warn("getProducerFromCache[topic={},producerGroup={}] error.", pulsarTopic, producerGroup, e);
-            }
-            return null;
-        });
-        return producer;
+    private Producer<byte[]> getProducerFromCache(String pulsarTopic, String producerGroup) {
+        try {
+            String pulsarProducerName = buildPulsarProducerName(pulsarTopic, producerGroup, "SendProcessor");
+            Producer<byte[]> producer = producers
+                    .get(pulsarProducerName, () -> createNewProducer(pulsarTopic, pulsarProducerName));
+            return producer;
+        } catch (Exception e) {
+            log.warn("getProducerFromCache[topic={},producerGroup={}] error.", pulsarTopic, producerGroup, e);
+        }
+        return null;
     }
 
     private String handleReconsumeDelayedMessage(MessageExtBrokerInner messageInner) {
@@ -806,5 +839,27 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             messageInner.setTopic(sendTopicName);
         }
         return sendTopicName;
+    }
+
+    private String getFullCursorName(Triple<Long, String, String> triple) {
+        return String.format(cursorBaseName, triple.getLeft(), triple.getMiddle());
+    }
+
+    // commit the offset, so backlog not affect by this cursor.
+    private static void commitOffset(NonDurableCursorImpl cursor, PositionImpl currentPosition) {
+        cursor.asyncMarkDelete(currentPosition, new MarkDeleteCallback() {
+            @Override
+            public void markDeleteComplete(Object ctx) {
+                if (log.isDebugEnabled()) {
+                    log.debug("Mark delete success for position: {}", currentPosition);
+                }
+            }
+
+            // this is OK, since this is kind of cumulative ack, following commit will come.
+            @Override
+            public void markDeleteFailed(ManagedLedgerException e, Object ctx) {
+                log.warn("Mark delete success for position: {} with error:", currentPosition, e);
+            }
+        }, null);
     }
 }
