@@ -26,6 +26,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.BooleanUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Triple;
 import org.apache.logging.log4j.util.Strings;
@@ -333,11 +334,12 @@ public class RocketMQBrokerController {
                         }
                         authCaches.put(authTriple, authOK);
                     } catch (Exception e) {
-                        log.warn("checkTokens error for [topic={}, token={}].", topic, token);
+                        log.warn("RoP checkTokens error for [topic={}, token={}], error msg: {}", topic, token,
+                                e.getMessage());
                         authCaches.put(authTriple, false);
                     }
                 }
-                return authCaches.getIfPresent(authTriple) != null && authCaches.getIfPresent(authTriple);
+                return BooleanUtils.toBoolean(authCaches.getIfPresent(authTriple));
             }
 
             @Override
