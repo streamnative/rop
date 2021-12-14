@@ -96,24 +96,8 @@ import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 @Getter
 public class RopServerCnx extends ChannelInboundHandlerAdapter implements PulsarMessageStore {
 
-    private static final AtomicLong addCursorCount = new AtomicLong();
-    private static final AtomicLong delCursorCount = new AtomicLong();
-
-    static {
-        Thread t = new Thread(() -> {
-            while (!Thread.interrupted()) {
-                try {
-                    Thread.sleep(10000);
-                } catch (Exception e) {
-                    return;
-                }
-                log.info("Show current cursor count: {}, addCursorCount: {}, delCursorCount: {}.",
-                        addCursorCount.get() - delCursorCount.get(), addCursorCount.get(), delCursorCount.get());
-            }
-        });
-        t.setDaemon(true);
-        t.start();
-    }
+    public static final AtomicLong addCursorCount = new AtomicLong();
+    public static final AtomicLong delCursorCount = new AtomicLong();
 
     private static final int sendTimeoutInSec = 3;
     private static final int maxPendingMessages = 30000;
