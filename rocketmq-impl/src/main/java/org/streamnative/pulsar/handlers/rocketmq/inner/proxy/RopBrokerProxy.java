@@ -676,7 +676,7 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                     pullResponse.markResponseType();
                     ctx.writeAndFlush(pullResponse);
                 } else {
-                    log.error("Rop processNonOwnedBrokerPullRequest pullResponse is null.");
+                    log.error("Rop processNonOwnedBrokerPullRequest[request={}] pullResponse is null.", newCmd);
                 }
             });
         } catch (Exception e) {
