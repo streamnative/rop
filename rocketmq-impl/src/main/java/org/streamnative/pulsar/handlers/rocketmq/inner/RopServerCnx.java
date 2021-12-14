@@ -32,6 +32,7 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bookkeeper.mledger.AsyncCallbacks.MarkDeleteCallback;
@@ -95,6 +96,9 @@ import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 @Getter
 public class RopServerCnx extends ChannelInboundHandlerAdapter implements PulsarMessageStore {
 
+    public static final AtomicLong ADD_CURSOR_COUNT = new AtomicLong();
+    public static final AtomicLong DEL_CURSOR_COUNT = new AtomicLong();
+
     private static final int sendTimeoutInSec = 3;
     private static final int maxPendingMessages = 30000;
     private static final int fetchTimeoutInMs = 3000; // 3 sec
@@ -123,6 +127,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
     private final int localListenPort;
     private State state;
     private final String cursorBaseName = "rop-cursor_%d_%s";
+    private volatile boolean isInactive = false;
 
     public RopServerCnx(RocketMQBrokerController brokerController, ChannelHandlerContext ctx) {
         this.brokerController = brokerController;
@@ -150,6 +155,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
     @Override
     public void channelInactive(ChannelHandlerContext ctx) throws Exception {
         super.channelInactive(ctx);
+        this.isInactive = true;
         log.info("Closed connection from {}", remoteAddress);
         // Connection is gone, close the resources immediately
         cursors.forEach((triple, managedCursor) -> closeCursor(triple));
@@ -173,6 +179,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         } else if (log.isDebugEnabled()) {
             log.debug("[{}] Got exception: {}", this.remoteAddress, cause);
         }
+        log.warn("RoP server cnx occur an exception, message: {}.", cause.getMessage());
+        cursors.forEach((triple, managedCursor) -> closeCursor(triple));
         this.ctx.close();
     }
 
@@ -530,10 +538,17 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                     new ReadEntryCallback() {
                         @Override
                         public void readEntryComplete(Entry entry, Object ctx) {
-                            MessageExt messageExt = RopServerCnx.this.entryFormatter
-                                    .decodeMessageByPulsarEntry(clientTopicName.toPulsarTopicName()
-                                            .getPartition(commitLogOffset.getPartitionId()), entry);
-                            messageFuture.complete(messageExt);
+                            try {
+                                MessageExt messageExt = RopServerCnx.this.entryFormatter
+                                        .decodeMessageByPulsarEntry(clientTopicName.toPulsarTopicName()
+                                                .getPartition(commitLogOffset.getPartitionId()), entry);
+                                messageFuture.complete(messageExt);
+                            } catch (Exception e) {
+                                log.warn("RoP lookMessageByCommitLogOffset [topic = {}] and [offset={}].", topic,
+                                        commitLogOffset, e);
+                            } finally {
+                                entry.release();
+                            }
                         }
 
                         @Override
@@ -617,9 +632,10 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         Triple<Long, String, String> triple = Triple
                 .of(readerId, new RocketMQTopic(consumerGroupName).getPulsarTopicName().getLocalName(), pTopic);
         Long lastNextBeginOffset = nextBeginOffsets.get(readerId);
-        if (lastNextBeginOffset != null && !lastNextBeginOffset.equals(queueOffset)) {
-            log.info("[{}] [{}] Seek offset to [{}]", consumerGroupName, pTopic, queueOffset);
-            cursors.remove(triple);
+        if (lastNextBeginOffset != null && lastNextBeginOffset != queueOffset) {
+            log.info("[{}] Seek offset from [{}] to [{}].", triple, lastNextBeginOffset, queueOffset);
+            DEL_CURSOR_COUNT.incrementAndGet();
+            closeCursor(triple, managedLedger);
         }
         ManagedCursor managedCursor = getOrCreateCursor(triple, managedLedger, startPosition);
 
@@ -681,8 +697,13 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
 
     private ManagedCursor getOrCreateCursor(Triple<Long, String, String> triple, ManagedLedger managedLedger,
             PositionImpl startPosition) {
+        if (this.isInactive) {
+            return null;
+        }
         return cursors.computeIfAbsent(triple, (Function<Triple<Long, String, String>, ManagedCursor>) t -> {
             try {
+                ADD_CURSOR_COUNT.incrementAndGet();
+                log.info("RoP create cursor for [{}], startPosition: [{}]", t, startPosition);
                 try {
                     managedLedger.deleteCursor(getFullCursorName(t));
                 } catch (ManagedLedgerException.CursorNotFoundException ignore) {
@@ -695,7 +716,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 }
                 return managedLedger.newNonDurableCursor(cursorStartPosition, getFullCursorName(t));
             } catch (Exception e) {
-                log.warn("Topic [{}] create nonDurableCursor failed.", t, e);
+                log.warn("RoP create cursor for [{}] failed.", t, e);
             }
             return null;
         });
@@ -703,22 +724,30 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
 
     private void closeCursor(Triple<Long, String, String> triple, ManagedLedger managedLedger) {
         try {
+            DEL_CURSOR_COUNT.incrementAndGet();
+            log.info("RoP close cursor for [{}].", triple);
             cursors.remove(triple);
             managedLedger.deleteCursor(getFullCursorName(triple));
+        } catch (ManagedLedgerException.CursorNotFoundException ignore) {
+
         } catch (Exception e) {
-            log.error("delete cursor error of topic: [{}]", triple, e);
+            log.error("RoP close cursor for [{}] failed.", triple, e);
         }
     }
 
     private void closeCursor(Triple<Long, String, String> triple) {
         try {
+            DEL_CURSOR_COUNT.incrementAndGet();
+            log.info("RoP close cursor for [{}].", triple);
             cursors.remove(triple);
             TopicName topicName = TopicName.get(triple.getRight());
             PersistentTopic persistentTopic = brokerController.getConsumerOffsetManager()
                     .getPulsarPersistentTopic(new ClientTopicName(topicName), topicName.getPartitionIndex());
             persistentTopic.getManagedLedger().deleteCursor(getFullCursorName(triple));
+        } catch (ManagedLedgerException.CursorNotFoundException ignore) {
+
         } catch (Exception e) {
-            log.error("delete cursor error of pTopic: [{}]", triple.getRight(), e);
+            log.error("RoP close cursor for [{}] failed.", triple, e);
         }
     }
 
@@ -753,9 +782,9 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
 
     private Producer<byte[]> getProducerFromCache(String pulsarTopic, String producerGroup) {
         try {
-            String pulsarProducerName = buildPulsarProducerName(pulsarTopic, producerGroup);
+            String pulsarProducerName = buildPulsarProducerName(pulsarTopic, producerGroup, "SendProcessor");
             Producer<byte[]> producer = producers
-                    .get(pulsarProducerName, () -> createNewProducer(pulsarTopic, producerGroup));
+                    .get(pulsarProducerName, () -> createNewProducer(pulsarTopic, pulsarProducerName));
             return producer;
         } catch (Exception e) {
             log.warn("getProducerFromCache[topic={},producerGroup={}] error.", pulsarTopic, producerGroup, e);

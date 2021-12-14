@@ -28,13 +28,11 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.pulsar.broker.PulsarServerException;
 import org.apache.pulsar.client.admin.PulsarAdmin;
 import org.apache.pulsar.client.api.Consumer;
-import org.apache.pulsar.client.api.DeadLetterPolicy;
 import org.apache.pulsar.client.api.Message;
 import org.apache.pulsar.client.api.MessageId;
 import org.apache.pulsar.client.api.Producer;
@@ -187,7 +185,6 @@ public class ScheduleMessageService {
         private final RopEntryFormatter formatter = new RopEntryFormatter();
         private final SystemTimer timeoutTimer;
         private Consumer<byte[]> delayedConsumer = null;
-        final AtomicInteger msgNum = new AtomicInteger(0);
 
         public DeliverDelayedMessageTimerTask(int delayLevel) {
             this.delayLevel = delayLevel;
@@ -209,12 +206,12 @@ public class ScheduleMessageService {
         @Override
         public void run() {
             try {
+
                 createConsumerIfNotExists();
-                msgNum.set(0);
-                while (msgNum.get() < config.getMaxScheduleMsgBatchSize()
-                        && timeoutTimer.size() < config.getMaxScheduleMsgBatchSize()
+                while (timeoutTimer.size() < config.getMaxScheduleMsgBatchSize()
                         && ScheduleMessageService.this.isStarted()) {
-                    Message<byte[]> message = this.delayedConsumer.receive(MAX_FETCH_MESSAGE_NUM,TimeUnit.MILLISECONDS);
+                    Message<byte[]> message = this.delayedConsumer
+                            .receive(MAX_FETCH_MESSAGE_NUM, TimeUnit.MILLISECONDS);
                     if (Objects.isNull(message)) {
                         break;
                     }
@@ -271,7 +268,6 @@ public class ScheduleMessageService {
                                     }
                                 }
                             });
-                    msgNum.incrementAndGet();
                 }
             } catch (
                     Exception e) {
@@ -300,7 +296,7 @@ public class ScheduleMessageService {
 
                         return producerBuilder.clone()
                                 .topic(pulsarTopic)
-                                .producerName(pulsarTopic + "_delayedMessageSender_" + System.currentTimeMillis())
+                                .producerName(pulsarTopic + "_ScheduleMessageSender_" + System.currentTimeMillis())
                                 .enableBatching(false)
                                 .sendTimeout(SEND_MESSAGE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
                                 .create();
@@ -324,7 +320,8 @@ public class ScheduleMessageService {
                     producer.closeAsync();
                 }
                 sendBackProducers.remove(pulsarTopic);
-                throw new RopServerException("[ScheduleMessageService] getProducerFromCache error, maybe producer is wrong.");
+                throw new RopServerException(
+                        "[ScheduleMessageService] getProducerFromCache error, maybe producer is wrong.");
             }
         }
 
@@ -338,16 +335,12 @@ public class ScheduleMessageService {
                         delayLevel, pulsarClient.getConfiguration());
                 this.delayedConsumer = rocketBroker.getRopBrokerProxy().getPulsarClient()
                         .newConsumer()
-                        .ackTimeout(2, TimeUnit.HOURS)
                         .receiverQueueSize(config.getMaxScheduleMsgBatchSize())
                         .subscriptionMode(SubscriptionMode.Durable)
                         .subscriptionType(SubscriptionType.Shared)
                         .subscriptionName(getDelayedTopicConsumerName(delayLevel))
                         .topic(getDelayedTopicName(delayLevel))
                         .subscriptionInitialPosition(SubscriptionInitialPosition.Earliest)
-                        .deadLetterPolicy(DeadLetterPolicy.builder()
-                                .maxRedeliverCount(delayLevel).build())
-                        .enableRetry(true)
                         .subscribe();
                 log.info("The client config value: [{}]", pulsarClient.getConfiguration());
             } catch (Exception e) {
