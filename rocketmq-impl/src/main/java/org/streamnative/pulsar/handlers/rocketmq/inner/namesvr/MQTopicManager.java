@@ -131,7 +131,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                 RopTopicContent ropTopicContent = zkService.getTopicContent(topicName);
                 Preconditions
                         .checkNotNull(ropTopicContent, "RopTopicContent[" + topicName.toString() + "] can't be null.");
-                brokerController.getRopBrokerProxy().getPulsarClient().getLookup().getBroker(topicName);
+                //brokerController.getRopBrokerProxy().getPulsarClient().getLookup().getBroker(topicName);
                 return ropTopicContent.getRouteMap();
             }
         } catch (Exception e) {
