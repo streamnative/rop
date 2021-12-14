@@ -600,6 +600,22 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         this.consumeMessageHookList = consumeMessageHookList;
     }
 
+    private void traceDlq(String rmqTopic, String msgId, ChannelHandlerContext ctx, RemotingCommand request) {
+        if (this.brokerController.isRopTraceEnable() && rmqTopic.startsWith(MixAll.DLQ_GROUP_TOPIC_PREFIX)) {
+            TraceContext traceContext = new TraceContext();
+            String dlqTopic = new ClientTopicName(rmqTopic).getPulsarTopicName();
+            traceContext.setTopic(dlqTopic);
+            traceContext.setGroup(dlqTopic.replace(MixAll.DLQ_GROUP_TOPIC_PREFIX, ""));
+            traceContext.setMsgId(msgId);
+            if (request.getExtFields().containsKey(ROP_INNER_CLIENT_ADDRESS)) {
+                traceContext.setInstanceName(request.getExtFields().get(ROP_INNER_CLIENT_ADDRESS));
+            } else {
+                traceContext.setInstanceName(RemotingHelper.parseChannelRemoteAddr(ctx.channel()));
+            }
+            TraceManager.get().traceQlq(traceContext);
+        }
+    }
+
     /**
      * Send message callback.
      */
@@ -734,25 +750,6 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
                 response.setRemark("execute callback failed");
             }
             doResponse(ctx, request, response);
-        }
-    }
-
-    /**
-     * Trace point:/rop/dlq
-     */
-    private void traceDlq(String rmqTopic, String msgId, ChannelHandlerContext ctx, RemotingCommand request) {
-        if (this.brokerController.isRopTraceEnable() && rmqTopic.startsWith(MixAll.DLQ_GROUP_TOPIC_PREFIX)) {
-            TraceContext traceContext = new TraceContext();
-            String dlqTopic = new ClientTopicName(rmqTopic).getPulsarTopicName();
-            traceContext.setTopic(dlqTopic);
-            traceContext.setGroup(dlqTopic.replace(MixAll.DLQ_GROUP_TOPIC_PREFIX, ""));
-            traceContext.setMsgId(msgId);
-            if (request.getExtFields().containsKey(ROP_INNER_CLIENT_ADDRESS)) {
-                traceContext.setInstanceName(request.getExtFields().get(ROP_INNER_CLIENT_ADDRESS));
-            } else {
-                traceContext.setInstanceName(RemotingHelper.parseChannelRemoteAddr(ctx.channel()));
-            }
-            TraceManager.get().traceQlq(traceContext);
         }
     }
 }

@@ -196,7 +196,8 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
         return new RopMessage(msgId, partitionedTopicName.getPartitionIndex(), index, slice);
     }
 
-    private List<RopMessage> convertRocketmq2Pulsar(final MessageExtBatch messageExtBatch, boolean traceEnable) throws RopEncodeException {
+    private List<RopMessage> convertRocketmq2Pulsar(final MessageExtBatch messageExtBatch, boolean traceEnable)
+            throws RopEncodeException {
         ByteBuffer msgStoreItemMemory = msgStoreItemMemoryThreadLocal.get();
         List<RopMessage> result = new ArrayList<>();
         int totalMsgLen = 0;
