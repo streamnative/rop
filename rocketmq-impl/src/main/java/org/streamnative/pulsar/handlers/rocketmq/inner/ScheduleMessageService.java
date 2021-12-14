@@ -28,13 +28,11 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.IntStream;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.pulsar.broker.PulsarServerException;
 import org.apache.pulsar.client.admin.PulsarAdmin;
 import org.apache.pulsar.client.api.Consumer;
-import org.apache.pulsar.client.api.DeadLetterPolicy;
 import org.apache.pulsar.client.api.Message;
 import org.apache.pulsar.client.api.MessageId;
 import org.apache.pulsar.client.api.Producer;
@@ -187,8 +185,6 @@ public class ScheduleMessageService {
         private final RopEntryFormatter formatter = new RopEntryFormatter();
         private final SystemTimer timeoutTimer;
         private Consumer<byte[]> delayedConsumer = null;
-        final AtomicLong msgNum = new AtomicLong(0L);
-        final AtomicLong msgAckedNum = new AtomicLong(0L);
 
         public DeliverDelayedMessageTimerTask(int delayLevel) {
             this.delayLevel = delayLevel;
@@ -254,10 +250,6 @@ public class ScheduleMessageService {
                                                          * on current broker.
                                                          */
                                                         delayedConsumer.acknowledgeAsync(message);
-                                                        if (msgAckedNum.incrementAndGet() % 1000 == 0) {
-                                                            log.info("ScheduleSendMessage [delayedLevel={}] have acked [{}] messages.", delayLevel,
-                                                                    msgAckedNum.get());
-                                                        }
                                                     } else {
                                                         log.warn("DelayedMessageSender send message[{}] failed.",
                                                                 message);
@@ -269,10 +261,6 @@ public class ScheduleMessageService {
                                                 "DelayedMessageSender discard sending message[{}], because: {}.",
                                                 message.getMessageId(), topicNotExistsException.getMessage());
                                         delayedConsumer.acknowledgeAsync(message);
-                                        if (msgAckedNum.incrementAndGet() % 1000 == 0) {
-                                            log.info("ScheduleSendMessage [delayedLevel={}] have acked [{}] messages.", delayLevel,
-                                                    msgAckedNum.get());
-                                        }
                                     } catch (Exception ex) {
                                         log.warn("DelayedMessageSender send message[{}] failed.",
                                                 message.getMessageId(), ex);
@@ -280,10 +268,6 @@ public class ScheduleMessageService {
                                     }
                                 }
                             });
-                    if (msgNum.incrementAndGet() % 1000 == 0) {
-                        log.info("ScheduleSendMessage [delayedLevel={}] have processed [{}] messages.", delayLevel,
-                                msgNum.get());
-                    }
                 }
             } catch (
                     Exception e) {
@@ -357,9 +341,6 @@ public class ScheduleMessageService {
                         .subscriptionName(getDelayedTopicConsumerName(delayLevel))
                         .topic(getDelayedTopicName(delayLevel))
                         .subscriptionInitialPosition(SubscriptionInitialPosition.Earliest)
-//                        .deadLetterPolicy(DeadLetterPolicy.builder()
-//                                .maxRedeliverCount(delayLevel).build())
-//                        .enableRetry(true)
                         .subscribe();
                 log.info("The client config value: [{}]", pulsarClient.getConfiguration());
             } catch (Exception e) {
