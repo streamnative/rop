@@ -29,6 +29,7 @@ import org.apache.commons.lang3.math.NumberUtils;
 import org.apache.rocketmq.broker.mqtrace.ConsumeMessageContext;
 import org.apache.rocketmq.broker.mqtrace.ConsumeMessageHook;
 import org.apache.rocketmq.broker.mqtrace.SendMessageContext;
+import org.apache.rocketmq.common.MQVersion;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.TopicConfig;
 import org.apache.rocketmq.common.TopicFilterType;
@@ -222,10 +223,10 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
 
         int delayLevel = requestHeader.getDelayLevel();
         int maxReconsumeTimes = subscriptionGroupConfig.getRetryMaxTimes();
-//        if (request.getVersion() >= MQVersion.Version.V3_4_9.ordinal()) {
-//            maxReconsumeTimes = requestHeader.getMaxReconsumeTimes() == null ? maxReconsumeTimes
-//                    : requestHeader.getMaxReconsumeTimes();
-//        }
+        if (request.getVersion() >= MQVersion.Version.V3_4_9.ordinal()) {
+            maxReconsumeTimes = requestHeader.getMaxReconsumeTimes() == null ? maxReconsumeTimes
+                    : requestHeader.getMaxReconsumeTimes();
+        }
 
         if (msgExt.getReconsumeTimes() >= maxReconsumeTimes || delayLevel < 0) {
             newTopic = MixAll.getDLQTopic(requestHeader.getGroup());
@@ -302,11 +303,10 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             }
 
             int maxReconsumeTimes = subscriptionGroupConfig.getRetryMaxTimes();
-//            if (request.getVersion() >= MQVersion.Version.V3_4_9.ordinal()) {
-//                maxReconsumeTimes = requestHeader.getMaxReconsumeTimes() != null ?
-//               requestHeader.getMaxReconsumeTimes()
-//                        : maxReconsumeTimes;
-//            }
+            if (request.getVersion() >= MQVersion.Version.V3_4_9.ordinal()) {
+                maxReconsumeTimes = requestHeader.getMaxReconsumeTimes() != null ?
+                        requestHeader.getMaxReconsumeTimes() : maxReconsumeTimes;
+            }
             int reconsumeTimes = requestHeader.getReconsumeTimes() == null ? 0 : requestHeader.getReconsumeTimes();
             if (reconsumeTimes >= maxReconsumeTimes) {
                 newTopic = MixAll.getDLQTopic(groupName);
