@@ -304,6 +304,7 @@ public class ScheduleMessageService {
                                 .topic(pulsarTopic)
                                 .producerName(pulsarTopic + "_ScheduleMessageSender_" + System.currentTimeMillis())
                                 .enableBatching(false)
+                                .blockIfQueueFull(true)
                                 .sendTimeout(SEND_MESSAGE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
                                 .create();
                     } else {

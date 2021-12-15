@@ -379,7 +379,7 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
             category = CATEGORY_ROCKETMQ,
             doc = "rocketmq max number of delayed level.\n"
     )
-    private int maxDelayLevelNum = 16;
+    private int maxDelayLevelNum = 18;
 
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
