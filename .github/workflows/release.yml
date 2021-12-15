@@ -27,7 +27,7 @@ jobs:
           ls pulsar-*
 
       - name: publish
-        uses: skx/github-action-publish-binaries@release-0.11
+        uses: skx/github-action-publish-binaries@master
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
