@@ -269,7 +269,8 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         String originMsgId = MessageAccessor.getOriginMessageId(msgExt);
         MessageAccessor.setOriginMessageId(msgInner, UtilAll.isBlank(originMsgId) ? msgExt.getMsgId() : originMsgId);
 
-        traceDlq(msgInner.getTopic(), MessageAccessor.getOriginMessageId(msgInner), ctx, request);
+        traceDlq(msgInner.getTopic(), msgInner.getProperties().get(MessageConst.PROPERTY_UNIQ_CLIENT_MESSAGE_ID_KEYIDX),
+                ctx, request);
 
         try {
             CompletableFuture<RemotingCommand> responseFuture = new CompletableFuture<>();
@@ -375,7 +376,8 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         Map<String, String> oriProps = MessageDecoder.string2messageProperties(requestHeader.getProperties());
         String traFlag = oriProps.get(MessageConst.PROPERTY_TRANSACTION_PREPARED);
 
-        traceDlq(msgInner.getTopic(), MessageAccessor.getOriginMessageId(msgInner), ctx, request);
+        traceDlq(msgInner.getTopic(), msgInner.getProperties().get(MessageConst.PROPERTY_UNIQ_CLIENT_MESSAGE_ID_KEYIDX),
+                ctx, request);
 
         if (Boolean.parseBoolean(traFlag)
                 && !(msgInner.getReconsumeTimes() > 0
