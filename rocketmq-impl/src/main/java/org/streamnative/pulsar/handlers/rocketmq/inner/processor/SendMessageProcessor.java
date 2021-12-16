@@ -278,8 +278,8 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
 
             int maxReconsumeTimes = subscriptionGroupConfig.getRetryMaxTimes();
             if (request.getVersion() >= MQVersion.Version.V3_4_9.ordinal()) {
-                maxReconsumeTimes = requestHeader.getMaxReconsumeTimes() != null ?
-                        requestHeader.getMaxReconsumeTimes() : maxReconsumeTimes;
+                maxReconsumeTimes = requestHeader.getMaxReconsumeTimes() != null
+                        ? requestHeader.getMaxReconsumeTimes() : maxReconsumeTimes;
             }
             int reconsumeTimes = requestHeader.getReconsumeTimes() == null ? 0 : requestHeader.getReconsumeTimes();
             if (reconsumeTimes >= maxReconsumeTimes) {
@@ -355,7 +355,8 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
                     sendMessageContext, queueIdInt);
         } else {
             try {
-                this.getServerCnxMsgStore(ctx, CommonUtils.getInnerProducerGroupName(request, requestHeader.getProducerGroup()))
+                this.getServerCnxMsgStore(ctx,
+                        CommonUtils.getInnerProducerGroupName(request, requestHeader.getProducerGroup()))
                         .putMessage(CommonUtils.getPulsarPartitionIdByRequest(request),
                                 msgInner,
                                 requestHeader.getProducerGroup(),
@@ -526,7 +527,8 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         MessageAccessor.putProperty(messageExtBatch, MessageConst.PROPERTY_CLUSTER, clusterName);
 
         try {
-            this.getServerCnxMsgStore(ctx, CommonUtils.getInnerProducerGroupName(request, requestHeader.getProducerGroup()))
+            this.getServerCnxMsgStore(ctx,
+                    CommonUtils.getInnerProducerGroupName(request, requestHeader.getProducerGroup()))
                     .putMessages(CommonUtils.getPulsarPartitionIdByRequest(request),
                             messageExtBatch,
                             requestHeader.getProducerGroup(),
