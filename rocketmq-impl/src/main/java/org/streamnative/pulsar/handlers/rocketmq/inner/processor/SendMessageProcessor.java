@@ -180,7 +180,8 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             return response;
         }
 
-        MessageExt msgExt = this.getServerCnxMsgStore(ctx, requestHeader.getGroup())
+        MessageExt msgExt = this
+                .getServerCnxMsgStore(ctx, CommonUtils.getInnerProducerGroupName(request, requestHeader.getGroup()))
                 .lookMessageByCommitLogOffset(requestHeader);
         if (null == msgExt) {
             log.warn("[SendBackMsg] lookMessageByCommitLogOffset request header: [{}] error.", requestHeader);
@@ -246,7 +247,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
 
         try {
             CompletableFuture<RemotingCommand> responseFuture = new CompletableFuture<>();
-            this.getServerCnxMsgStore(ctx, requestHeader.getGroup())
+            this.getServerCnxMsgStore(ctx, CommonUtils.getInnerProducerGroupName(request, requestHeader.getGroup()))
                     .putSendBackMsg(msgInner, requestHeader.getGroup(), response, responseFuture);
             return responseFuture.get();
         } catch (Exception e) {
@@ -277,8 +278,8 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
 
             int maxReconsumeTimes = subscriptionGroupConfig.getRetryMaxTimes();
             if (request.getVersion() >= MQVersion.Version.V3_4_9.ordinal()) {
-                maxReconsumeTimes = requestHeader.getMaxReconsumeTimes() != null ?
-                        requestHeader.getMaxReconsumeTimes() : maxReconsumeTimes;
+                maxReconsumeTimes = requestHeader.getMaxReconsumeTimes() != null
+                        ? requestHeader.getMaxReconsumeTimes() : maxReconsumeTimes;
             }
             int reconsumeTimes = requestHeader.getReconsumeTimes() == null ? 0 : requestHeader.getReconsumeTimes();
             if (reconsumeTimes >= maxReconsumeTimes) {
@@ -354,7 +355,8 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
                     sendMessageContext, queueIdInt);
         } else {
             try {
-                this.getServerCnxMsgStore(ctx, requestHeader.getProducerGroup())
+                this.getServerCnxMsgStore(ctx,
+                        CommonUtils.getInnerProducerGroupName(request, requestHeader.getProducerGroup()))
                         .putMessage(CommonUtils.getPulsarPartitionIdByRequest(request),
                                 msgInner,
                                 requestHeader.getProducerGroup(),
@@ -525,7 +527,8 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         MessageAccessor.putProperty(messageExtBatch, MessageConst.PROPERTY_CLUSTER, clusterName);
 
         try {
-            this.getServerCnxMsgStore(ctx, requestHeader.getProducerGroup())
+            this.getServerCnxMsgStore(ctx,
+                    CommonUtils.getInnerProducerGroupName(request, requestHeader.getProducerGroup()))
                     .putMessages(CommonUtils.getPulsarPartitionIdByRequest(request),
                             messageExtBatch,
                             requestHeader.getProducerGroup(),
