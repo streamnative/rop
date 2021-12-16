@@ -461,13 +461,13 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
             category = CATEGORY_ROCKETMQ,
             doc = "internal remoting client cache pool size."
     )
-    private int ropRemotingClientPoolSize = 4;
+    private int ropRemotingClientPoolSize = 10;
 
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
             doc = "internal redirect request timeout."
     )
-    private int ropInternalRedirectTimeoutMs = 5000;
+    private int ropInternalRedirectTimeoutMs = 10 * 1000;
 
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
