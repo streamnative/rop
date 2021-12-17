@@ -913,8 +913,15 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
         if (language == LanguageCode.CPP) {
             isC = true;
         }
-        return this.brokerController.getBroker2Client().resetOffset(requestHeader.getTopic(), requestHeader.getGroup(),
-                requestHeader.getTimestamp(), requestHeader.isForce(), isC);
+        try {
+            return this.brokerController.getBroker2Client().resetOffset(requestHeader.getTopic(), requestHeader.getGroup(),
+                    requestHeader.getTimestamp(), requestHeader.isForce(), isC);
+        } finally {
+            log.info("[reset-offset] reset offset started by {}. topic={}, group={}, timestamp={}, isForce={} finish.",
+                    RemotingHelper.parseChannelRemoteAddr(ctx.channel()), requestHeader.getTopic(),
+                    requestHeader.getGroup(),
+                    requestHeader.getTimestamp(), requestHeader.isForce());
+        }
     }
 
     public RemotingCommand getConsumerStatus(ChannelHandlerContext ctx,
