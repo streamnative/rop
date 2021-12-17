@@ -14,6 +14,8 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.processor;
 
+import static org.streamnative.pulsar.handlers.rocketmq.inner.proxy.RopBrokerProxy.INNER_CLIENT_NAME_PREFIX;
+
 import io.netty.channel.ChannelHandlerContext;
 import java.util.List;
 import java.util.Map;
@@ -72,7 +74,7 @@ public abstract class AbstractSendMessageProcessor implements NettyRequestProces
         RopClientChannelCnx channelCnx = (RopClientChannelCnx) this.brokerController.getProducerManager()
                 .findChlInfo(groupName, ctx.channel());
         if (channelCnx == null) {
-            synchronized (ctx) {
+            synchronized (ctx.channel()) {
                 channelCnx = (RopClientChannelCnx) this.brokerController.getProducerManager()
                         .findChlInfo(groupName, ctx.channel());
                 if (channelCnx == null) {
@@ -82,7 +84,11 @@ public abstract class AbstractSendMessageProcessor implements NettyRequestProces
                 }
             }
         }
-        channelCnx.setLastUpdateTimestamp(System.currentTimeMillis());
+        if (groupName.startsWith(INNER_CLIENT_NAME_PREFIX)) {
+            channelCnx.setLastUpdateTimestamp(Long.MAX_VALUE);
+        } else {
+            channelCnx.setLastUpdateTimestamp(System.currentTimeMillis());
+        }
         return channelCnx.getServerCnx();
     }
 

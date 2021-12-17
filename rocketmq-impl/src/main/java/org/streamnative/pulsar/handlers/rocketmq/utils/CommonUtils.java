@@ -418,4 +418,12 @@ public class CommonUtils {
         String tag = remotingCommand.getExtFields().get(ROP_INNER_REMOTE_CLIENT_TAG);
         return tag == null ? Strings.EMPTY : tag;
     }
+
+    public static String getInnerProducerGroupName(RemotingCommand remotingCommand, String defaultGroupName) {
+        String tag = remotingCommand.getExtFields().get(ROP_INNER_REMOTE_CLIENT_TAG);
+        if (Strings.isNotBlank(tag)) {
+            return tag;
+        }
+        return defaultGroupName;
+    }
 }

@@ -132,7 +132,7 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkUtils;
 public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseable {
 
     private static final int ROP_SERVICE_PORT = 9876;
-    private static final String INNER_CLIENT_NAME_PREFIX = "rop_broker_proxy_";
+    public static final String INNER_CLIENT_NAME_PREFIX = "rop_broker_proxy_";
 
     private final int internalRedirectTimeoutMs;
     private final int internalRedirectPullMsgTimeoutMs;
@@ -147,6 +147,8 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
     private final List<ProcessorProxyRegister> processorProxyRegisters = new ArrayList<>();
     @Getter
     private final BrokerNetworkAPI brokerNetworkClients;
+    @Getter
+    private final BrokerNetworkAPI sendBrokerNetworkClients;
     @Getter
     private volatile String brokerTag = Strings.EMPTY;
     private final String clusterName;
@@ -169,6 +171,7 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
         this.orderedExecutor = OrderedExecutor.newBuilder().numThreads(4).name("rop-ordered-executor").build();
         this.mqTopicManager = new MQTopicManager(brokerController);
         this.brokerNetworkClients = new BrokerNetworkAPI(this, config.getRopRemotingClientPoolSize());
+        this.sendBrokerNetworkClients = new BrokerNetworkAPI(this, config.getRopRemotingClientPoolSize());
 
         this.internalRedirectTimeoutMs = brokerController.getServerConfig().getRopInternalRedirectTimeoutMs();
         this.internalRedirectPullMsgTimeoutMs = brokerController.getServerConfig()
@@ -326,7 +329,6 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                         ctx.writeAndFlush(sendResponse);
                         break;
                     }
-
                     String topic = sendHeader.getTopic();
                     int queueId = sendHeader.getQueueId();
                     rmqTopic = new ClientTopicName(topic);
@@ -521,7 +523,6 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                 pulsarPartitionId, address);
         final int opaque = cmd.getOpaque();
         long startTime = System.currentTimeMillis();
-
         try {
             cmd.addExtField(ROP_INNER_REMOTE_CLIENT_TAG, INNER_CLIENT_NAME_PREFIX + sendHeader.getProducerGroup());
             cmd.addExtField(ROP_INNER_CLIENT_ADDRESS, RemotingHelper.parseChannelRemoteAddr(ctx.channel()));
@@ -531,8 +532,14 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
             }
             TraceContext traceContext =
                     this.brokerController.isRopTraceEnable() ? TraceContext.buildMsgContext(ctx, sendHeader) : null;
-            brokerNetworkClients.invokeAsync(address, cmd, timeout, (responseFuture) -> {
+            sendBrokerNetworkClients.invokeAsync(address, cmd, timeout, (responseFuture) -> {
                 RemotingCommand sendResponse = responseFuture.getResponseCommand();
+
+                if (System.currentTimeMillis() - startTime > 3000) {
+                    log.warn("RoP proxy timeout [request={}], [response={}], address=[{}]. Cost = [{}ms]",
+                            cmd, sendResponse, address, System.currentTimeMillis() - startTime);
+                }
+
                 if (sendResponse != null) {
                     sendResponse.setOpaque(opaque);
                     sendResponse.markResponseType();
@@ -569,8 +576,14 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                     }
                 }
             });
+
+            if (System.currentTimeMillis() - startTime > 3000) {
+                log.warn("RoP proxy invokeAsync timeout [request={}], address=[{}]. Cost = [{}ms]",
+                        cmd, address, System.currentTimeMillis() - startTime);
+            }
+
         } catch (Exception e) {
-            log.warn("BrokerNetworkAPI invokeAsync[send] error[request={}]. Cost = [{}ms]",
+            log.warn("BrokerNetworkAPI proxy invokeAsyncSend request error[request={}]. Cost = [{}ms]",
                     cmd, System.currentTimeMillis() - startTime, e);
             ownedBrokerCache.invalidate(partitionedTopicName);
             RemotingCommand sendResponse = sendResponseThreadLocal.get();
