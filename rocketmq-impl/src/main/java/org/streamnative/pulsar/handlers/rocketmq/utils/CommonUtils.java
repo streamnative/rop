@@ -57,7 +57,6 @@ public class CommonUtils {
     public static final String PULSAR_REAL_PARTITION_ID_TAG = "prpi";
     public static final String ROP_INNER_REMOTE_CLIENT_TAG = "rirc";
     public static final String ROP_TRACE_START_TIME = "rtst";
-    public static final String ROP_REQUEST_FROM_PROXY = "rrfp";
     public static final String ROP_INNER_MESSAGE_ID = "rimi";
     public static final String ROP_INNER_CLIENT_ADDRESS = "rica";
     public static final String ROP_MESSAGE_ID = "rop_message_id";
@@ -425,5 +424,9 @@ public class CommonUtils {
             return tag;
         }
         return defaultGroupName;
+    }
+
+    public static boolean isFromProxy(RemotingCommand remotingCommand) {
+        return remotingCommand.getExtFields().containsKey(ROP_INNER_REMOTE_CLIENT_TAG);
     }
 }

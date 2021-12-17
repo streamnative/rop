@@ -16,7 +16,6 @@ package org.streamnative.pulsar.handlers.rocketmq.inner.processor;
 
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_INNER_CLIENT_ADDRESS;
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_INNER_MESSAGE_ID;
-import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_REQUEST_FROM_PROXY;
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_TRACE_START_TIME;
 
 import com.alibaba.fastjson.JSON;
@@ -62,7 +61,6 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.PutMessageResult;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RopPutMessageResult;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientTopicName;
-import org.streamnative.pulsar.handlers.rocketmq.inner.pulsar.PulsarMessageStore;
 import org.streamnative.pulsar.handlers.rocketmq.inner.trace.TraceContext;
 import org.streamnative.pulsar.handlers.rocketmq.inner.trace.TraceManager;
 import org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils;
@@ -105,7 +103,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
                         traceContext.setInstanceName(request.getExtFields().get(ROP_INNER_CLIENT_ADDRESS));
                     }
                     if (!request.isOnewayRPC()) {
-                        traceContext.setFromProxy(request.getExtFields().containsKey(ROP_REQUEST_FROM_PROXY));
+                        traceContext.setFromProxy(CommonUtils.isFromProxy(request));
                     }
                 }
 
@@ -388,17 +386,16 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
                     sendMessageContext, queueIdInt);
         } else {
             try {
-                PulsarMessageStore pulsarMessageStore = this
-                        .getServerCnxMsgStore(ctx,
-                                CommonUtils.getInnerProducerGroupName(request, requestHeader.getProducerGroup())));
                 if (traceContext != null) {
                     traceContext.setPersistStartTime(System.currentTimeMillis());
                 }
-                pulsarMessageStore.putMessage(CommonUtils.getPulsarPartitionIdByRequest(request),
-                        msgInner,
-                        requestHeader.getProducerGroup(),
-                        new SendMessageCallback(response, request, msgInner, responseHeader,
-                                sendMessageContext, ctx, queueIdInt, traceContext));
+                this.getServerCnxMsgStore(ctx,
+                        CommonUtils.getInnerProducerGroupName(request, requestHeader.getProducerGroup()))
+                        .putMessage(CommonUtils.getPulsarPartitionIdByRequest(request),
+                                msgInner,
+                                requestHeader.getProducerGroup(),
+                                new SendMessageCallback(response, request, msgInner, responseHeader,
+                                        sendMessageContext, ctx, queueIdInt, traceContext));
                 return null;
             } catch (Exception e) {
                 log.warn("[{}] sendMessage failed", requestHeader.getTopic(), e);
@@ -565,17 +562,17 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         MessageAccessor.putProperty(messageExtBatch, MessageConst.PROPERTY_CLUSTER, clusterName);
 
         try {
-            PulsarMessageStore pulsarMessageStore = this.getServerCnxMsgStore(ctx,
-                    CommonUtils.getInnerProducerGroupName(request, requestHeader.getProducerGroup()));
             if (traceContext != null) {
                 traceContext.setPersistStartTime(System.currentTimeMillis());
             }
-            pulsarMessageStore.putMessages(CommonUtils.getPulsarPartitionIdByRequest(request),
-                    messageExtBatch,
-                    requestHeader.getProducerGroup(),
-                    new SendMessageCallback(response, request, messageExtBatch, responseHeader,
-                            sendMessageContext,
-                            ctx, queueIdInt, traceContext), traceContext != null);
+            this.getServerCnxMsgStore(ctx,
+                    CommonUtils.getInnerProducerGroupName(request, requestHeader.getProducerGroup()))
+                    .putMessages(CommonUtils.getPulsarPartitionIdByRequest(request),
+                            messageExtBatch,
+                            requestHeader.getProducerGroup(),
+                            new SendMessageCallback(response, request, messageExtBatch, responseHeader,
+                                    sendMessageContext,
+                                    ctx, queueIdInt, traceContext), traceContext != null);
             return null;
         } catch (Exception e) {
             log.warn("[{}] sendBatchMessage failed", requestHeader.getTopic(), e);

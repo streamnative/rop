@@ -35,7 +35,6 @@ import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_CA
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_INNER_CLIENT_ADDRESS;
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_INNER_MESSAGE_ID;
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_INNER_REMOTE_CLIENT_TAG;
-import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_REQUEST_FROM_PROXY;
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_TRACE_START_TIME;
 import static org.streamnative.pulsar.handlers.rocketmq.utils.PulsarUtil.autoExpanseBrokerGroupData;
 import static org.streamnative.pulsar.handlers.rocketmq.utils.PulsarUtil.genBrokerGroupData;
@@ -314,9 +313,6 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                 case SEND_BATCH_MESSAGE:
                     // mark trace start time and proxy info
                     cmd.getExtFields().put(ROP_TRACE_START_TIME, String.valueOf(System.currentTimeMillis()));
-                    if (cmd.getExtFields().containsKey(PULSAR_REAL_PARTITION_ID_TAG)) {
-                        cmd.addExtField(ROP_REQUEST_FROM_PROXY, "true");
-                    }
 
                     RemotingCommand sendResponse = sendResponseThreadLocal.get();
                     SendMessageRequestHeader sendHeader = SendMessageProcessor.parseRequestHeader(cmd);
