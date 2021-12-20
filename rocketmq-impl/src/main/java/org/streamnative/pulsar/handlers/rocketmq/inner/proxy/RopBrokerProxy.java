@@ -88,6 +88,7 @@ import org.apache.rocketmq.common.protocol.heartbeat.SubscriptionData;
 import org.apache.rocketmq.common.subscription.SubscriptionGroupConfig;
 import org.apache.rocketmq.common.sysflag.PullSysFlag;
 import org.apache.rocketmq.remoting.ChannelEventListener;
+import org.apache.rocketmq.remoting.common.RemotingHelper;
 import org.apache.rocketmq.remoting.exception.RemotingCommandException;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.remoting.protocol.RemotingSysResponseCode;
@@ -680,7 +681,8 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
         try {
             RemotingCommand newCmd = RemotingCommand.createRequestCommand(RequestCode.PULL_MESSAGE, pullMsgHeader);
             newCmd.addExtField(ROP_INNER_REMOTE_CLIENT_TAG,
-                    INNER_CLIENT_NAME_PREFIX + pullMsgHeader.getConsumerGroup());
+                    INNER_CLIENT_NAME_PREFIX + pullMsgHeader.getConsumerGroup() + "_" + RemotingHelper
+                            .parseChannelRemoteAddr(ctx.channel()));
             // The change fo rop acl, for new cmd, the access key is null.
             newCmd.getExtFields().putAll(cmd.getExtFields());
             newCmd.addExtField(PULSAR_REAL_PARTITION_ID_TAG, String.valueOf(pulsarPartitionId));
