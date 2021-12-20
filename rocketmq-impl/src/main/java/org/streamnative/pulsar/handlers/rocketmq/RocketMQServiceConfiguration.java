@@ -189,7 +189,7 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
             category = CATEGORY_ROCKETMQ,
             doc = "Number of pull message thread pool.\n"
     )
-    private int pullMessageThreadPoolNums = 16 + Runtime.getRuntime().availableProcessors() * 2;
+    private int pullMessageThreadPoolNums = 64 + Runtime.getRuntime().availableProcessors() * 2;
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
             doc = "Number of query message thread pool.\n"
@@ -480,7 +480,7 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
             category = CATEGORY_ROCKETMQ,
             doc = "internal client worker threads."
     )
-    private int ropInternalClientWorkerThreads = 10;
+    private int ropInternalClientWorkerThreads = 16 + Runtime.getRuntime().availableProcessors() * 2;
 
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
