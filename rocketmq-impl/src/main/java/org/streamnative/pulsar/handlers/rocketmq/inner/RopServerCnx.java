@@ -282,6 +282,9 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             offsetFuture.whenCompleteAsync((offset, t) -> {
                 if (t != null || offset == null || offset == -1L) {
                     log.warn("[{}] PutMessage error.", rmqTopic.getPulsarFullName(), t);
+                    // remove pulsar topic from cache if send error
+                    this.brokerController.getConsumerOffsetManager()
+                            .removePulsarTopic(new ClientTopicName(messageInner.getTopic()), partitionId);
 
                     PutMessageStatus status = PutMessageStatus.FLUSH_DISK_TIMEOUT;
                     AppendMessageResult temp = new AppendMessageResult(AppendMessageStatus.UNKNOWN_ERROR);
@@ -389,6 +392,11 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             final int totalBytesSizeFinal = totalBytesSize;
             FutureUtil.waitForAll(batchMessageFutures).whenCompleteAsync((aVoid, throwable) -> {
                 if (throwable != null) {
+                    log.warn("[{}] PutMessages error.", rmqTopic.getPulsarFullName(), throwable);
+                    // remove pulsar topic from cache if send error
+                    this.brokerController.getConsumerOffsetManager()
+                            .removePulsarTopic(new ClientTopicName(batchMessage.getTopic()), realPartitionID);
+
                     PutMessageStatus status = PutMessageStatus.FLUSH_DISK_TIMEOUT;
                     AppendMessageResult temp = new AppendMessageResult(AppendMessageStatus.UNKNOWN_ERROR);
                     PutMessageResult result = new PutMessageResult(status, temp);
