@@ -218,10 +218,10 @@ public class NameserverProcessor implements NettyRequestProcessor {
                 return response;
             } catch (Exception ex) {
                 if (MixAll.AUTO_CREATE_TOPIC_KEY_TOPIC.equals(requestTopic)) {
-                    log.info("Not found system topic [{}] route info, because of autoCreateTopicEnable={}",
+                    log.debug("Not found system topic [{}] route info, because of autoCreateTopicEnable={}",
                             requestTopic, config.isAutoCreateTopicEnable());
                 } else {
-                    log.info("Fetch topic route info of topic: [{}] error.", requestTopic);
+                    log.debug("Fetch topic route info of topic: [{}] error.", requestTopic);
                 }
             }
         }
