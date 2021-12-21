@@ -203,6 +203,11 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
     private int adminBrokerThreadPoolNums = 16;
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
+            doc = "Number of admin worker thread pool.\n"
+    )
+    private int adminWorkerThreadPoolNums = 32;
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
             doc = "Number of client manager thread pool.\n"
     )
     private int clientManageThreadPoolNums = 32;

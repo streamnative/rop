@@ -21,6 +21,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.logging.log4j.util.Strings;
 import org.apache.pulsar.common.naming.TopicName;
@@ -106,12 +108,19 @@ public class Broker2Client {
         }
     }
 
-    public RemotingCommand resetOffset(String topic, String group, long timeStamp, boolean isForce) {
-        return resetOffset(topic, group, timeStamp, isForce, false);
-    }
-
     public RemotingCommand resetOffset(String rmqTopic, String group, long timeStamp, boolean isForce, boolean isC) {
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
+
+        ConsumerGroupInfo consumerGroupInfo = this.brokerController.getConsumerManager().getConsumerGroupInfo(group);
+        if (consumerGroupInfo == null || consumerGroupInfo.getAllChannel().isEmpty()) {
+            String errorInfo =
+                    String.format("Consumer not online, so can not reset offset, Group: %s Topic: %s Timestamp: %d",
+                            group, rmqTopic, timeStamp);
+            log.error(errorInfo);
+            response.setCode(ResponseCode.CONSUMER_NOT_ONLINE);
+            response.setRemark(errorInfo);
+            return response;
+        }
 
         MQTopicManager topicManager = brokerController.getTopicConfigManager();
         TopicConfig topicConfig = topicManager.selectTopicConfig(rmqTopic);
@@ -133,72 +142,94 @@ public class Broker2Client {
             return response;
         }
 
-        for (int queueId = 0; queueId < partitionList.size(); queueId++) {
-            MessageQueue mq = new MessageQueue();
-            mq.setTopic(rmqTopic);
-            mq.setBrokerName(this.brokerController.getRopBrokerProxy().getBrokerTag());
-            mq.setQueueId(queueId);
-
-            int partitionId = partitionList.get(queueId);
-
-            /*
-             * get offset from logic broker
-             */
-            long consumeOffset = this.brokerController.getConsumerOffsetManager()
-                    .queryOffsetByPartitionId(group, rmqTopic, partitionId);
-            if (-1 == consumeOffset) {
-                response.setCode(ResponseCode.SYSTEM_ERROR);
-                response.setRemark(String.format("THe consumer group <%s> not exist", group));
-                return response;
-            }
-
-
-            /*
-             * get offset by timestamp from physical broker
-             */
-            long timeStampOffset = -1L;
-            if (brokerController.getTopicConfigManager().isPartitionTopicOwner(topicName, partitionId)) {
-                ClientGroupAndTopicName groupAndTopicName = new ClientGroupAndTopicName(Strings.EMPTY, rmqTopic);
+        CountDownLatch latch = new CountDownLatch(partitionList.size());
+        for (int i = 0; i < partitionList.size(); i++) {
+            final int queueId = i;
+            this.brokerController.getAdminWorkerExecutor().execute(() -> {
                 try {
-                    if (timeStamp != -1) {
-                        timeStampOffset = this.brokerController.getConsumerOffsetManager()
-                                .searchOffsetByTimestamp(groupAndTopicName, partitionId, timeStamp);
+                    MessageQueue mq = new MessageQueue();
+                    mq.setTopic(rmqTopic);
+                    mq.setBrokerName(brokerController.getRopBrokerProxy().getBrokerTag());
+                    mq.setQueueId(queueId);
+
+                    int partitionId = partitionList.get(queueId);
+
+                    /*
+                     * get offset from logic broker
+                     */
+                    long consumeOffset = brokerController.getConsumerOffsetManager()
+                            .queryOffsetByPartitionId(group, rmqTopic, partitionId);
+                    if (-1 == consumeOffset) {
+                        log.warn("Rop group [{}] not found consume offset for topic [{}].", group, rmqTopic);
+                        return;
+                    }
+
+                    /*
+                     * get offset by timestamp from physical broker
+                     */
+                    long timeStampOffset = -1L;
+                    if (brokerController.getTopicConfigManager().isPartitionTopicOwner(topicName, partitionId)) {
+                        ClientGroupAndTopicName groupAndTopicName = new ClientGroupAndTopicName(Strings.EMPTY,
+                                rmqTopic);
+                        try {
+                            if (timeStamp != -1) {
+                                timeStampOffset = brokerController.getConsumerOffsetManager()
+                                        .searchOffsetByTimestamp(groupAndTopicName, partitionId, timeStamp);
+                            } else {
+                                timeStampOffset = brokerController.getConsumerOffsetManager()
+                                        .getNextOffset(groupAndTopicName.getClientTopicName(), partitionId);
+                            }
+                        } catch (Exception e) {
+                            log.warn(
+                                    "Rop [{}] reset offset searchOffsetByTimestamp or getMaxOffset from local failed.",
+                                    groupAndTopicName, e);
+                        }
                     } else {
-                        timeStampOffset = this.brokerController.getConsumerOffsetManager()
-                                .getNextOffset(groupAndTopicName.getClientTopicName(), partitionId);
+                        ClientTopicName clientTopicName = new ClientTopicName(rmqTopic);
+                        try {
+                            if (timeStamp != -1) {
+                                timeStampOffset = brokerController.getRopBrokerProxy()
+                                        .searchOffsetByTimestamp(clientTopicName, queueId, partitionId,
+                                                timeStamp);
+                            } else {
+                                timeStampOffset = brokerController.getRopBrokerProxy()
+                                        .searchMaxOffset(clientTopicName, queueId, partitionId);
+                            }
+                        } catch (Exception e) {
+                            log.warn(
+                                    "Rop [{}] reset offset searchOffsetByTimestamp or getMaxOffset from remote failed.",
+                                    clientTopicName, e);
+                        }
+                    }
+
+                    if (timeStampOffset < 0) {
+                        log.warn("Rop reset offset is invalid. topic={}, queueId={}, timeStampOffset={}", rmqTopic,
+                                partitionId,
+                                timeStampOffset);
+                        timeStampOffset = 0;
+                    }
+
+                    // if isForce is true and timeStampOffset < consumeOffset,reset offset to timeStampOffset
+                    if (isForce || timeStampOffset < consumeOffset) {
+                        offsetTable.put(mq, timeStampOffset);
+                    } else {
+                        offsetTable.put(mq, consumeOffset);
                     }
                 } catch (Exception e) {
-                    log.warn("Rop [{}] reset offset searchOffsetByTimestamp or getMaxOffset from local failed.",
-                            groupAndTopicName, e);
+                    log.warn("Rop reset offset for [{}] [{}] failed.", group, rmqTopic, e);
+                } finally {
+                    latch.countDown();
                 }
-            } else {
-                ClientTopicName clientTopicName = new ClientTopicName(rmqTopic);
-                try {
-                    if (timeStamp != -1) {
-                        timeStampOffset = this.brokerController.getRopBrokerProxy()
-                                .searchOffsetByTimestamp(clientTopicName, queueId, partitionId, timeStamp);
-                    } else {
-                        timeStampOffset = this.brokerController.getRopBrokerProxy()
-                                .searchMaxOffset(clientTopicName, queueId, partitionId);
-                    }
-                } catch (Exception e) {
-                    log.warn("Rop [{}] reset offset searchOffsetByTimestamp or getMaxOffset from remote failed.",
-                            clientTopicName, e);
-                }
-            }
+            });
+        }
 
-            if (timeStampOffset < 0) {
-                log.warn("Rop reset offset is invalid. topic={}, queueId={}, timeStampOffset={}", rmqTopic, partitionId,
-                        timeStampOffset);
-                timeStampOffset = 0;
-            }
-
-            // if isForce is true and timeStampOffset < consumeOffset,reset offset to timeStampOffset
-            if (isForce || timeStampOffset < consumeOffset) {
-                offsetTable.put(mq, timeStampOffset);
-            } else {
-                offsetTable.put(mq, consumeOffset);
-            }
+        try {
+            latch.await(10, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            log.warn("Rop reset offset for [{}] [{}] error.", group, rmqTopic, e);
+            response.setCode(ResponseCode.SYSTEM_ERROR);
+            response.setRemark(e.getMessage());
+            return response;
         }
 
         ResetOffsetRequestHeader requestHeader = new ResetOffsetRequestHeader();
@@ -220,43 +251,28 @@ public class Broker2Client {
             request.setBody(body.encode());
         }
 
-        ConsumerGroupInfo consumerGroupInfo =
-                this.brokerController.getConsumerManager().getConsumerGroupInfo(group);
-
-        if (consumerGroupInfo != null && !consumerGroupInfo.getAllChannel().isEmpty()) {
-            ConcurrentMap<Channel, ClientChannelInfo> channelInfoTable =
-                    consumerGroupInfo.getChannelInfoTable();
-            for (Entry<Channel, ClientChannelInfo> entry : channelInfoTable.entrySet()) {
-                int version = entry.getValue().getVersion();
-                if (version >= MQVersion.Version.V3_0_7_SNAPSHOT.ordinal()) {
-                    try {
-                        this.brokerController.getRemotingServer().invokeOneway(entry.getKey(), request, 5000);
-                        log.info("[reset-offset] reset offset success. topic={}, group={}, clientId={}",
-                                rmqTopic, group, entry.getValue().getClientId());
-                    } catch (Exception e) {
-                        log.error("[reset-offset] reset offset exception. topic={}, group={}",
-                                new Object[]{rmqTopic, group}, e);
-                    }
-                } else {
-                    response.setCode(ResponseCode.SYSTEM_ERROR);
-                    response.setRemark("the client does not support this feature. version="
-                            + MQVersion.getVersionDesc(version));
-                    log.warn("[reset-offset] the client does not support this feature. remoteAddr={}, version={}",
-                            RemotingHelper.parseChannelRemoteAddr(entry.getKey()), MQVersion.getVersionDesc(version));
-                    return response;
+        ConcurrentMap<Channel, ClientChannelInfo> channelInfoTable = consumerGroupInfo.getChannelInfoTable();
+        for (Entry<Channel, ClientChannelInfo> entry : channelInfoTable.entrySet()) {
+            int version = entry.getValue().getVersion();
+            if (version >= MQVersion.Version.V3_0_7_SNAPSHOT.ordinal()) {
+                try {
+                    this.brokerController.getRemotingServer().invokeOneway(entry.getKey(), request, 5000);
+                    log.info("[reset-offset] reset offset success. topic={}, group={}, clientId={}",
+                            rmqTopic, group, entry.getValue().getClientId());
+                } catch (Exception e) {
+                    log.error("[reset-offset] reset offset exception. topic={}, group={}",
+                            new Object[]{rmqTopic, group}, e);
                 }
+            } else {
+                response.setCode(ResponseCode.SYSTEM_ERROR);
+                response.setRemark("the client does not support this feature. version="
+                        + MQVersion.getVersionDesc(version));
+                log.warn("[reset-offset] the client does not support this feature. remoteAddr={}, version={}",
+                        RemotingHelper.parseChannelRemoteAddr(entry.getKey()), MQVersion.getVersionDesc(version));
+                return response;
             }
-        } else {
-            String errorInfo =
-                    String.format("Consumer not online, so can not reset offset, Group: %s Topic: %s Timestamp: %d",
-                            requestHeader.getGroup(),
-                            requestHeader.getTopic(),
-                            requestHeader.getTimestamp());
-            log.error(errorInfo);
-            response.setCode(ResponseCode.CONSUMER_NOT_ONLINE);
-            response.setRemark(errorInfo);
-            return response;
         }
+
         response.setCode(ResponseCode.SUCCESS);
         ResetOffsetBody resBody = new ResetOffsetBody();
         resBody.setOffsetTable(offsetTable);

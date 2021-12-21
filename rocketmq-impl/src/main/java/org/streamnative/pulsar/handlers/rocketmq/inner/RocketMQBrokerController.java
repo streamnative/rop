@@ -111,6 +111,7 @@ public class RocketMQBrokerController {
     private ExecutorService replyMessageExecutor;
     private ExecutorService queryMessageExecutor;
     private ExecutorService adminBrokerExecutor;
+    private ExecutorService adminWorkerExecutor;
     private ExecutorService clientManageExecutor;
     private ExecutorService heartbeatExecutor;
     private ExecutorService consumerManageExecutor;
@@ -220,6 +221,11 @@ public class RocketMQBrokerController {
                 Executors
                         .newFixedThreadPool(this.serverConfig.getAdminBrokerThreadPoolNums(), new ThreadFactoryImpl(
                                 "AdminBrokerThread_"));
+
+        this.adminWorkerExecutor =
+                Executors
+                        .newFixedThreadPool(this.serverConfig.getAdminWorkerThreadPoolNums(), new ThreadFactoryImpl(
+                                "AdminWorkerThread_"));
 
         this.clientManageExecutor = new ThreadPoolExecutor(
                 this.serverConfig.getClientManageThreadPoolNums(),
@@ -555,6 +561,10 @@ public class RocketMQBrokerController {
 
         if (this.replyMessageExecutor != null) {
             this.replyMessageExecutor.shutdown();
+        }
+
+        if (this.adminWorkerExecutor != null) {
+            this.adminWorkerExecutor.shutdown();
         }
 
         if (this.adminBrokerExecutor != null) {

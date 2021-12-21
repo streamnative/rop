@@ -135,7 +135,7 @@ public class MQTopicManager extends TopicConfigManager implements NamespaceBundl
                 return ropTopicContent.getRouteMap();
             }
         } catch (Exception e) {
-            log.warn("[{}] Get topic route error.", topicName.toString(), e);
+            log.debug("[{}] Get topic route error.", topicName.toString(), e);
         }
         return Maps.newHashMap();
     }

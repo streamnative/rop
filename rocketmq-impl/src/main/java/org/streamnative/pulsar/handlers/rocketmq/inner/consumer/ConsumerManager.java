@@ -14,6 +14,8 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.consumer;
 
+import static org.streamnative.pulsar.handlers.rocketmq.inner.proxy.RopBrokerProxy.INNER_CLIENT_NAME_PREFIX;
+
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import java.util.HashSet;
@@ -181,6 +183,12 @@ public class ConsumerManager {
         while (it.hasNext()) {
             Entry<ClientGroupName, ConsumerGroupInfo> next = it.next();
             ClientGroupName group = next.getKey();
+
+            // TODO: hanmz 2021/12/20 skip proxy channel expire check
+            if (group.getRmqGroupName().startsWith(INNER_CLIENT_NAME_PREFIX)) {
+                continue;
+            }
+
             ConsumerGroupInfo consumerGroupInfo = next.getValue();
             ConcurrentMap<Channel, ClientChannelInfo> channelInfoTable = consumerGroupInfo.getChannelInfoTable();
             Iterator<Entry<Channel, ClientChannelInfo>> itChannel = channelInfoTable.entrySet().iterator();
