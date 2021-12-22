@@ -26,6 +26,7 @@ import org.apache.rocketmq.common.DataVersion;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.subscription.SubscriptionGroupConfig;
 import org.apache.rocketmq.remoting.exception.RemotingCommandException;
+import org.apache.zookeeper.KeeperException;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupName;
 import org.streamnative.pulsar.handlers.rocketmq.inner.proxy.RopZookeeperCacheService;
@@ -140,8 +141,11 @@ public class SubscriptionGroupManager implements Closeable {
                 }
             }
             return result;
+        } catch (KeeperException | InterruptedException e) {
+            log.warn("RoP getSubscriptionGroupTable failed.", e);
+            return result;
         } catch (Exception e) {
-            log.warn("RoP getSubscriptionGroupTable failed, error message: {}", e.getMessage());
+            log.warn("RoP getSubscriptionGroupTable failed.", e);
             throw new RemotingCommandException(e.getMessage(), e);
         }
     }
