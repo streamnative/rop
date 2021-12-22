@@ -553,22 +553,25 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                 }
 
                 if (traceContext != null) {
-                    List<PutMessageResult> putMessageResults = JSON
-                            .parseArray(sendResponse.getExtFields().get(ROP_INNER_MESSAGE_ID), PutMessageResult.class);
-                    for (PutMessageResult result : putMessageResults) {
-                        traceContext.setOffset(result.getOffset());
-                        traceContext.setMsgId(result.getMsgId());
-                        traceContext.setMsgKey(result.getMsgKey());
-                        traceContext.setTags(result.getMsgTag());
-                        traceContext.setOffsetMsgId(result.getOffsetMsgId());
-                        traceContext.setPulsarMsgId(result.getPulsarMsgId());
-                        traceContext.setPartitionId(pulsarPartitionId);
-                        traceContext.setPutStartTime(NumberUtils
-                                .toLong(cmd.getExtFields().get(ROP_TRACE_START_TIME), System.currentTimeMillis()));
-                        traceContext.setEndTime(System.currentTimeMillis());
-                        traceContext.setDuration(System.currentTimeMillis() - traceContext.getPutStartTime());
-                        traceContext.setCode(sendResponse.getCode());
-                        TraceManager.get().tracePut(traceContext);
+                    if (sendResponse.getExtFields().containsKey(ROP_INNER_MESSAGE_ID)) {
+                        List<PutMessageResult> putMessageResults = JSON
+                                .parseArray(sendResponse.getExtFields().get(ROP_INNER_MESSAGE_ID),
+                                        PutMessageResult.class);
+                        for (PutMessageResult result : putMessageResults) {
+                            traceContext.setOffset(result.getOffset());
+                            traceContext.setMsgId(result.getMsgId());
+                            traceContext.setMsgKey(result.getMsgKey());
+                            traceContext.setTags(result.getMsgTag());
+                            traceContext.setOffsetMsgId(result.getOffsetMsgId());
+                            traceContext.setPulsarMsgId(result.getPulsarMsgId());
+                            traceContext.setPartitionId(pulsarPartitionId);
+                            traceContext.setPutStartTime(NumberUtils
+                                    .toLong(cmd.getExtFields().get(ROP_TRACE_START_TIME), System.currentTimeMillis()));
+                            traceContext.setEndTime(System.currentTimeMillis());
+                            traceContext.setDuration(System.currentTimeMillis() - traceContext.getPutStartTime());
+                            traceContext.setCode(sendResponse.getCode());
+                            TraceManager.get().tracePut(traceContext);
+                        }
                     }
                 }
             });
