@@ -141,7 +141,7 @@ public class SubscriptionGroupManager implements Closeable {
             }
             return result;
         } catch (Exception e) {
-            log.warn("RoP getSubscriptionGroupTable failed.", e);
+            log.warn("RoP getSubscriptionGroupTable failed, error message: {}", e.getMessage());
             throw new RemotingCommandException(e.getMessage(), e);
         }
     }
