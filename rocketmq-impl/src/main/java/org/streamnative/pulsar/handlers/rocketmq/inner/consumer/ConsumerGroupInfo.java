@@ -146,7 +146,7 @@ public class ConsumerGroupInfo {
             if (old == null) {
                 SubscriptionData prev = this.subscriptionTable.putIfAbsent(sub.getTopic(), sub);
                 if (null == prev) {
-                    updated = true;
+                    //updated = true;
                     log.trace("subscription changed, add new topic, group: {} {}",
                             this.groupName,
                             sub.toString());
@@ -185,7 +185,7 @@ public class ConsumerGroupInfo {
                 );
 
                 it.remove();
-                updated = true;
+                //updated = true;
             }
         }
 
