@@ -130,7 +130,11 @@ public class SubscriptionGroupManager implements Closeable {
                         for (String group : groups) {
                             String fullGroupName = tenant + "|" + namespace + "%" + group;
                             ClientGroupName clientGroupName = new ClientGroupName(fullGroupName);
-                            result.put(clientGroupName, findSubscriptionGroupConfig(fullGroupName));
+                            try {
+                                result.put(clientGroupName, findSubscriptionGroupConfig(fullGroupName));
+                            } catch (Exception e) {
+                                log.info("RoP getSubscriptionGroupTable failed for group [{}]", fullGroupName);
+                            }
                         }
                     }
                 }
