@@ -132,6 +132,7 @@ public class TraceManager {
     public void traceQlq(TraceContext context) {
         // encode group with base64
         String encodeGroup = base64Encoder.encode(context.getGroup().getBytes(StandardCharsets.UTF_8));
+        encodeGroup = encodeGroup.replaceAll("\r|\n", "");
         String message = buildMessage(GlobalIdGenerator.generate(), 0, 0, System.currentTimeMillis(),
                 context.getEndTime(), TYPE_DLQ, context.getTopic(), encodeGroup, context.getMsgId(),
                 context.getInstanceName());
