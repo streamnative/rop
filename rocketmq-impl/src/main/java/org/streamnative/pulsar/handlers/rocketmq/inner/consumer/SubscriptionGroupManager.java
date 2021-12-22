@@ -120,21 +120,24 @@ public class SubscriptionGroupManager implements Closeable {
         try {
             Set<String> tenants = zkServiceRef.get().getZookeeperCache().getChildren(RopZkUtils.GROUP_BASE_PATH);
             for (String tenant : tenants) {
-                String tenantNodePath = String.format(RopZkUtils.GROUP_BASE_PATH_MATCH, tenant);
-                Set<String> namespaces = zkServiceRef.get().getZookeeperCache().getChildren(tenantNodePath);
-                for (String namespace : namespaces) {
-                    String namespaceNodePath = String
-                            .format(RopZkUtils.GROUP_BASE_PATH_MATCH, tenant + "/" + namespace);
-                    Set<String> groups = zkServiceRef.get().getZookeeperCache().getChildren(namespaceNodePath);
-                    for (String group : groups) {
-                        String fullGroupName = tenant + "|" + namespace + "%" + group;
-                        ClientGroupName clientGroupName = new ClientGroupName(fullGroupName);
-                        result.put(clientGroupName, findSubscriptionGroupConfig(fullGroupName));
+                if (tenant.startsWith("rocketmq-")) {
+                    String tenantNodePath = String.format(RopZkUtils.GROUP_BASE_PATH_MATCH, tenant);
+                    Set<String> namespaces = zkServiceRef.get().getZookeeperCache().getChildren(tenantNodePath);
+                    for (String namespace : namespaces) {
+                        String namespaceNodePath = String
+                                .format(RopZkUtils.GROUP_BASE_PATH_MATCH, tenant + "/" + namespace);
+                        Set<String> groups = zkServiceRef.get().getZookeeperCache().getChildren(namespaceNodePath);
+                        for (String group : groups) {
+                            String fullGroupName = tenant + "|" + namespace + "%" + group;
+                            ClientGroupName clientGroupName = new ClientGroupName(fullGroupName);
+                            result.put(clientGroupName, findSubscriptionGroupConfig(fullGroupName));
+                        }
                     }
                 }
             }
             return result;
         } catch (Exception e) {
+            log.warn("RoP getSubscriptionGroupTable failed.", e);
             throw new RemotingCommandException(e.getMessage(), e);
         }
     }
