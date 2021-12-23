@@ -26,6 +26,7 @@ import org.apache.rocketmq.common.DataVersion;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.subscription.SubscriptionGroupConfig;
 import org.apache.rocketmq.remoting.exception.RemotingCommandException;
+import org.apache.zookeeper.KeeperException;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupName;
 import org.streamnative.pulsar.handlers.rocketmq.inner.proxy.RopZookeeperCacheService;
@@ -120,21 +121,31 @@ public class SubscriptionGroupManager implements Closeable {
         try {
             Set<String> tenants = zkServiceRef.get().getZookeeperCache().getChildren(RopZkUtils.GROUP_BASE_PATH);
             for (String tenant : tenants) {
-                String tenantNodePath = String.format(RopZkUtils.GROUP_BASE_PATH_MATCH, tenant);
-                Set<String> namespaces = zkServiceRef.get().getZookeeperCache().getChildren(tenantNodePath);
-                for (String namespace : namespaces) {
-                    String namespaceNodePath = String
-                            .format(RopZkUtils.GROUP_BASE_PATH_MATCH, tenant + "/" + namespace);
-                    Set<String> groups = zkServiceRef.get().getZookeeperCache().getChildren(namespaceNodePath);
-                    for (String group : groups) {
-                        String fullGroupName = tenant + "|" + namespace + "%" + group;
-                        ClientGroupName clientGroupName = new ClientGroupName(fullGroupName);
-                        result.put(clientGroupName, findSubscriptionGroupConfig(fullGroupName));
+                if (tenant.startsWith("rocketmq-")) {
+                    String tenantNodePath = String.format(RopZkUtils.GROUP_BASE_PATH_MATCH, tenant);
+                    Set<String> namespaces = zkServiceRef.get().getZookeeperCache().getChildren(tenantNodePath);
+                    for (String namespace : namespaces) {
+                        String namespaceNodePath = String
+                                .format(RopZkUtils.GROUP_BASE_PATH_MATCH, tenant + "/" + namespace);
+                        Set<String> groups = zkServiceRef.get().getZookeeperCache().getChildren(namespaceNodePath);
+                        for (String group : groups) {
+                            String fullGroupName = tenant + "|" + namespace + "%" + group;
+                            ClientGroupName clientGroupName = new ClientGroupName(fullGroupName);
+                            try {
+                                result.put(clientGroupName, findSubscriptionGroupConfig(fullGroupName));
+                            } catch (Exception e) {
+                                log.info("RoP getSubscriptionGroupTable failed for group [{}]", fullGroupName);
+                            }
+                        }
                     }
                 }
             }
             return result;
+        } catch (KeeperException | InterruptedException e) {
+            log.warn("RoP getSubscriptionGroupTable failed.", e);
+            return result;
         } catch (Exception e) {
+            log.warn("RoP getSubscriptionGroupTable failed.", e);
             throw new RemotingCommandException(e.getMessage(), e);
         }
     }

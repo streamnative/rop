@@ -20,6 +20,8 @@ import org.apache.bookkeeper.mledger.Entry;
 import org.apache.pulsar.client.api.Message;
 import org.apache.pulsar.common.naming.TopicName;
 import org.apache.rocketmq.common.message.MessageExt;
+import org.apache.rocketmq.common.message.MessageExtBatch;
+import org.streamnative.pulsar.handlers.rocketmq.inner.RopMessage;
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopEncodeException;
 
 /**
@@ -35,6 +37,8 @@ public interface EntryFormatter<T> {
      * @return the ByteBuf of an entry that is to be written to Bookie
      */
     List<byte[]> encode(final T record, final int numMessages) throws RopEncodeException;
+
+    List<RopMessage> encodeBatch(final MessageExtBatch record, boolean traceEnable) throws RopEncodeException;
 
     List<MessageExt> decodePulsarMessage(final List<Message<byte[]>> entries, Predicate<Message> predicate);
 

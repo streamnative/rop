@@ -14,6 +14,9 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner;
 
+import static org.apache.rocketmq.common.message.MessageConst.PROPERTY_UNIQ_CLIENT_MESSAGE_ID_KEYIDX;
+import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_MESSAGE_ID;
+
 import com.google.common.base.Preconditions;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -237,11 +240,14 @@ public class ScheduleMessageService {
                                             return;
                                         }
 
+                                        final String ropMsgId = msgInner.getProperties()
+                                                .get(PROPERTY_UNIQ_CLIENT_MESSAGE_ID_KEYIDX);
                                         RocketMQTopic rmqTopic = new RocketMQTopic(msgInner.getTopic());
                                         String pTopic = rmqTopic.getPulsarFullName();
                                         Producer<byte[]> producer = getProducerFromCache(pTopic);
                                         producer.newMessage()
                                                 .value(formatter.encode(msgInner, 1).get(0))
+                                                .property(ROP_MESSAGE_ID, ropMsgId)
                                                 .sendAsync()
                                                 .whenCompleteAsync((msgId, ex) -> {
                                                     if (ex == null) {

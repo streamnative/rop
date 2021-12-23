@@ -32,10 +32,14 @@ import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.PULSAR
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_CACHE_EXPIRE_TIME_MS;
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_CACHE_INITIAL_SIZE;
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_CACHE_MAX_SIZE;
+import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_INNER_CLIENT_ADDRESS;
+import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_INNER_MESSAGE_ID;
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_INNER_REMOTE_CLIENT_TAG;
+import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_TRACE_START_TIME;
 import static org.streamnative.pulsar.handlers.rocketmq.utils.PulsarUtil.autoExpanseBrokerGroupData;
 import static org.streamnative.pulsar.handlers.rocketmq.utils.PulsarUtil.genBrokerGroupData;
 
+import com.alibaba.fastjson.JSON;
 import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Splitter;
@@ -55,6 +59,7 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bookkeeper.common.util.OrderedExecutor;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.math.NumberUtils;
 import org.apache.logging.log4j.util.Strings;
 import org.apache.pulsar.broker.PulsarService;
 import org.apache.pulsar.broker.ServiceConfiguration;
@@ -96,6 +101,7 @@ import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.ZooDefs.Ids;
 import org.streamnative.pulsar.handlers.rocketmq.RocketMQServiceConfiguration;
+import org.streamnative.pulsar.handlers.rocketmq.inner.PutMessageResult;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQRemoteServer;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.CommitLogOffset;
@@ -111,6 +117,8 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.processor.PullMessageProc
 import org.streamnative.pulsar.handlers.rocketmq.inner.processor.QueryMessageProcessor;
 import org.streamnative.pulsar.handlers.rocketmq.inner.processor.SendMessageProcessor;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientTopicName;
+import org.streamnative.pulsar.handlers.rocketmq.inner.trace.TraceContext;
+import org.streamnative.pulsar.handlers.rocketmq.inner.trace.TraceManager;
 import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopClusterContent;
 import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkUtils;
 
@@ -303,6 +311,9 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                 case SEND_MESSAGE:
                 case SEND_MESSAGE_V2:
                 case SEND_BATCH_MESSAGE:
+                    // mark trace start time and proxy info
+                    cmd.getExtFields().put(ROP_TRACE_START_TIME, String.valueOf(System.currentTimeMillis()));
+
                     RemotingCommand sendResponse = sendResponseThreadLocal.get();
                     SendMessageRequestHeader sendHeader = SendMessageProcessor.parseRequestHeader(cmd);
                     sendResponse.setCode(-1);
@@ -470,6 +481,7 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
         final int opaque = cmd.getOpaque();
         try {
             cmd.addExtField(ROP_INNER_REMOTE_CLIENT_TAG, INNER_CLIENT_NAME_PREFIX + requestHeader.getGroup());
+            cmd.addExtField(ROP_INNER_CLIENT_ADDRESS, RemotingHelper.parseChannelRemoteAddr(ctx.channel()));
             brokerNetworkClients.invokeAsync(address, cmd, timeout, (responseFuture) -> {
                 RemotingCommand response = responseFuture.getResponseCommand();
                 if (response != null) {
@@ -509,10 +521,13 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
         long startTime = System.currentTimeMillis();
         try {
             cmd.addExtField(ROP_INNER_REMOTE_CLIENT_TAG, INNER_CLIENT_NAME_PREFIX + sendHeader.getProducerGroup());
+            cmd.addExtField(ROP_INNER_CLIENT_ADDRESS, RemotingHelper.parseChannelRemoteAddr(ctx.channel()));
             if (cmd.isOnewayRPC()) {
                 brokerNetworkClients.invokeOneway(address, cmd, timeout);
                 return;
             }
+            TraceContext traceContext =
+                    this.brokerController.isRopTraceEnable() ? TraceContext.buildMsgContext(ctx, sendHeader) : null;
             sendBrokerNetworkClients.invokeAsync(address, cmd, timeout, (responseFuture) -> {
                 RemotingCommand sendResponse = responseFuture.getResponseCommand();
 
@@ -535,6 +550,29 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                     sendResponse.setCode(ResponseCode.SYSTEM_ERROR);
                     sendResponse.setRemark("processNonOwnedBrokerSendRequest invokeAsync error");
                     ctx.writeAndFlush(sendResponse);
+                }
+
+                if (traceContext != null) {
+                    if (sendResponse.getExtFields().containsKey(ROP_INNER_MESSAGE_ID)) {
+                        List<PutMessageResult> putMessageResults = JSON
+                                .parseArray(sendResponse.getExtFields().get(ROP_INNER_MESSAGE_ID),
+                                        PutMessageResult.class);
+                        for (PutMessageResult result : putMessageResults) {
+                            traceContext.setOffset(result.getOffset());
+                            traceContext.setMsgId(result.getMsgId());
+                            traceContext.setMsgKey(result.getMsgKey());
+                            traceContext.setTags(result.getMsgTag());
+                            traceContext.setOffsetMsgId(result.getOffsetMsgId());
+                            traceContext.setPulsarMsgId(result.getPulsarMsgId());
+                            traceContext.setPartitionId(pulsarPartitionId);
+                            traceContext.setPutStartTime(NumberUtils
+                                    .toLong(cmd.getExtFields().get(ROP_TRACE_START_TIME), System.currentTimeMillis()));
+                            traceContext.setEndTime(System.currentTimeMillis());
+                            traceContext.setDuration(System.currentTimeMillis() - traceContext.getPutStartTime());
+                            traceContext.setCode(sendResponse.getCode());
+                            TraceManager.get().tracePut(traceContext);
+                        }
+                    }
                 }
             });
 
@@ -686,6 +724,7 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
             // The change fo rop acl, for new cmd, the access key is null.
             newCmd.getExtFields().putAll(cmd.getExtFields());
             newCmd.addExtField(PULSAR_REAL_PARTITION_ID_TAG, String.valueOf(pulsarPartitionId));
+            newCmd.addExtField(ROP_INNER_CLIENT_ADDRESS, RemotingHelper.parseChannelRemoteAddr(ctx.channel()));
             brokerNetworkClients.invokeAsync(address, newCmd, timeout, (responseFuture) -> {
                 RemotingCommand pullResponse = responseFuture.getResponseCommand();
                 if (pullResponse != null) {

@@ -15,12 +15,14 @@
 package org.streamnative.pulsar.handlers.rocketmq.inner.format;
 
 import static org.apache.pulsar.common.protocol.Commands.hasChecksum;
+import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_MESSAGE_ID;
 
 import com.google.common.base.Preconditions;
 import com.scurrilous.circe.checksum.Crc32cIntChecksum;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -34,6 +36,7 @@ import org.apache.pulsar.client.api.Message;
 import org.apache.pulsar.client.impl.MessageIdImpl;
 import org.apache.pulsar.client.impl.TopicMessageImpl;
 import org.apache.pulsar.common.api.proto.BrokerEntryMetadata;
+import org.apache.pulsar.common.api.proto.KeyValue;
 import org.apache.pulsar.common.api.proto.MessageIdData;
 import org.apache.pulsar.common.api.proto.MessageMetadata;
 import org.apache.pulsar.common.naming.TopicName;
@@ -48,6 +51,7 @@ import org.apache.rocketmq.common.sysflag.MessageSysFlag;
 import org.apache.rocketmq.store.AppendMessageStatus;
 import org.apache.rocketmq.store.CommitLog;
 import org.apache.rocketmq.store.MessageExtBrokerInner;
+import org.streamnative.pulsar.handlers.rocketmq.inner.RopMessage;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.CommitLogOffset;
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopEncodeException;
 import org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils;
@@ -87,20 +91,22 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
             }
             byte[] msgBytes = convertRocketmq2Pulsar(tagsCode, mesg);
             return Collections.singletonList(msgBytes);
-        } else if (record instanceof MessageExtBatch) {
-            MessageExtBatch msg = (MessageExtBatch) record;
-
-            return convertRocketmq2Pulsar(msg);
         }
         throw new RopEncodeException("UNKNOWN Message Type");
     }
 
-    public ByteBuf encode(byte[] record) {
+    @Override
+    public List<RopMessage> encodeBatch(MessageExtBatch record, boolean traceEnable) throws RopEncodeException {
+        Preconditions.checkNotNull(record);
+        return convertRocketmq2Pulsar(record, traceEnable);
+    }
+
+    public ByteBuf encode(byte[] record, String msgId) {
         final ByteBuf recordsWrapper = Unpooled.wrappedBuffer(record);
         try {
             return Commands.serializeMetadataAndPayload(
                     Commands.ChecksumType.None,
-                    getDefaultMessageMetadata(),
+                    getDefaultMessageMetadata(msgId),
                     recordsWrapper);
         } finally {
             recordsWrapper.release();
@@ -108,11 +114,12 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
     }
 
 
-    private static MessageMetadata getDefaultMessageMetadata() {
+    private static MessageMetadata getDefaultMessageMetadata(String msgId) {
         final MessageMetadata messageMetadata = new MessageMetadata();
         messageMetadata.setProducerName("");
         messageMetadata.setSequenceId(0L);
         messageMetadata.setPublishTime(System.currentTimeMillis());
+        messageMetadata.addProperty().setKey(ROP_MESSAGE_ID).setValue(msgId);
         return messageMetadata;
     }
 
@@ -145,20 +152,29 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
 
     @Override
     public MessageExt decodeMessageByPulsarEntry(TopicName pulsarPartitionedTopic, Entry msgEntry) {
-        ByteBuf msgBuff = decodePulsarMessage(pulsarPartitionedTopic, msgEntry.getDataBuffer(), null);
+        RopMessage ropMessage = decodePulsarMessage(pulsarPartitionedTopic, msgEntry.getDataBuffer(), null);
         try {
-            return CommonUtils.decode(msgBuff, true, false);
+            return CommonUtils.decode(ropMessage.getPayload(), true, false);
         } finally {
-            msgBuff.release();
+            ropMessage.getPayload().release();
         }
     }
 
-    public ByteBuf decodePulsarMessage(TopicName partitionedTopicName, ByteBuf headersAndPayload,
+    public RopMessage decodePulsarMessage(TopicName partitionedTopicName, ByteBuf headersAndPayload,
             Predicate<ByteBuf> predicate) {
         BrokerEntryMetadata brokerEntryMetadata = Commands.peekBrokerEntryMetadataIfExist(headersAndPayload);
         long index = (brokerEntryMetadata != null) ? brokerEntryMetadata.getIndex() : -1L;
         Preconditions.checkArgument(index >= 0, "the version of broker must be > 2.8.0");
-        Commands.skipMessageMetadata(headersAndPayload);
+
+        MessageMetadata messageMetadata = Commands.parseMessageMetadata(headersAndPayload);
+        String msgId = "";
+        for (KeyValue keyValue : messageMetadata.getPropertiesList()) {
+            if (keyValue.getKey().equals(ROP_MESSAGE_ID)) {
+                msgId = keyValue.getValue();
+            }
+        }
+
+//        Commands.skipMessageMetadata(headersAndPayload);
         // check the tag and filter
         if (predicate != null && !predicate.test(headersAndPayload)) {
             return null;
@@ -176,12 +192,14 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
                 partitionedTopicName.getPartitionIndex(),
                 index);
         slice.setLong(28, commitLogOffset.getCommitLogOffset());
-        return slice;
+
+        return new RopMessage(msgId, partitionedTopicName.getPartitionIndex(), index, slice);
     }
 
-    private List<byte[]> convertRocketmq2Pulsar(final MessageExtBatch messageExtBatch) throws RopEncodeException {
+    private List<RopMessage> convertRocketmq2Pulsar(final MessageExtBatch messageExtBatch, boolean traceEnable)
+            throws RopEncodeException {
         ByteBuffer msgStoreItemMemory = msgStoreItemMemoryThreadLocal.get();
-        List<byte[]> result = new ArrayList<>();
+        List<RopMessage> result = new ArrayList<>();
         int totalMsgLen = 0;
         ByteBuffer messagesByteBuff = messageExtBatch.wrap();
         int sysFlag = messageExtBatch.getSysFlag();
@@ -191,6 +209,8 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
         ByteBuffer storeHostHolder = ByteBuffer.allocate(storeHostLength);
 
         while (messagesByteBuff.hasRemaining()) {
+            RopMessage ropMessage = new RopMessage();
+
             // 1 TOTALSIZE
             messagesByteBuff.getInt();
             // 2 MAGICCODE
@@ -287,14 +307,34 @@ public class RopEntryFormatter implements EntryFormatter<MessageExt> {
             msgStoreItemMemory.putShort(propertiesLen);
             if (propertiesLen > 0) {
                 msgStoreItemMemory.put(messagesByteBuff.array(), propertiesPos, propertiesLen);
+                if (traceEnable) {
+                    try {
+                        ByteBuffer byteBuffer = ByteBuffer.allocate(propertiesLen);
+                        byteBuffer.put(messagesByteBuff.array(), propertiesPos, propertiesLen);
+                        byteBuffer.flip();
+                        Map<String, String> properties = MessageDecoder
+                                .string2messageProperties(StandardCharsets.UTF_8.decode(byteBuffer).toString());
+
+                        String msgId = properties.get(MessageConst.PROPERTY_UNIQ_CLIENT_MESSAGE_ID_KEYIDX);
+                        String msgKey = properties.get(MessageConst.PROPERTY_KEYS);
+                        String msgTag = properties.get(MessageConst.PROPERTY_TAGS);
+
+                        ropMessage.setMsgId(msgId);
+                        ropMessage.setMsgKey(msgKey);
+                        ropMessage.setMsgTag(msgTag);
+                    } catch (Exception e) {
+                        log.info("RoP parse batch message properties failed, err msg: {}.", e.getMessage());
+                    }
+                }
             }
 
             // Write messages to the queue buffer
             msgStoreItemMemory.flip();
             byte[] msgBytes = new byte[msgStoreItemMemory.limit()];
             msgStoreItemMemory.get(msgBytes);
+            ropMessage.setMsgBody(msgBytes);
 
-            result.add(msgBytes);
+            result.add(ropMessage);
         }
         return result;
     }
