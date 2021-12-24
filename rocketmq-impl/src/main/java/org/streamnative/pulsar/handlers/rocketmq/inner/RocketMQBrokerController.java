@@ -169,10 +169,12 @@ public class RocketMQBrokerController {
         setRopTraceLogDir(this.serverConfig.getRopTraceLogDir());
 
         this.getScheduledExecutorService().scheduleAtFixedRate(
-                () -> log.info("Show current cursor count: {}, addCursorCount: {}, delCursorCount: {}.",
-                        RopServerCnx.ADD_CURSOR_COUNT.get() - RopServerCnx.DEL_CURSOR_COUNT.get(),
-                        RopServerCnx.ADD_CURSOR_COUNT.get(), RopServerCnx.DEL_CURSOR_COUNT.get()), 30, 30,
-                TimeUnit.SECONDS);
+                () -> {
+                    log.info("Show current cursor count: {}, addCursorCount: {}, delCursorCount: {}.",
+                            RopServerCnx.ADD_CURSOR_COUNT.get() - RopServerCnx.DEL_CURSOR_COUNT.get(),
+                            RopServerCnx.ADD_CURSOR_COUNT.get(), RopServerCnx.DEL_CURSOR_COUNT.get());
+                    log.info("Show request count: {}", RopBrokerProxy.REQUEST_COUNT_TABLE);
+                }, 30, 30, TimeUnit.SECONDS);
     }
 
     private static void setRopTraceLogDir(String ropTraceLogDir) {
