@@ -545,9 +545,10 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                 }
 
                 if (sendResponse != null) {
-//                    if (sendResponse.getCode() != ResponseCode.SUCCESS) {
-//                        ownedBrokerCache.invalidate(partitionedTopicName);
-//                    }
+                    if (sendResponse.getCode() == ResponseCode.SYSTEM_ERROR && "NotFoundTopic"
+                            .equals(sendResponse.getRemark())) {
+                        ownedBrokerCache.invalidate(partitionedTopicName);
+                    }
                     sendResponse.setOpaque(opaque);
                     sendResponse.markResponseType();
                     ctx.writeAndFlush(sendResponse);
@@ -1195,16 +1196,13 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
 
     public String lookupPulsarTopicBroker(TopicName pulsarTopicName) {
         try {
-            String ropBrokerAddr = ownedBrokerCache.getIfPresent(pulsarTopicName);
-            if (Strings.isBlank(ropBrokerAddr)) {
+            return ownedBrokerCache.get(pulsarTopicName, () -> {
                 InetSocketAddress pulsarBrokerAddr = getPulsarClient().getLookup()
                         .getBroker(pulsarTopicName)
-                        .get()
+                        .get(5, TimeUnit.SECONDS)
                         .getLeft();
-                ropBrokerAddr = Joiner.on(COLO_CHAR).join(pulsarBrokerAddr.getHostName(), ROP_SERVICE_PORT);
-                ownedBrokerCache.put(pulsarTopicName, ropBrokerAddr);
-            }
-            return ropBrokerAddr;
+                return Joiner.on(COLO_CHAR).join(pulsarBrokerAddr.getHostName(), ROP_SERVICE_PORT);
+            });
         } catch (Exception e) {
             log.error("LookupTopics pulsar topic=[{}] error.", pulsarTopicName, e);
         }

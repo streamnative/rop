@@ -254,13 +254,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                     if (persistentTopic != null) {
                         offsetFuture = publishMessage(new RopMessage(msgId, msgKey, msgTag, body.get(0)),
                                 persistentTopic, pTopic, partitionId);
-
                     } else {
-                        AppendMessageResult temp = new AppendMessageResult(AppendMessageStatus.UNKNOWN_ERROR);
-                        org.apache.rocketmq.store.PutMessageResult putMessageResult =
-                                new org.apache.rocketmq.store.PutMessageResult(PutMessageStatus.UNKNOWN_ERROR, temp);
-                        callback.callback(putMessageResult);
-                        return;
+                        throw new RopPersistentTopicException("PersistentTopic isn't on current broker.");
                     }
                 }
             } else {
@@ -299,7 +294,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                     this.brokerController.getConsumerOffsetManager()
                             .removePulsarTopic(new ClientTopicName(messageInner.getTopic()), partitionId);
 
-                    PutMessageStatus status = PutMessageStatus.FLUSH_DISK_TIMEOUT;
+                    PutMessageStatus status = PutMessageStatus.UNKNOWN_ERROR;
                     AppendMessageResult temp = new AppendMessageResult(AppendMessageStatus.UNKNOWN_ERROR);
                     RopPutMessageResult ropPutMessageResult = new RopPutMessageResult(status, temp);
                     callback.callback(ropPutMessageResult);
@@ -329,6 +324,9 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                                 null, null);
             }, brokerController.getSendCallbackExecutor());
 
+        } catch (RopPersistentTopicException e) {
+            log.warn("PersistentTopic[{}] not found.", pTopic);
+            throw e;
         } catch (RopEncodeException e) {
             log.warn("PutMessage encode error.", e);
             throw e;
@@ -400,6 +398,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                         messageNum++;
                         totalBytesSize += ropMessage.getMsgBody().length;
                     }
+                } else {
+                    throw new RopPersistentTopicException("PersistentTopic isn't on current broker.");
                 }
             }
 
@@ -415,7 +415,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                     this.brokerController.getConsumerOffsetManager()
                             .removePulsarTopic(new ClientTopicName(batchMessage.getTopic()), realPartitionID);
 
-                    PutMessageStatus status = PutMessageStatus.FLUSH_DISK_TIMEOUT;
+                    PutMessageStatus status = PutMessageStatus.UNKNOWN_ERROR;
                     AppendMessageResult temp = new AppendMessageResult(AppendMessageStatus.UNKNOWN_ERROR);
                     org.apache.rocketmq.store.PutMessageResult result = new org.apache.rocketmq.store.PutMessageResult(
                             status, temp);
@@ -427,7 +427,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 for (CompletableFuture<PutMessageResult> f : batchMessageFutures) {
                     PutMessageResult putMessageResult = f.getNow(null);
                     if (putMessageResult == null) {
-                        PutMessageStatus status = PutMessageStatus.FLUSH_DISK_TIMEOUT;
+                        PutMessageStatus status = PutMessageStatus.UNKNOWN_ERROR;
                         AppendMessageResult temp = new AppendMessageResult(AppendMessageStatus.UNKNOWN_ERROR);
                         org.apache.rocketmq.store.PutMessageResult result =
                                 new org.apache.rocketmq.store.PutMessageResult(status, temp);
@@ -458,6 +458,9 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                                 null, null);
             }, brokerController.getSendCallbackExecutor());
 
+        } catch (RopPersistentTopicException e) {
+            log.warn("putMessages PersistentTopic[{}] not found.", pTopic);
+            throw e;
         } catch (RopEncodeException e) {
             log.warn("putMessages batchMessage encode error.", e);
             throw e;

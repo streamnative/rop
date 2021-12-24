@@ -60,6 +60,7 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.PutMessageCallback;
 import org.streamnative.pulsar.handlers.rocketmq.inner.PutMessageResult;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RopPutMessageResult;
+import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopPersistentTopicException;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientTopicName;
 import org.streamnative.pulsar.handlers.rocketmq.inner.trace.TraceContext;
 import org.streamnative.pulsar.handlers.rocketmq.inner.trace.TraceManager;
@@ -397,6 +398,11 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
                                 new SendMessageCallback(response, request, msgInner, responseHeader,
                                         sendMessageContext, ctx, queueIdInt, traceContext));
                 return null;
+            } catch (RopPersistentTopicException e) {
+                log.warn("[{}] sendMessage failed, for Owned Topic isn't on this broker.", requestHeader.getTopic());
+                response.setCode(ResponseCode.SYSTEM_ERROR);
+                response.setRemark("NotFoundTopic");
+                return response;
             } catch (Exception e) {
                 log.warn("[{}] sendMessage failed", requestHeader.getTopic(), e);
                 response.setCode(ResponseCode.SYSTEM_ERROR);

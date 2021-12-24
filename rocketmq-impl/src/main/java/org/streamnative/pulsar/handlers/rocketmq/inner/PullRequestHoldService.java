@@ -168,7 +168,7 @@ public class PullRequestHoldService extends ServiceThread {
                         try {
                             this.brokerController.getRopBrokerProxy().getPullMessageProcessor()
                                     .executeRequestWhenWakeup(request.getClientChannel(),
-                                            request.getRequestCommand());
+                                            request.getRequestCommand(), request.getPullFromThisOffset());
                         } catch (Throwable e) {
                             log.error("execute request when wakeup failed.", e);
                         }
@@ -179,7 +179,7 @@ public class PullRequestHoldService extends ServiceThread {
                         try {
                             this.brokerController.getRopBrokerProxy().getPullMessageProcessor()
                                     .executeRequestWhenWakeup(request.getClientChannel(),
-                                            request.getRequestCommand());
+                                            request.getRequestCommand(), request.getPullFromThisOffset());
                         } catch (Throwable e) {
                             log.error("execute request when wakeup failed.", e);
                         }
