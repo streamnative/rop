@@ -40,11 +40,13 @@ import static org.streamnative.pulsar.handlers.rocketmq.utils.PulsarUtil.autoExp
 import static org.streamnative.pulsar.handlers.rocketmq.utils.PulsarUtil.genBrokerGroupData;
 
 import com.alibaba.fastjson.JSON;
+import com.google.common.base.Function;
 import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Splitter;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
+import com.google.common.collect.Maps;
 import io.netty.channel.ChannelHandlerContext;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
@@ -54,6 +56,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
@@ -130,6 +133,7 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.zookeeper.RopZkUtils;
 @Slf4j
 public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseable {
 
+    public static final Map<Integer, AtomicLong> REQUEST_COUNT_TABLE = Maps.newConcurrentMap();
     private static final int ROP_SERVICE_PORT = 9876;
     public static final String INNER_CLIENT_NAME_PREFIX = "rop_broker_proxy_";
 
@@ -216,6 +220,10 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
     @Override
     public void processRequestCommand(ChannelHandlerContext ctx, RemotingCommand cmd) throws RemotingCommandException {
         try {
+            REQUEST_COUNT_TABLE
+                    .computeIfAbsent(cmd.getCode(), (Function<Integer, AtomicLong>) input -> new AtomicLong(0))
+                    .incrementAndGet();
+
             switch (cmd.getCode()) {
                 case PULL_MESSAGE:
                     PullMessageRequestHeader pullMsgHeader =
@@ -537,6 +545,9 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                 }
 
                 if (sendResponse != null) {
+//                    if (sendResponse.getCode() != ResponseCode.SUCCESS) {
+//                        ownedBrokerCache.invalidate(partitionedTopicName);
+//                    }
                     sendResponse.setOpaque(opaque);
                     sendResponse.markResponseType();
                     ctx.writeAndFlush(sendResponse);
@@ -553,25 +564,31 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                 }
 
                 if (traceContext != null) {
-                    if (sendResponse.getExtFields().containsKey(ROP_INNER_MESSAGE_ID)) {
-                        List<PutMessageResult> putMessageResults = JSON
-                                .parseArray(sendResponse.getExtFields().get(ROP_INNER_MESSAGE_ID),
-                                        PutMessageResult.class);
-                        for (PutMessageResult result : putMessageResults) {
-                            traceContext.setOffset(result.getOffset());
-                            traceContext.setMsgId(result.getMsgId());
-                            traceContext.setMsgKey(result.getMsgKey());
-                            traceContext.setTags(result.getMsgTag());
-                            traceContext.setOffsetMsgId(result.getOffsetMsgId());
-                            traceContext.setPulsarMsgId(result.getPulsarMsgId());
-                            traceContext.setPartitionId(pulsarPartitionId);
-                            traceContext.setPutStartTime(NumberUtils
-                                    .toLong(cmd.getExtFields().get(ROP_TRACE_START_TIME), System.currentTimeMillis()));
-                            traceContext.setEndTime(System.currentTimeMillis());
-                            traceContext.setDuration(System.currentTimeMillis() - traceContext.getPutStartTime());
-                            traceContext.setCode(sendResponse.getCode());
-                            TraceManager.get().tracePut(traceContext);
+                    try {
+                        if (sendResponse.getExtFields() != null && sendResponse.getExtFields()
+                                .containsKey(ROP_INNER_MESSAGE_ID)) {
+                            List<PutMessageResult> putMessageResults = JSON
+                                    .parseArray(sendResponse.getExtFields().get(ROP_INNER_MESSAGE_ID),
+                                            PutMessageResult.class);
+                            for (PutMessageResult result : putMessageResults) {
+                                traceContext.setOffset(result.getOffset());
+                                traceContext.setMsgId(result.getMsgId());
+                                traceContext.setMsgKey(result.getMsgKey());
+                                traceContext.setTags(result.getMsgTag());
+                                traceContext.setOffsetMsgId(result.getOffsetMsgId());
+                                traceContext.setPulsarMsgId(result.getPulsarMsgId());
+                                traceContext.setPartitionId(pulsarPartitionId);
+                                traceContext.setPutStartTime(NumberUtils
+                                        .toLong(cmd.getExtFields().get(ROP_TRACE_START_TIME),
+                                                System.currentTimeMillis()));
+                                traceContext.setEndTime(System.currentTimeMillis());
+                                traceContext.setDuration(System.currentTimeMillis() - traceContext.getPutStartTime());
+                                traceContext.setCode(sendResponse.getCode());
+                                TraceManager.get().tracePut(traceContext);
+                            }
                         }
+                    } catch (Exception e) {
+                        log.info("RoP trace put on proxy failed", e);
                     }
                 }
             });
@@ -607,6 +624,9 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
             brokerNetworkClients.invokeAsync(address, cmd, timeout, (responseFuture) -> {
                 RemotingCommand getMaxOffsetResponse = responseFuture.getResponseCommand();
                 if (getMaxOffsetResponse != null) {
+//                    if (getMaxOffsetResponse.getCode() != ResponseCode.SUCCESS) {
+//                        ownedBrokerCache.invalidate(partitionedTopicName);
+//                    }
                     getMaxOffsetResponse.setOpaque(opaque);
                     getMaxOffsetResponse.markResponseType();
                     ctx.writeAndFlush(getMaxOffsetResponse);
@@ -645,6 +665,9 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
             brokerNetworkClients.invokeAsync(address, cmd, timeout, (responseFuture) -> {
                 RemotingCommand getMinOffsetResponse = responseFuture.getResponseCommand();
                 if (getMinOffsetResponse != null) {
+//                    if (getMinOffsetResponse.getCode() != ResponseCode.SUCCESS) {
+//                        ownedBrokerCache.invalidate(partitionedTopicName);
+//                    }
                     getMinOffsetResponse.setOpaque(opaque);
                     getMinOffsetResponse.markResponseType();
                     ctx.writeAndFlush(getMinOffsetResponse);
@@ -682,6 +705,9 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
             brokerNetworkClients.invokeAsync(address, cmd, timeout, (responseFuture) -> {
                 RemotingCommand searchOffsetByTimestampResponse = responseFuture.getResponseCommand();
                 if (searchOffsetByTimestampResponse != null) {
+//                    if (searchOffsetByTimestampResponse.getCode() != ResponseCode.SUCCESS) {
+//                        ownedBrokerCache.invalidate(partitionedTopicName);
+//                    }
                     searchOffsetByTimestampResponse.setOpaque(opaque);
                     searchOffsetByTimestampResponse.markResponseType();
                     ctx.writeAndFlush(searchOffsetByTimestampResponse);

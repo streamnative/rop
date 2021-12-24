@@ -89,7 +89,7 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
             category = CATEGORY_ROCKETMQ,
             doc = "Server worker threads number.\n"
     )
-    private int serverWorkerThreads = 16;
+    private int serverWorkerThreads = 16 + Runtime.getRuntime().availableProcessors();
 
     @FieldContext(
             category = CATEGORY_ROCKETMQ,

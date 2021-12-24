@@ -35,6 +35,7 @@ import org.apache.rocketmq.common.protocol.heartbeat.SubscriptionData;
  */
 @Slf4j
 public class ConsumerGroupInfo {
+    private static final long SUBSCRIPTION_DATA_TIMEOUT_MS = 60 * 1000;
 
     //rocketmq groupName
     private final String groupName;
@@ -184,7 +185,9 @@ public class ConsumerGroupInfo {
                         next.getValue().toString()
                 );
 
-                it.remove();
+                if (next.getValue().getSubVersion() < System.currentTimeMillis() - SUBSCRIPTION_DATA_TIMEOUT_MS) {
+                    it.remove();
+                }
                 //updated = true;
             }
         }
