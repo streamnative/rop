@@ -465,7 +465,8 @@ public class PullMessageProcessor implements NettyRequestProcessor {
                         }
 
                         String topic = requestHeader.getTopic();
-                        long offset = requestHeader.getQueueOffset();
+                        long offset = Math
+                                .max(ropGetMessageResult.getNextBeginOffset(), requestHeader.getQueueOffset());
 //                        int queueId = requestHeader.getQueueId();
                         int partitionId = CommonUtils.getPulsarPartitionIdByRequest(request);
                         PullRequest pullRequest = new PullRequest(request, channel, pollingTimeMills,
@@ -552,7 +553,7 @@ public class PullMessageProcessor implements NettyRequestProcessor {
     }
 
     public void executeRequestWhenWakeup(final Channel channel,
-            final RemotingCommand request) throws RemotingCommandException {
+            final RemotingCommand request, final long queueOffset) throws RemotingCommandException {
         Runnable run = new Runnable() {
             @Override
             public void run() {
@@ -561,6 +562,7 @@ public class PullMessageProcessor implements NettyRequestProcessor {
                     final PullMessageRequestHeader requestHeader =
                             (PullMessageRequestHeader) request
                                     .decodeCommandCustomHeader(PullMessageRequestHeader.class);
+                    requestHeader.setQueueOffset(queueOffset);
                     final RemotingCommand response = PullMessageProcessor.this
                             .processRequest(channel, requestHeader, request, false);
 
