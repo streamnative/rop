@@ -237,4 +237,19 @@ public class RopZookeeperCacheService implements AutoCloseable {
             log.warn("RopZookeeperCacheService deleteGroupConfig for group[{}] error.", group, e);
         }
     }
+
+    public boolean isGroupExist(String pulsarGroup) {
+        return isPathExist(String.format(RopZkUtils.GROUP_BASE_PATH_MATCH, pulsarGroup));
+    }
+
+    private boolean isPathExist(String path) {
+        try {
+            return zookeeperCache.exists(path);
+        } catch (KeeperException e) {
+            log.warn("RoP isPathExist execute failed.", e);
+        } catch (InterruptedException ignore) {
+
+        }
+        return false;
+    }
 }

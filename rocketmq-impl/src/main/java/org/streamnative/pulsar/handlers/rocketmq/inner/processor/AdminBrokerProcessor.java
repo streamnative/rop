@@ -510,10 +510,16 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
     private RemotingCommand updateAndCreateSubscriptionGroup(ChannelHandlerContext ctx, RemotingCommand request)
             throws RemotingCommandException {
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
-
-        log.info("updateAndCreateSubscriptionGroup called by {}", RemotingHelper.parseChannelRemoteAddr(ctx.channel()));
-
         SubscriptionGroupConfig config = RemotingSerializable.decode(request.getBody(), SubscriptionGroupConfig.class);
+
+        if (Strings.isBlank(config.getGroupName()) ||
+                !brokerController.getRopNameCheckMatch().matcher(config.getGroupName()).matches()) {
+            log.info("RoP group [{}] name illegal", config.getGroupName());
+            response.setCode(ResponseCode.SYSTEM_ERROR);
+            response.setRemark(String.format("group [%s] name illegal", config.getGroupName()));
+            return response;
+        }
+
         this.brokerController.getSubscriptionGroupManager().updateSubscriptionGroupConfig(config);
 
         response.setCode(ResponseCode.SUCCESS);
@@ -953,30 +959,16 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
 
         Set<String> groupInOffset = this.brokerController.getConsumerOffsetManager().whichGroupByTopic(rmqTopicName);
 
-        // If the group in offset manager is not belong to the topic, exclude this group.
-        PulsarAdmin pulsarAdmin = null;
-        try {
-            pulsarAdmin = this.brokerController.getBrokerService().pulsar().getAdminClient();
-        } catch (PulsarServerException e) {
-            log.warn("queryTopicConsumeByWho get pulsarAdmin failed", e);
-        }
-
-        if (pulsarAdmin != null) {
-            String pulsarTopicName = new RocketMQTopic(rmqTopicName).getPulsarFullName();
-            try {
-                PartitionedTopicStats partitionedTopicStats =
-                        pulsarAdmin.topics().getPartitionedStats(pulsarTopicName, false);
-                groupInOffset.removeIf(g -> !partitionedTopicStats.getSubscriptions()
-                        .containsKey(new ClientGroupName(g).getPulsarGroupName()));
-            } catch (PulsarAdminException e) {
-                log.warn("queryTopicConsumeByWho getPartitionedStats failed", e);
-            }
-        }
-
         // Merge group in offset manager and consumer manager into group table.
         if (groupInOffset != null && !groupInOffset.isEmpty()) {
             groups.addAll(groupInOffset);
         }
+
+        groups.removeIf(rmqGroup -> {
+            ClientGroupName clientGroupName = new ClientGroupName(rmqGroup);
+            return !brokerController.getRopBrokerProxy().getZkService()
+                    .isGroupExist(clientGroupName.getPulsarGroupName());
+        });
 
         GroupList groupList = new GroupList();
         groupList.setGroupList(groups);

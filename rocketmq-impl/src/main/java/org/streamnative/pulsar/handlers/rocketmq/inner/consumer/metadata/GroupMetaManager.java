@@ -374,7 +374,7 @@ public class GroupMetaManager {
             GroupOffsetKey groupOffsetKey = entry.getKey();
             GroupOffsetValue groupOffsetValue = entry.getValue();
             String pulsarGroup = groupOffsetKey.getGroupName();
-            if (groupOffsetValue.isValid() && !isSystemGroup(pulsarGroup)) {
+            if (groupOffsetValue.isValid() && !isSystemGroup(pulsarGroup) && isGroupExist(pulsarGroup)) {
                 String pulsarTopicName = groupOffsetKey.getTopicName();
                 int pulsarPartitionId = groupOffsetKey.getPulsarPartitionId();
                 long offset = groupOffsetValue.getOffset();
@@ -535,6 +535,10 @@ public class GroupMetaManager {
         return groupName.startsWith(brokerController.getServerConfig().getRocketmqMetadataTenant()
                 + SLASH_CHAR
                 + brokerController.getServerConfig().getRocketmqMetadataNamespace());
+    }
+
+    public boolean isGroupExist(String pulsarGroup) {
+        return this.brokerController.getRopBrokerProxy().getZkService().isGroupExist(pulsarGroup);
     }
 
     private boolean isPulsarTopicCached(ClientTopicName topicName, int pulsarPartitionId) {

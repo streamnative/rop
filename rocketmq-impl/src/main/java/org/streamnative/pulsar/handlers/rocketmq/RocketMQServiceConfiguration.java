@@ -31,7 +31,7 @@ import org.apache.rocketmq.common.constant.PermName;
 public class RocketMQServiceConfiguration extends ServiceConfiguration {
 
     // offset configuration
-    private static final int OffsetsRetentionMinutes = 15 * 24 * 60;
+    private static final int OffsetsRetentionMinutes = 7 * 24 * 60;
     public static final int DefaultOffsetsTopicNumPartitions = 10;
     private static final int OffsetsMessageTTL = 3 * 24 * 3600;
     public static final long DefaultOffsetsRetentionCheckIntervalMs = 600000L;
@@ -498,4 +498,10 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
             doc = "RoP trace log dir.\n"
     )
     private String ropTraceLogDir = "/usr/local/services/tdmq_broker-1.0/logs";
+
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
+            doc = "RoP name check enable.\n"
+    )
+    private boolean ropNameCheckEnable = true;
 }

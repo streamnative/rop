@@ -95,6 +95,14 @@ public class SubscriptionGroupManager implements Closeable {
     public SubscriptionGroupConfig findSubscriptionGroupConfig(String ropGroup) {
         try {
             //ropGroup: tenant|ns%groupName
+            if (!this.brokerController.getRopNameCheckMatch().matcher(ropGroup).matches()) {
+                log.debug("RoP group [{}] name illegal", ropGroup);
+//                SubscriptionGroupConfig subscriptionGroupConfig = new SubscriptionGroupConfig();
+//                subscriptionGroupConfig.setGroupName(ropGroup);
+//                return subscriptionGroupConfig;
+                return null;
+            }
+
             RopGroupContent groupConfigContent = zkServiceRef.get().getGroupConfig(ropGroup);
             if (groupConfigContent != null) {
                 return groupConfigContent.getConfig();
@@ -121,7 +129,7 @@ public class SubscriptionGroupManager implements Closeable {
         try {
             Set<String> tenants = zkServiceRef.get().getZookeeperCache().getChildren(RopZkUtils.GROUP_BASE_PATH);
             for (String tenant : tenants) {
-                if (tenant.startsWith("rocketmq-")) {
+                if (!brokerController.getServerConfig().isRopNameCheckEnable() || tenant.startsWith("rocketmq-")) {
                     String tenantNodePath = String.format(RopZkUtils.GROUP_BASE_PATH_MATCH, tenant);
                     Set<String> namespaces = zkServiceRef.get().getZookeeperCache().getChildren(tenantNodePath);
                     for (String namespace : namespaces) {
@@ -131,10 +139,10 @@ public class SubscriptionGroupManager implements Closeable {
                         for (String group : groups) {
                             String fullGroupName = tenant + "|" + namespace + "%" + group;
                             ClientGroupName clientGroupName = new ClientGroupName(fullGroupName);
-                            try {
-                                result.put(clientGroupName, findSubscriptionGroupConfig(fullGroupName));
-                            } catch (Exception e) {
-                                log.info("RoP getSubscriptionGroupTable failed for group [{}]", fullGroupName);
+                            SubscriptionGroupConfig subscriptionGroupConfig = findSubscriptionGroupConfigFromZk(
+                                    fullGroupName);
+                            if (subscriptionGroupConfig != null) {
+                                result.put(clientGroupName, subscriptionGroupConfig);
                             }
                         }
                     }
@@ -148,6 +156,15 @@ public class SubscriptionGroupManager implements Closeable {
             log.warn("RoP getSubscriptionGroupTable failed.", e);
             throw new RemotingCommandException(e.getMessage(), e);
         }
+    }
+
+    private SubscriptionGroupConfig findSubscriptionGroupConfigFromZk(String ropGroup) {
+        //ropGroup: tenant|ns%groupName
+        RopGroupContent groupConfigContent = zkServiceRef.get().getGroupConfig(ropGroup);
+        if (groupConfigContent != null) {
+            return groupConfigContent.getConfig();
+        }
+        return null;
     }
 
     public void deleteSubscriptionGroupConfig(String rmqGroup) {

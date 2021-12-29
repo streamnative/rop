@@ -24,6 +24,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.BooleanUtils;
@@ -129,6 +130,8 @@ public class RocketMQBrokerController {
     private volatile boolean ropTraceEnable;
     private static String ropTraceLogDir;
 
+    private final Pattern ropNameCheckMatch;
+
     public RocketMQBrokerController(final RocketMQServiceConfiguration serverConfig) throws PulsarServerException {
         this.serverConfig = serverConfig;
         this.groupMetaManager = new GroupMetaManager(this);
@@ -166,6 +169,13 @@ public class RocketMQBrokerController {
         this.delayedMessageService = new ScheduleMessageService(this, serverConfig);
         this.ropBrokerProxy = new RopBrokerProxy(this.serverConfig, this, this.clientHousekeepingService);
         this.ropTraceEnable = this.serverConfig.isRopTraceTopicEnable();
+
+        if (this.serverConfig.isRopNameCheckEnable()) {
+            this.ropNameCheckMatch = Pattern.compile("(rocketmq-[^|/%]+?)\\|([^|/%]+?)%([^|/%]+?)");
+        } else {
+            this.ropNameCheckMatch = Pattern.compile("([^|/%]+?)\\|([^|/%]+?)%([^|/%]+?)");
+        }
+
         setRopTraceLogDir(this.serverConfig.getRopTraceLogDir());
 
         this.getScheduledExecutorService().scheduleAtFixedRate(
