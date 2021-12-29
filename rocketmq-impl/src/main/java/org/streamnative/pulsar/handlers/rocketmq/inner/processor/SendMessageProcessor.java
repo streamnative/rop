@@ -20,6 +20,7 @@ import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_TR
 
 import com.alibaba.fastjson.JSON;
 import io.netty.channel.ChannelHandlerContext;
+import java.net.InetSocketAddress;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -367,6 +368,15 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         MessageAccessor.setProperties(msgInner, MessageDecoder.string2messageProperties(requestHeader.getProperties()));
         msgInner.setBornTimestamp(requestHeader.getBornTimestamp());
         msgInner.setBornHost(ctx.channel().remoteAddress());
+        if (request.getExtFields().containsKey(ROP_INNER_CLIENT_ADDRESS)) {
+            try {
+                String[] arr = request.getExtFields().get(ROP_INNER_CLIENT_ADDRESS).split(":");
+                msgInner.setBornHost(new InetSocketAddress(arr[0], Integer.parseInt(arr[1])));
+            } catch (Exception e) {
+                log.info("RoP parser inner client address [{}] failed.",
+                        request.getExtFields().get(ROP_INNER_CLIENT_ADDRESS), e);
+            }
+        }
         msgInner.setStoreHost(ctx.channel().localAddress());
         msgInner.setReconsumeTimes(requestHeader.getReconsumeTimes() == null ? 0 : requestHeader.getReconsumeTimes());
         String clusterName = this.brokerController.getServerConfig().getClusterName();
@@ -561,6 +571,15 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         messageExtBatch.setBody(request.getBody());
         messageExtBatch.setBornTimestamp(requestHeader.getBornTimestamp());
         messageExtBatch.setBornHost(ctx.channel().remoteAddress());
+        if (request.getExtFields().containsKey(ROP_INNER_CLIENT_ADDRESS)) {
+            try {
+                String[] arr = request.getExtFields().get(ROP_INNER_CLIENT_ADDRESS).split(":");
+                messageExtBatch.setBornHost(new InetSocketAddress(arr[0], Integer.parseInt(arr[1])));
+            } catch (Exception e) {
+                log.info("RoP parser inner client address [{}] failed.",
+                        request.getExtFields().get(ROP_INNER_CLIENT_ADDRESS), e);
+            }
+        }
         messageExtBatch.setStoreHost(ctx.channel().localAddress());
         messageExtBatch
                 .setReconsumeTimes(requestHeader.getReconsumeTimes() == null ? 0 : requestHeader.getReconsumeTimes());
