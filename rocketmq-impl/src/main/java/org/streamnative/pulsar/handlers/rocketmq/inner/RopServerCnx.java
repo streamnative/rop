@@ -628,7 +628,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         RocketMQTopic rmqTopic = new RocketMQTopic(topicName);
         if (!this.brokerController.getTopicConfigManager()
                 .isPartitionTopicOwner(rmqTopic.getPulsarTopicName(), pulsarPartitionId)) {
-            getResult.setStatus(GetMessageStatus.NO_MATCHED_MESSAGE);
+            log.info("RoP group [{}] topic [{}] getMessage on incorrect owner.", consumerGroupName, topicName);
+            getResult.setStatus(GetMessageStatus.NO_MATCHED_LOGIC_QUEUE);
             // set suspend flag
             requestHeader.setSysFlag(requestHeader.getSysFlag() | 2);
             return getResult;
@@ -637,6 +638,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         long queueOffset = requestHeader.getQueueOffset();
         int maxMsgNums = requestHeader.getMaxMsgNums();
         if (maxMsgNums < 1) {
+            log.info("RoP group [{}] topic [{}] getMessage maxMsgNums < 1.", consumerGroupName, topicName);
             getResult.setStatus(GetMessageStatus.NO_MATCHED_MESSAGE);
             getResult.setNextBeginOffset(queueOffset);
             return getResult;
