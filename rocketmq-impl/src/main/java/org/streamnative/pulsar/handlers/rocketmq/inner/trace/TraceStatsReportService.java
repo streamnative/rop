@@ -57,7 +57,7 @@ public class TraceStatsReportService implements Runnable {
     @Override
     public void run() {
         try {
-            if (logDir == null && Strings.isNullOrEmpty(RocketMQBrokerController.ropTraceLogDir())) {
+            if (logDir == null && !Strings.isNullOrEmpty(RocketMQBrokerController.ropTraceLogDir())) {
                 logDir = new File(RocketMQBrokerController.ropTraceLogDir());
             }
             if (logDir != null) {
