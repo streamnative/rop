@@ -628,7 +628,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
         RocketMQTopic rmqTopic = new RocketMQTopic(topicName);
         if (!this.brokerController.getTopicConfigManager()
                 .isPartitionTopicOwner(rmqTopic.getPulsarTopicName(), pulsarPartitionId)) {
-            getResult.setStatus(GetMessageStatus.NO_MATCHED_LOGIC_QUEUE);
+            getResult.setStatus(GetMessageStatus.NO_MATCHED_MESSAGE);
             // set suspend flag
             requestHeader.setSysFlag(requestHeader.getSysFlag() | 2);
             return getResult;
