@@ -338,7 +338,7 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                     rmqTopic = new ClientTopicName(topic);
                     pulsarTopicName = rmqTopic.toPulsarTopicName();
                     isOwnedBroker = checkTopicOwnerBroker(cmd, pulsarTopicName, queueId);
-                    if (isOwnedBroker && cmd.getExtFields().containsKey(ROP_INNER_REMOTE_CLIENT_TAG)) {
+                    if (isOwnedBroker) {
                         log.trace("process owned broker send request[{}].", cmd);
                         super.processRequestCommand(ctx, cmd);
                     } else {
