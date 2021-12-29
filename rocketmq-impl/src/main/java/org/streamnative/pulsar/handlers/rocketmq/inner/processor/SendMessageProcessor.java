@@ -571,6 +571,15 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         messageExtBatch.setBody(request.getBody());
         messageExtBatch.setBornTimestamp(requestHeader.getBornTimestamp());
         messageExtBatch.setBornHost(ctx.channel().remoteAddress());
+        if (request.getExtFields().containsKey(ROP_INNER_CLIENT_ADDRESS)) {
+            try {
+                String[] arr = request.getExtFields().get(ROP_INNER_CLIENT_ADDRESS).split(":");
+                messageExtBatch.setBornHost(new InetSocketAddress(arr[0], Integer.parseInt(arr[1])));
+            } catch (Exception e) {
+                log.info("RoP parser inner client address [{}] failed.",
+                        request.getExtFields().get(ROP_INNER_CLIENT_ADDRESS), e);
+            }
+        }
         messageExtBatch.setStoreHost(ctx.channel().localAddress());
         messageExtBatch
                 .setReconsumeTimes(requestHeader.getReconsumeTimes() == null ? 0 : requestHeader.getReconsumeTimes());
