@@ -14,6 +14,9 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner.exception;
 
+/**
+ * Rop Runtime exception.
+ */
 public class RopRuntimeException extends RuntimeException {
 
     public RopRuntimeException() {

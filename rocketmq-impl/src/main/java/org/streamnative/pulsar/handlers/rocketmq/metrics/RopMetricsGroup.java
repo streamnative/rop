@@ -28,6 +28,9 @@ import java.util.stream.Collectors;
 import org.apache.logging.log4j.util.Strings;
 import org.streamnative.pulsar.handlers.rocketmq.utils.Sanitizer;
 
+/**
+ * Rop Metrics group class.
+ */
 public class RopMetricsGroup {
 
     public MetricName metricName(String name, Map<String, String> tags) {

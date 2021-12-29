@@ -25,7 +25,6 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopRuntimeExcep
 /**
  * Utility class for sanitizing/desanitizing/quoting values used in JMX metric names
  * or as ZooKeeper node name.
- * <p>
  * User principals and client-ids are URL-encoded using ({@link #sanitize(String)}
  * for use as ZooKeeper node names. User principals are URL-encoded in all metric
  * names as well. All other metric tags including client-id are quoted if they

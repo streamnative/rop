@@ -20,6 +20,9 @@ import com.yammer.metrics.core.MetricsRegistry;
 import com.yammer.metrics.reporting.JmxReporter;
 import java.util.function.Predicate;
 
+/**
+ * Rop JMX reporter.
+ */
 public class FilteringJmxReporter extends JmxReporter {
 
     private volatile Predicate<MetricName> metricPredicate;

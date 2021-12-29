@@ -21,6 +21,9 @@ import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopRuntimeException;
 
+/**
+ * Rop Yammer Metrics.
+ */
 public class RopYammerMetrics {
 
     public static final String METRICS_CONFIG_PREFIX = "metrics.jmx.";
@@ -31,9 +34,6 @@ public class RopYammerMetrics {
 
     public static final RopYammerMetrics INSTANCE = new RopYammerMetrics();
 
-    /**
-     * convenience method to replace {@link com.yammer.metrics.Metrics#defaultRegistry()}
-     */
     public static MetricsRegistry defaultRegistry() {
         return INSTANCE.metricsRegistry;
     }
