@@ -97,10 +97,10 @@ public class SubscriptionGroupManager implements Closeable {
             //ropGroup: tenant|ns%groupName
             if (!this.brokerController.getRopNameCheckMatch().matcher(ropGroup).matches()) {
                 log.debug("RoP group [{}] name illegal", ropGroup);
-//                SubscriptionGroupConfig subscriptionGroupConfig = new SubscriptionGroupConfig();
-//                subscriptionGroupConfig.setGroupName(ropGroup);
-//                return subscriptionGroupConfig;
-                return null;
+                SubscriptionGroupConfig subscriptionGroupConfig = new SubscriptionGroupConfig();
+                subscriptionGroupConfig.setGroupName(ropGroup);
+                return subscriptionGroupConfig;
+//                return null;
             }
 
             RopGroupContent groupConfigContent = zkServiceRef.get().getGroupConfig(ropGroup);
