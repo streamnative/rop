@@ -512,8 +512,8 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
         SubscriptionGroupConfig config = RemotingSerializable.decode(request.getBody(), SubscriptionGroupConfig.class);
 
-        if (Strings.isBlank(config.getGroupName()) ||
-                !brokerController.getRopNameCheckMatch().matcher(config.getGroupName()).matches()) {
+        if (Strings.isBlank(config.getGroupName())
+                || !brokerController.getRopNameCheckMatch().matcher(config.getGroupName()).matches()) {
             log.info("RoP group [{}] name illegal", config.getGroupName());
             response.setCode(ResponseCode.SYSTEM_ERROR);
             response.setRemark(String.format("group [%s] name illegal", config.getGroupName()));
