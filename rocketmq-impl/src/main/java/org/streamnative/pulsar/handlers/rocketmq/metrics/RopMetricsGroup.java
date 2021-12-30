@@ -14,6 +14,7 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.metrics;
 
+import com.yammer.metrics.core.Counter;
 import com.yammer.metrics.core.Gauge;
 import com.yammer.metrics.core.Histogram;
 import com.yammer.metrics.core.Meter;
@@ -63,6 +64,10 @@ public abstract class RopMetricsGroup implements PrometheusRawMetricsProvider {
 
     public <T> Gauge<T> newGauge(String name, Gauge<T> metric, Map<String, String> tags) {
         return RopYammerMetrics.defaultRegistry().newGauge(metricName(name, tags), metric);
+    }
+
+    public Counter newCounter(String name, Map<String, String> tags) {
+        return RopYammerMetrics.defaultRegistry().newCounter(metricName(name, tags));
     }
 
     public Meter newMeter(String name, String eventType, TimeUnit timeUnit, Map<String, String> tags) {

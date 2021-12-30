@@ -16,6 +16,8 @@ package org.streamnative.pulsar.handlers.rocketmq.inner.consumer;
 
 import static java.util.stream.Collectors.toMap;
 
+import com.google.common.collect.Maps;
+import com.yammer.metrics.core.Gauge;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -31,9 +33,13 @@ import org.apache.bookkeeper.mledger.ManagedLedgerException;
 import org.apache.bookkeeper.mledger.Position;
 import org.apache.bookkeeper.mledger.impl.ManagedLedgerImpl;
 import org.apache.bookkeeper.mledger.impl.PositionImpl;
+import org.apache.pulsar.broker.service.BrokerService;
+import org.apache.pulsar.broker.service.Topic;
 import org.apache.pulsar.broker.service.persistent.PersistentTopic;
 import org.apache.pulsar.client.impl.MessageImpl;
 import org.apache.pulsar.common.naming.TopicName;
+import org.apache.pulsar.common.util.SimpleTextOutputStream;
+import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.UtilAll;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.metadata.GroupMetaManager;
@@ -43,6 +49,7 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopPersistentTo
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupAndTopicName;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupName;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientTopicName;
+import org.streamnative.pulsar.handlers.rocketmq.metrics.RopMetricsGroup;
 import org.streamnative.pulsar.handlers.rocketmq.utils.MessageIdUtils;
 import org.streamnative.pulsar.handlers.rocketmq.utils.OffsetFinder;
 
@@ -50,7 +57,7 @@ import org.streamnative.pulsar.handlers.rocketmq.utils.OffsetFinder;
  * Consumer offset manager.
  */
 @Slf4j
-public class ConsumerOffsetManager {
+public class ConsumerOffsetManager extends RopMetricsGroup {
 
     private final GroupMetaManager groupMetaManager;
     private final RocketMQBrokerController brokerController;
@@ -336,5 +343,92 @@ public class ConsumerOffsetManager {
     public PersistentTopic getPulsarPersistentTopic(ClientTopicName topicName, int pulsarPartitionId)
             throws RopPersistentTopicException {
         return groupMetaManager.getPulsarPersistentTopic(topicName, pulsarPartitionId);
+    }
+
+    // TODO: hanmz 2021/12/30 统计积压指标
+    private void gatherBacklogMetrics() {
+        this.brokerController.getBrokerService().getTopics().forEach((originPulsarTopicName, future) -> {
+            try {
+                Optional<Topic> optionalTopic = BrokerService.extractTopic(future);
+                if (optionalTopic.isPresent()) {
+                    Topic topic = optionalTopic.get();
+                    if (!(topic instanceof PersistentTopic)) {
+                        return;
+                    }
+
+                    TopicName topicName = TopicName.get(originPulsarTopicName);
+                    int pulsarPartitionId = topicName.getPartitionIndex();
+                    if (pulsarPartitionId < 0) {
+                        return;
+                    }
+
+                    topicName = TopicName.get(topicName.getPartitionedTopicName());
+                    String localName = topicName.getLocalName();
+
+                    // 获取到rop主题名
+                    String ropTopicName;
+                    if (localName.startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)) {
+                        ropTopicName = MixAll.RETRY_GROUP_TOPIC_PREFIX + topicName.getTenant() + "|" + topicName
+                                .getNamespaceObject().getLocalName() + "%" + topicName.getLocalName().substring(7);
+                    } else if (localName.startsWith(MixAll.DLQ_GROUP_TOPIC_PREFIX)) {
+                        ropTopicName =
+                                MixAll.DLQ_GROUP_TOPIC_PREFIX + topicName.getTenant() + "|" + topicName
+                                        .getNamespaceObject()
+                                        .getLocalName() + "%" + topicName.getLocalName().substring(5);
+                    } else {
+                        ropTopicName = topicName.getTenant() + "|" + topicName.getNamespaceObject().getLocalName() + "%"
+                                + topicName.getLocalName();
+                    }
+
+                    // 移除不存在的消费组
+                    Set<String> ropGroups = whichGroupByTopic(ropTopicName);
+                    ropGroups.removeIf(rmqGroup -> {
+                        ClientGroupName clientGroupName = new ClientGroupName(rmqGroup);
+                        return !brokerController.getRopBrokerProxy().getZkService()
+                                .isGroupExist(clientGroupName.getPulsarGroupName());
+                    });
+
+                    PersistentTopic persistentTopic = (PersistentTopic) topic;
+
+                    // 查询每个分区主题的最大offset
+                    long brokerOffset = MessageIdUtils.getLastMessageIndex(persistentTopic.getManagedLedger());
+
+                    for (String rmqGroupName : ropGroups) {
+                        // 查询每个消费组的提交offset
+                        long consumerOffset = queryOffsetByPartitionId(rmqGroupName, ropTopicName, pulsarPartitionId);
+
+                        // 计算每个分区的积压数量
+                        final long msgBacklog = consumerOffset <= 0 ? Math.max(0, brokerOffset)
+                                : Math.max(0, brokerOffset - consumerOffset + 1);
+
+                        // 记录到对应分区的 rop_msg_backlog gauge下
+                        ClientGroupAndTopicName clientGroupAndTopicName = new ClientGroupAndTopicName(rmqGroupName,
+                                ropTopicName);
+                        String pulsarGroupName = clientGroupAndTopicName.getClientGroupName().getPulsarGroupName();
+                        String pulsarTopicName = clientGroupAndTopicName.getClientTopicName().getPulsarTopicName();
+
+                        Map<String, String> tags = Maps.newHashMap();
+                        tags.put("topic", pulsarTopicName);
+                        tags.put("partitioned", String.valueOf(pulsarPartitionId));
+                        tags.put("group", pulsarGroupName);
+
+                        super.newGauge("rop_msg_backlog", new Gauge<Long>() {
+                            @Override
+                            public Long value() {
+                                return msgBacklog;
+                            }
+                        }, tags);
+                    }
+
+                }
+            } catch (Exception e) {
+                log.warn("RoP [{}] gatherBacklogMetrics failed.", originPulsarTopicName, e);
+            }
+        });
+    }
+
+    @Override
+    public void generate(SimpleTextOutputStream stream) {
+
     }
 }
