@@ -53,12 +53,13 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RopClientChannelCnx;
 import org.streamnative.pulsar.handlers.rocketmq.inner.namesvr.TopicConfigManager;
 import org.streamnative.pulsar.handlers.rocketmq.inner.pulsar.PulsarMessageStore;
+import org.streamnative.pulsar.handlers.rocketmq.metrics.RopMetricsGroup;
 
 /**
  * Abstract send message processor.
  */
 @Slf4j
-public abstract class AbstractSendMessageProcessor implements NettyRequestProcessor {
+public abstract class AbstractSendMessageProcessor extends RopMetricsGroup implements NettyRequestProcessor {
 
     protected static final int DLQ_NUMS_PER_GROUP = 1;
     protected final RocketMQBrokerController brokerController;

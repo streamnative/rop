@@ -26,6 +26,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.math.NumberUtils;
+import org.apache.pulsar.common.util.SimpleTextOutputStream;
 import org.apache.rocketmq.broker.mqtrace.ConsumeMessageContext;
 import org.apache.rocketmq.broker.mqtrace.ConsumeMessageHook;
 import org.apache.rocketmq.broker.mqtrace.SendMessageContext;
@@ -75,6 +76,10 @@ import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 public class SendMessageProcessor extends AbstractSendMessageProcessor implements NettyRequestProcessor {
 
     private List<ConsumeMessageHook> consumeMessageHookList;
+/*    private final Meter sendSingleMeter = this.newMeter("rop.send.single", "", TimeUnit.SECONDS, null);
+    private final Meter sendBatchMeter = this.newMeter("rop.send.batch", "", TimeUnit.SECONDS, null);
+    private final Meter sendSingleFailureMeter = this.newMeter("rop.send.single.failure", "", TimeUnit.SECONDS, null);
+    private final Meter sendBatchFailureMeter = this.newMeter("rop.send.batch.failure", "", TimeUnit.SECONDS, null);*/
 
     public SendMessageProcessor(final RocketMQBrokerController brokerController) {
         super(brokerController);
@@ -641,6 +646,11 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             }
             TraceManager.get().traceQlq(traceContext);
         }
+    }
+
+    @Override
+    public void generate(SimpleTextOutputStream stream) {
+
     }
 
     /**
