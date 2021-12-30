@@ -19,12 +19,10 @@ import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_IN
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_TRACE_START_TIME;
 
 import com.alibaba.fastjson.JSON;
-import com.yammer.metrics.core.Meter;
 import io.netty.channel.ChannelHandlerContext;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.math.NumberUtils;
 import org.apache.pulsar.common.util.SimpleTextOutputStream;
