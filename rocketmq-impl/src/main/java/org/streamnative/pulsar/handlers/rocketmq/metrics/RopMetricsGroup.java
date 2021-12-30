@@ -26,12 +26,13 @@ import java.util.Map.Entry;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.util.Strings;
+import org.apache.pulsar.broker.stats.prometheus.PrometheusRawMetricsProvider;
 import org.streamnative.pulsar.handlers.rocketmq.utils.Sanitizer;
 
 /**
  * Rop Metrics group class.
  */
-public class RopMetricsGroup {
+public abstract class RopMetricsGroup implements PrometheusRawMetricsProvider {
 
     public MetricName metricName(String name, Map<String, String> tags) {
         Class<?> klass = this.getClass();
@@ -39,7 +40,6 @@ public class RopMetricsGroup {
         String simpleName = klass.getSimpleName().replaceAll("\\$$", "");
         return explicitMetricName(pkg, simpleName, name, tags);
     }
-
 
     protected MetricName explicitMetricName(String group, String typeName, String name, Map<String, String> tags) {
         StringBuilder nameBuilder = new StringBuilder();
@@ -82,28 +82,32 @@ public class RopMetricsGroup {
     }
 
     private String toMBeanName(Map<String, String> tags) {
-        List<Entry<String, String>> filteredTags = tags.entrySet().stream()
-                .filter(entry -> Strings.isNotBlank(entry.getValue()))
-                .collect(Collectors.toList());
-        if (!filteredTags.isEmpty()) {
-            String tagsString = filteredTags.stream()
-                    .map(entry -> "%s=%s".format(entry.getKey(), Sanitizer.jmxSanitize(entry.getValue())))
-                    .collect(Collectors.joining(","));
-            return tagsString;
+        if (tags != null && !tags.isEmpty()) {
+            List<Entry<String, String>> filteredTags = tags.entrySet().stream()
+                    .filter(entry -> Strings.isNotBlank(entry.getValue()))
+                    .collect(Collectors.toList());
+            if (!filteredTags.isEmpty()) {
+                String tagsString = filteredTags.stream()
+                        .map(entry -> "%s=%s".format(entry.getKey(), Sanitizer.jmxSanitize(entry.getValue())))
+                        .collect(Collectors.joining(","));
+                return tagsString;
+            }
         }
         return Strings.EMPTY;
     }
 
     private String toScope(Map<String, String> tags) {
-        List<Entry<String, String>> filteredTags = tags.entrySet().stream()
-                .filter(entry -> Strings.isNotBlank(entry.getValue()))
-                .sorted(Comparator.comparing(Entry::getKey))
-                .collect(Collectors.toList());
+        if (tags != null && !tags.isEmpty()) {
+            List<Entry<String, String>> filteredTags = tags.entrySet().stream()
+                    .filter(entry -> Strings.isNotBlank(entry.getValue()))
+                    .sorted(Comparator.comparing(Entry::getKey))
+                    .collect(Collectors.toList());
 
-        if (!filteredTags.isEmpty()) {
-            return filteredTags.stream()
-                    .map(entry -> "%s.%s".format(entry.getKey(), entry.getValue().replaceAll("\\.", "_")))
-                    .collect(Collectors.joining("."));
+            if (!filteredTags.isEmpty()) {
+                return filteredTags.stream()
+                        .map(entry -> "%s.%s".format(entry.getKey(), entry.getValue().replaceAll("\\.", "_")))
+                        .collect(Collectors.joining("."));
+            }
         }
         return Strings.EMPTY;
     }
