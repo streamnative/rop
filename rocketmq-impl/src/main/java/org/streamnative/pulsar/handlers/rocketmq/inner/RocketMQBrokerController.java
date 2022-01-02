@@ -144,7 +144,7 @@ public class RocketMQBrokerController {
         this.pullRequestHoldService = new PullRequestHoldService(this);
         this.messageArrivingListener = new NotifyMessageArrivingListener(this.pullRequestHoldService);
         this.consumerIdsChangeListener = new DefaultConsumerIdsChangeListener(this);
-        this.consumerManager = new ConsumerManager(this.consumerIdsChangeListener);
+        this.consumerManager = new ConsumerManager(this, this.consumerIdsChangeListener);
         this.producerManager = new ProducerManager();
         this.clientHousekeepingService = new ClientHousekeepingService(this);
         this.subscriptionGroupManager = new SubscriptionGroupManager(this);
