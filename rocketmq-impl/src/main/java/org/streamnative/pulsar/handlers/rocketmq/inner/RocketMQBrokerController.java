@@ -131,6 +131,7 @@ public class RocketMQBrokerController {
     private static String ropTraceLogDir;
 
     private final Pattern ropNameCheckMatch;
+    private final String ropClusterName;
 
     public RocketMQBrokerController(final RocketMQServiceConfiguration serverConfig) throws PulsarServerException {
         this.serverConfig = serverConfig;
@@ -175,6 +176,8 @@ public class RocketMQBrokerController {
         } else {
             this.ropNameCheckMatch = Pattern.compile("([^|/%]+?)\\|([^|/%]+?)%([^|/%]+?)");
         }
+
+        this.ropClusterName = serverConfig.getClusterName();
 
         setRopTraceLogDir(this.serverConfig.getRopTraceLogDir());
 

@@ -21,6 +21,8 @@ import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_IN
 
 import com.google.common.collect.Maps;
 import com.yammer.metrics.core.Meter;
+import com.yammer.metrics.core.Metric;
+import com.yammer.metrics.core.MetricName;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
@@ -31,6 +33,7 @@ import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
@@ -74,6 +77,7 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.pulsar.PulsarMessageStore
 import org.streamnative.pulsar.handlers.rocketmq.inner.trace.TraceContext;
 import org.streamnative.pulsar.handlers.rocketmq.inner.trace.TraceManager;
 import org.streamnative.pulsar.handlers.rocketmq.metrics.RopMetricsGroup;
+import org.streamnative.pulsar.handlers.rocketmq.metrics.RopYammerMetrics;
 import org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils;
 
 /**
@@ -626,9 +630,29 @@ public class PullMessageProcessor extends RopMetricsGroup implements NettyReques
         this.consumeMessageHookList = sendMessageHookList;
     }
 
+    // TODO: hanmz 2022/1/2 收集消费速率、消费流量相关指标
     @Override
     public void generate(SimpleTextOutputStream stream) {
+        Map<MetricName, Metric> metricMap = RopYammerMetrics.defaultRegistry().allMetrics();
 
+        for (Entry<MetricName, Metric> entry : metricMap.entrySet()) {
+
+            String name = entry.getKey().getName();
+            String scope = entry.getKey().getScope();
+            entry.getKey().getScope();
+            if (!"rop_rate_out".equals(name) && !"rop_throughput_out".equals(name)) {
+                continue;
+            }
+
+            // TODO: hanmz 2022/1/1 从scope中解析主题名
+            if (!this.brokerController.getBrokerService().isTopicNsOwnedByBroker(null)) {
+                continue;
+            }
+
+            Meter meter = (Meter) entry.getValue();
+            stream.write(name).write(scope).write(' ');
+            stream.write(meter.oneMinuteRate()).write(' ').write(System.currentTimeMillis()).write('\n');
+        }
     }
 }
 

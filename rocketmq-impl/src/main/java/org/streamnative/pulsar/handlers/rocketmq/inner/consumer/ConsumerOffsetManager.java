@@ -16,8 +16,6 @@ package org.streamnative.pulsar.handlers.rocketmq.inner.consumer;
 
 import static java.util.stream.Collectors.toMap;
 
-import com.google.common.collect.Maps;
-import com.yammer.metrics.core.Gauge;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -345,8 +343,9 @@ public class ConsumerOffsetManager extends RopMetricsGroup {
         return groupMetaManager.getPulsarPersistentTopic(topicName, pulsarPartitionId);
     }
 
-    // TODO: hanmz 2021/12/30 统计积压指标
-    private void gatherBacklogMetrics() {
+    // TODO: hanmz 2021/12/30 统计并收集积压指标
+    @Override
+    public void generate(SimpleTextOutputStream stream) {
         this.brokerController.getBrokerService().getTopics().forEach((originPulsarTopicName, future) -> {
             try {
                 Optional<Topic> optionalTopic = BrokerService.extractTopic(future);
@@ -407,17 +406,24 @@ public class ConsumerOffsetManager extends RopMetricsGroup {
                         String pulsarGroupName = clientGroupAndTopicName.getClientGroupName().getPulsarGroupName();
                         String pulsarTopicName = clientGroupAndTopicName.getClientTopicName().getPulsarTopicName();
 
-                        Map<String, String> tags = Maps.newHashMap();
-                        tags.put("topic", pulsarTopicName);
-                        tags.put("partitioned", String.valueOf(pulsarPartitionId));
-                        tags.put("group", pulsarGroupName);
+//                        Map<String, String> tags = Maps.newHashMap();
+//                        tags.put("topic", pulsarTopicName);
+//                        tags.put("partitioned", String.valueOf(pulsarPartitionId));
+//                        tags.put("group", pulsarGroupName);
+//
+//                        super.newGauge("rop_msg_backlog", new Gauge<Long>() {
+//                            @Override
+//                            public Long value() {
+//                                return msgBacklog;
+//                            }
+//                        }, tags);
 
-                        super.newGauge("rop_msg_backlog", new Gauge<Long>() {
-                            @Override
-                            public Long value() {
-                                return msgBacklog;
-                            }
-                        }, tags);
+                        stream.write("rop_msg_backlog")
+                                .write("{cluster=\"").write(this.brokerController.getRopClusterName())
+                                .write("\",topic=\"").write(pulsarTopicName)
+                                .write("\",partitioned=\"").write(String.valueOf(pulsarPartitionId))
+                                .write("\",group=\"").write(pulsarGroupName).write("\"} ");
+                        stream.write(msgBacklog).write(' ').write(System.currentTimeMillis()).write('\n');
                     }
 
                 }
@@ -425,10 +431,5 @@ public class ConsumerOffsetManager extends RopMetricsGroup {
                 log.warn("RoP [{}] gatherBacklogMetrics failed.", originPulsarTopicName, e);
             }
         });
-    }
-
-    @Override
-    public void generate(SimpleTextOutputStream stream) {
-
     }
 }
