@@ -63,6 +63,7 @@ public class ConsumerOffsetManager extends RopMetricsGroup {
     public ConsumerOffsetManager(RocketMQBrokerController brokerController, GroupMetaManager groupMetaManager) {
         this.brokerController = brokerController;
         this.groupMetaManager = groupMetaManager;
+        brokerController.getBrokerService().getPulsar().addPrometheusRawMetricsProvider(this);
     }
 
     //restore topic cache from pulsar and offset info from pulsar

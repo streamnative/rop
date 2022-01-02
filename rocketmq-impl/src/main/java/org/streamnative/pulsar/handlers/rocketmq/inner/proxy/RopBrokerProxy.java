@@ -1090,6 +1090,7 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
         public PullMessageProcessorProxy(ExecutorService processorExecutor) {
             super(RopBrokerProxy.this.brokerController);
             this.processorExecutor = processorExecutor;
+            brokerController.getBrokerService().getPulsar().addPrometheusRawMetricsProvider(this);
         }
 
         @Override
@@ -1118,6 +1119,7 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
             this.processorExecutor = processorExecutor;
             registerSendMessageHook(sendMessageHookList);
             registerConsumeMessageHook(consumeMessageHookList);
+            brokerController.getBrokerService().getPulsar().addPrometheusRawMetricsProvider(this);
         }
 
         @Override
