@@ -56,7 +56,7 @@ public class RopMetricsManager {
         for (Entry<MetricName, Metric> entry : metricMap.entrySet()) {
 
             String name = entry.getKey().getName();
-            entry.getKey().getScope();
+            String scope = entry.getKey().getScope();
             if (!"rop_rate_out".equals(name) && !"rop_throughput_out".equals(name)) {
                 continue;
             }

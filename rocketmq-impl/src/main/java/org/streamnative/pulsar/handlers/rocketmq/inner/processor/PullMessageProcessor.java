@@ -639,7 +639,6 @@ public class PullMessageProcessor extends RopMetricsGroup implements NettyReques
 
             String name = entry.getKey().getName();
             String scope = entry.getKey().getScope();
-            entry.getKey().getScope();
             if (!"rop_rate_out".equals(name) && !"rop_throughput_out".equals(name)) {
                 continue;
             }
