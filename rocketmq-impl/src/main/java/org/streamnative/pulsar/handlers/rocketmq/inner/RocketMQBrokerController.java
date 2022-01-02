@@ -67,6 +67,7 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.processor.SendMessageProc
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientTopicName;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ProducerManager;
 import org.streamnative.pulsar.handlers.rocketmq.inner.proxy.RopBrokerProxy;
+import org.streamnative.pulsar.handlers.rocketmq.metrics.RopMetricsManager;
 
 /**
  * RocketMQ broker controller.
@@ -76,6 +77,7 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.proxy.RopBrokerProxy;
 public class RocketMQBrokerController {
 
     private final RocketMQServiceConfiguration serverConfig;
+    private final RopMetricsManager ropMetricsManager;
     private final GroupMetaManager groupMetaManager;
     private final ConsumerOffsetManager consumerOffsetManager;
     private final ConsumerManager consumerManager;
@@ -135,6 +137,7 @@ public class RocketMQBrokerController {
 
     public RocketMQBrokerController(final RocketMQServiceConfiguration serverConfig) throws PulsarServerException {
         this.serverConfig = serverConfig;
+        this.ropMetricsManager = new RopMetricsManager(this);
         this.groupMetaManager = new GroupMetaManager(this);
         this.consumerOffsetManager = new ConsumerOffsetManager(this, groupMetaManager);
 
@@ -534,6 +537,10 @@ public class RocketMQBrokerController {
     public void shutdown() {
         if (!isRunning) {
             return;
+        }
+
+        if (this.ropMetricsManager != null) {
+            this.ropMetricsManager.close();
         }
 
         if (this.subscriptionGroupManager != null) {
