@@ -22,6 +22,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.pulsar.common.naming.TopicName;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 
 /**
@@ -54,18 +56,14 @@ public class RopMetricsManager {
     private void clearMetrics() {
         Map<MetricName, Metric> metricMap = RopYammerMetrics.defaultRegistry().allMetrics();
         for (Entry<MetricName, Metric> entry : metricMap.entrySet()) {
-
             String name = entry.getKey().getName();
             String scope = entry.getKey().getScope();
-            if (!"rop_rate_out".equals(name) && !"rop_throughput_out".equals(name)) {
-                continue;
+            if (StringUtils.isNotBlank(name) && name.startsWith("rop_")) {
+                String pulsarTopic = RopYammerMetrics.getTopicFromScope(scope);
+                if (!this.brokerController.getBrokerService().isTopicNsOwnedByBroker(TopicName.get(pulsarTopic))) {
+                    RopYammerMetrics.defaultRegistry().removeMetric(entry.getKey());
+                }
             }
-
-            // TODO: hanmz 2022/1/1 从scope中解析主题名,非主题owner，从metricsRegistry中移除。
-            // TODO: hanmz 2022/1/2 这里需要增加判断指标类型的逻辑，有的指标在proxy层
-//            if (!this.brokerController.getBrokerService().isTopicNsOwnedByBroker(null)) {
-//                RopYammerMetrics.defaultRegistry().removeMetric(entry.getKey());
-//            }
         }
     }
 

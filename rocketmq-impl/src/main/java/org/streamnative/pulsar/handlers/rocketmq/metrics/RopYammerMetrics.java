@@ -14,16 +14,19 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.metrics;
 
+import com.google.common.base.Splitter;
 import com.yammer.metrics.core.MetricsRegistry;
 import java.util.Map;
 import java.util.function.Predicate;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
+import lombok.extern.slf4j.Slf4j;
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopRuntimeException;
 
 /**
  * Rop Yammer Metrics.
  */
+@Slf4j
 public class RopYammerMetrics {
 
     public static final String METRICS_CONFIG_PREFIX = "metrics.jmx.";
@@ -78,5 +81,18 @@ public class RopYammerMetrics {
             throw new RopRuntimeException("JMX filter for configuration" + METRICS_CONFIG_PREFIX
                     + ".(include/exclude) is not a valid regular expression");
         }
+    }
+
+    public static String getTopicFromScope(String scope) {
+        try {
+            for (String str : Splitter.on(",").omitEmptyStrings().trimResults().split(scope)) {
+                if (str.startsWith("topic=")) {
+                    return str.substring(7, str.length() - 1);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("RoP get topic from scope [{}] failed.", scope, e);
+        }
+        return "";
     }
 }

@@ -20,7 +20,6 @@ import com.yammer.metrics.core.Histogram;
 import com.yammer.metrics.core.Meter;
 import com.yammer.metrics.core.MetricName;
 import com.yammer.metrics.core.Timer;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -105,13 +104,16 @@ public abstract class RopMetricsGroup implements PrometheusRawMetricsProvider {
         if (tags != null && !tags.isEmpty()) {
             List<Entry<String, String>> filteredTags = tags.entrySet().stream()
                     .filter(entry -> Strings.isNotBlank(entry.getValue()))
-                    .sorted(Comparator.comparing(Entry::getKey))
+                    .sorted(Entry.comparingByKey())
                     .collect(Collectors.toList());
 
             if (!filteredTags.isEmpty()) {
-                return filteredTags.stream()
-                        .map(entry -> "%s.%s".format(entry.getKey(), entry.getValue().replaceAll("\\.", "_")))
-                        .collect(Collectors.joining("."));
+                StringBuilder sbd = new StringBuilder();
+                sbd.append("{");
+                for (Entry<String, String> entry : tags.entrySet()) {
+                    sbd.append(entry.getKey()).append("=\"").append(entry.getValue()).append("\"").append(",");
+                }
+                return sbd.substring(0, sbd.length() - 1) + "}";
             }
         }
         return Strings.EMPTY;

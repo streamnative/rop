@@ -38,6 +38,7 @@ import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.logging.log4j.util.Strings;
+import org.apache.pulsar.common.naming.TopicName;
 import org.apache.pulsar.common.util.SimpleTextOutputStream;
 import org.apache.rocketmq.broker.longpolling.PullRequest;
 import org.apache.rocketmq.broker.mqtrace.ConsumeMessageContext;
@@ -422,8 +423,8 @@ public class PullMessageProcessor extends RopMetricsGroup implements NettyReques
                     String pulsarTopicName = clientGroupAndTopicName.getClientTopicName().getPulsarTopicName();
 
                     Map<String, String> tags = Maps.newHashMap();
+                    tags.put("cluster", this.brokerController.getRopClusterName());
                     tags.put("topic", pulsarTopicName);
-                    tags.put("partitioned", String.valueOf(pulsarPartitionId));
                     tags.put("group", pulsarGroupName);
 
                     Meter ropRateOutMeter = super.newMeter("rop_rate_out", "request", TimeUnit.SECONDS, tags);
@@ -643,8 +644,8 @@ public class PullMessageProcessor extends RopMetricsGroup implements NettyReques
                 continue;
             }
 
-            // TODO: hanmz 2022/1/1 从scope中解析主题名
-            if (!this.brokerController.getBrokerService().isTopicNsOwnedByBroker(null)) {
+            String pulsarTopic = RopYammerMetrics.getTopicFromScope(scope);
+            if (!this.brokerController.getBrokerService().isTopicNsOwnedByBroker(TopicName.get(pulsarTopic))) {
                 continue;
             }
 
