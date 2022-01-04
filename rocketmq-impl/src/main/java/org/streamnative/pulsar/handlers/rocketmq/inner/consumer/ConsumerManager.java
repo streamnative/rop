@@ -41,6 +41,7 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.RopClientChannelCnx;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupAndTopicName;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupName;
 import org.streamnative.pulsar.handlers.rocketmq.metrics.RopMetricsGroup;
+import org.streamnative.pulsar.handlers.rocketmq.metrics.RopYammerMetrics;
 
 /**
  * Consumer manager service.
@@ -58,6 +59,10 @@ public class ConsumerManager extends RopMetricsGroup {
             ConsumerIdsChangeListener consumerIdsChangeListener) {
         this.brokerController = brokerController;
         this.consumerIdsChangeListener = consumerIdsChangeListener;
+    }
+
+    public void start() {
+        brokerController.getBrokerService().getPulsar().addPrometheusRawMetricsProvider(this);
     }
 
     public ClientChannelInfo findChannel(String group, String clientId) {
@@ -235,6 +240,8 @@ public class ConsumerManager extends RopMetricsGroup {
 
     @Override
     public void generate(SimpleTextOutputStream stream) {
+        log.info("RoP generate consumer relate metrics.");
+
         for (Entry<ClientGroupName, ConsumerGroupInfo> entry : consumerTable.entrySet()) {
             ClientGroupName clientGroupName = entry.getKey();
             ConsumerGroupInfo consumerGroupInfo = entry.getValue();
@@ -257,7 +264,7 @@ public class ConsumerManager extends RopMetricsGroup {
                 String pulsarGroupName = clientGroupAndTopicName.getClientGroupName().getPulsarGroupName();
                 String pulsarTopicName = clientGroupAndTopicName.getClientTopicName().getPulsarTopicName();
 
-                stream.write("rop_consumers_count")
+                stream.write(RopYammerMetrics.ROP_CONSUMERS_COUNT)
                         .write("{cluster=\"").write(this.brokerController.getRopClusterName())
                         .write("\",topic=\"").write(pulsarTopicName)
                         .write("\",group=\"").write(pulsarGroupName).write("\"} ");

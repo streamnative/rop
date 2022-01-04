@@ -29,6 +29,14 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopRuntimeExcep
 @Slf4j
 public class RopYammerMetrics {
 
+    public static final String ROP_RATE_IN = "rop_rate_in";
+    public static final String ROP_RATE_OUT = "rop_rate_out";
+    public static final String ROP_THROUGHPUT_IN = "rop_throughput_in";
+    public static final String ROP_THROUGHPUT_OUT = "rop_throughput_out";
+    public static final String ROP_PRODUCERS_COUNT = "rop_producers_count";
+    public static final String ROP_CONSUMERS_COUNT = "rop_consumers_count";
+    public static final String ROP_MSG_BACKLOG = "rop_msg_backlog";
+
     public static final String METRICS_CONFIG_PREFIX = "metrics.jmx.";
     public static final String EXCLUDE_CONFIG = METRICS_CONFIG_PREFIX + "exclude";
     public static final String INCLUDE_CONFIG = METRICS_CONFIG_PREFIX + "include";

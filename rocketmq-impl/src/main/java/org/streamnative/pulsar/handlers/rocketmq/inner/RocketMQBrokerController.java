@@ -623,6 +623,14 @@ public class RocketMQBrokerController {
                 + ":"
                 + RocketMQProtocolHandler.getListenerPort(serverConfig.getRocketmqListeners());
 
+        if (this.consumerOffsetManager != null) {
+            this.consumerOffsetManager.start();
+        }
+
+        if (this.consumerManager != null) {
+            this.consumerManager.start();
+        }
+
         if (this.groupMetaManager != null) {
             this.groupMetaManager.start();
         }

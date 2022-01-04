@@ -19,13 +19,20 @@ import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_IN
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_TRACE_START_TIME;
 
 import com.alibaba.fastjson.JSON;
+import com.google.common.collect.Maps;
+import com.yammer.metrics.core.Meter;
+import com.yammer.metrics.core.Metric;
+import com.yammer.metrics.core.MetricName;
 import io.netty.channel.ChannelHandlerContext;
 import java.net.InetSocketAddress;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.math.NumberUtils;
+import org.apache.pulsar.common.naming.TopicName;
 import org.apache.pulsar.common.util.SimpleTextOutputStream;
 import org.apache.rocketmq.broker.mqtrace.ConsumeMessageContext;
 import org.apache.rocketmq.broker.mqtrace.ConsumeMessageHook;
@@ -66,6 +73,7 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopPersistentTo
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientTopicName;
 import org.streamnative.pulsar.handlers.rocketmq.inner.trace.TraceContext;
 import org.streamnative.pulsar.handlers.rocketmq.inner.trace.TraceManager;
+import org.streamnative.pulsar.handlers.rocketmq.metrics.RopYammerMetrics;
 import org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils;
 import org.streamnative.pulsar.handlers.rocketmq.utils.RocketMQTopic;
 
@@ -497,6 +505,23 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             this.brokerController.getBrokerStatsManager()
                     .incBrokerPutNums(putMessageResult.getAppendMessageResult().getMsgNum());
 
+            // TODO: hanmz 2022/1/4 统计生产速率、生产流量相关指标
+            ClientTopicName clientTopicName = new ClientTopicName(msg.getTopic());
+
+            String pulsarTopicName = clientTopicName.getPulsarTopicName();
+
+            Map<String, String> tags = Maps.newHashMap();
+            tags.put("cluster", this.brokerController.getRopClusterName());
+            tags.put("topic", pulsarTopicName);
+
+            Meter ropRateOutMeter = super
+                    .newMeter(RopYammerMetrics.ROP_RATE_IN, "request", TimeUnit.SECONDS, tags);
+            ropRateOutMeter.mark(putMessageResult.getAppendMessageResult().getMsgNum());
+
+            Meter ropThroughputOutMeter = super
+                    .newMeter(RopYammerMetrics.ROP_THROUGHPUT_IN, "request", TimeUnit.SECONDS, tags);
+            ropThroughputOutMeter.mark(putMessageResult.getAppendMessageResult().getWroteBytes());
+
             response.setRemark(null);
             responseHeader.setMsgId(putMessageResult.getAppendMessageResult().getMsgId());
             responseHeader.setQueueId(queueIdInt);
@@ -648,9 +673,30 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         }
     }
 
+    // TODO: hanmz 2022/1/4 收集生产速率、生产流量相关指标
     @Override
     public void generate(SimpleTextOutputStream stream) {
+        log.info("RoP generate produce relate metrics.");
 
+        Map<MetricName, Metric> metricMap = RopYammerMetrics.defaultRegistry().allMetrics();
+
+        for (Entry<MetricName, Metric> entry : metricMap.entrySet()) {
+
+            String name = entry.getKey().getName();
+            String scope = entry.getKey().getScope();
+            if (!RopYammerMetrics.ROP_RATE_IN.equals(name) && !RopYammerMetrics.ROP_THROUGHPUT_IN.equals(name)) {
+                continue;
+            }
+
+            String pulsarTopic = RopYammerMetrics.getTopicFromScope(scope);
+            if (!this.brokerController.getBrokerService().isTopicNsOwnedByBroker(TopicName.get(pulsarTopic))) {
+                continue;
+            }
+
+            Meter meter = (Meter) entry.getValue();
+            stream.write(name).write(scope).write(' ');
+            stream.write(meter.oneMinuteRate()).write(' ').write(System.currentTimeMillis()).write('\n');
+        }
     }
 
     /**

@@ -48,6 +48,7 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupAndTo
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupName;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientTopicName;
 import org.streamnative.pulsar.handlers.rocketmq.metrics.RopMetricsGroup;
+import org.streamnative.pulsar.handlers.rocketmq.metrics.RopYammerMetrics;
 import org.streamnative.pulsar.handlers.rocketmq.utils.MessageIdUtils;
 import org.streamnative.pulsar.handlers.rocketmq.utils.OffsetFinder;
 
@@ -63,6 +64,9 @@ public class ConsumerOffsetManager extends RopMetricsGroup {
     public ConsumerOffsetManager(RocketMQBrokerController brokerController, GroupMetaManager groupMetaManager) {
         this.brokerController = brokerController;
         this.groupMetaManager = groupMetaManager;
+    }
+
+    public void start() {
         brokerController.getBrokerService().getPulsar().addPrometheusRawMetricsProvider(this);
     }
 
@@ -347,6 +351,8 @@ public class ConsumerOffsetManager extends RopMetricsGroup {
     // TODO: hanmz 2021/12/30 统计并收集积压指标
     @Override
     public void generate(SimpleTextOutputStream stream) {
+        log.info("RoP generate backlog relate metrics.");
+
         this.brokerController.getBrokerService().getTopics().forEach((originPulsarTopicName, future) -> {
             try {
                 Optional<Topic> optionalTopic = BrokerService.extractTopic(future);
@@ -407,19 +413,7 @@ public class ConsumerOffsetManager extends RopMetricsGroup {
                         String pulsarGroupName = clientGroupAndTopicName.getClientGroupName().getPulsarGroupName();
                         String pulsarTopicName = clientGroupAndTopicName.getClientTopicName().getPulsarTopicName();
 
-//                        Map<String, String> tags = Maps.newHashMap();
-//                        tags.put("topic", pulsarTopicName);
-//                        tags.put("partitioned", String.valueOf(pulsarPartitionId));
-//                        tags.put("group", pulsarGroupName);
-//
-//                        super.newGauge("rop_msg_backlog", new Gauge<Long>() {
-//                            @Override
-//                            public Long value() {
-//                                return msgBacklog;
-//                            }
-//                        }, tags);
-
-                        stream.write("rop_msg_backlog")
+                        stream.write(RopYammerMetrics.ROP_MSG_BACKLOG)
                                 .write("{cluster=\"").write(this.brokerController.getRopClusterName())
                                 .write("\",topic=\"").write(pulsarTopicName)
                                 .write("\",partitioned=\"").write(String.valueOf(pulsarPartitionId))

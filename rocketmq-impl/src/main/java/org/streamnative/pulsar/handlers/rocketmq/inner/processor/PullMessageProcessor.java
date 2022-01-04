@@ -427,11 +427,12 @@ public class PullMessageProcessor extends RopMetricsGroup implements NettyReques
                     tags.put("topic", pulsarTopicName);
                     tags.put("group", pulsarGroupName);
 
-                    Meter ropRateOutMeter = super.newMeter("rop_rate_out", "request", TimeUnit.SECONDS, tags);
+                    Meter ropRateOutMeter = super
+                            .newMeter(RopYammerMetrics.ROP_RATE_OUT, "request", TimeUnit.SECONDS, tags);
                     ropRateOutMeter.mark(ropGetMessageResult.getMessageCount());
 
                     Meter ropThroughputOutMeter = super
-                            .newMeter("rop_throughput_out", "request", TimeUnit.SECONDS, tags);
+                            .newMeter(RopYammerMetrics.ROP_THROUGHPUT_OUT, "request", TimeUnit.SECONDS, tags);
                     ropThroughputOutMeter.mark(ropGetMessageResult.getBufferTotalSize());
 
                     if (this.brokerController.getServerConfig().isTransferMsgByHeap()) {
@@ -634,13 +635,15 @@ public class PullMessageProcessor extends RopMetricsGroup implements NettyReques
     // TODO: hanmz 2022/1/2 收集消费速率、消费流量相关指标
     @Override
     public void generate(SimpleTextOutputStream stream) {
+        log.info("RoP generate consume relate metrics.");
+
         Map<MetricName, Metric> metricMap = RopYammerMetrics.defaultRegistry().allMetrics();
 
         for (Entry<MetricName, Metric> entry : metricMap.entrySet()) {
 
             String name = entry.getKey().getName();
             String scope = entry.getKey().getScope();
-            if (!"rop_rate_out".equals(name) && !"rop_throughput_out".equals(name)) {
+            if (!RopYammerMetrics.ROP_RATE_OUT.equals(name) && !RopYammerMetrics.ROP_THROUGHPUT_OUT.equals(name)) {
                 continue;
             }
 

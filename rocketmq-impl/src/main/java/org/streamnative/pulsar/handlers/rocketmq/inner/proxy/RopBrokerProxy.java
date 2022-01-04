@@ -790,6 +790,17 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
             setBrokerTagListener();
 
             this.mqTopicManager.start(zkService);
+
+            for (ProcessorProxyRegister processorProxyRegister : processorProxyRegisters) {
+                if (processorProxyRegister instanceof SendMessageProcessorProxy) {
+                    brokerController.getBrokerService().getPulsar()
+                            .addPrometheusRawMetricsProvider((SendMessageProcessorProxy) processorProxyRegister);
+                } else if (processorProxyRegister instanceof PullMessageProcessorProxy) {
+                    brokerController.getBrokerService().getPulsar()
+                            .addPrometheusRawMetricsProvider((PullMessageProcessorProxy) processorProxyRegister);
+                }
+            }
+
         } catch (Exception e) {
             log.error("RopBrokerProxy fail to start.", e);
             throw new RuntimeException("RopBrokerProxy not running.");
@@ -1090,7 +1101,6 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
         public PullMessageProcessorProxy(ExecutorService processorExecutor) {
             super(RopBrokerProxy.this.brokerController);
             this.processorExecutor = processorExecutor;
-            brokerController.getBrokerService().getPulsar().addPrometheusRawMetricsProvider(this);
         }
 
         @Override
@@ -1119,7 +1129,6 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
             this.processorExecutor = processorExecutor;
             registerSendMessageHook(sendMessageHookList);
             registerConsumeMessageHook(consumeMessageHookList);
-            brokerController.getBrokerService().getPulsar().addPrometheusRawMetricsProvider(this);
         }
 
         @Override
