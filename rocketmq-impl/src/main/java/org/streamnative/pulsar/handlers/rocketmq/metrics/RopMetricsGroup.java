@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import javax.management.ObjectName;
 import org.apache.logging.log4j.util.Strings;
 import org.apache.pulsar.broker.stats.prometheus.PrometheusRawMetricsProvider;
 import org.streamnative.pulsar.handlers.rocketmq.utils.Sanitizer;
@@ -43,19 +44,19 @@ public abstract class RopMetricsGroup implements PrometheusRawMetricsProvider {
 
     protected MetricName explicitMetricName(String group, String typeName, String name, Map<String, String> tags) {
         StringBuilder nameBuilder = new StringBuilder();
-        nameBuilder.append(group);
+        nameBuilder.append(ObjectName.quote(group));
         nameBuilder.append(":type=");
-        nameBuilder.append(typeName);
+        nameBuilder.append(ObjectName.quote(typeName));
 
         if (Strings.isNotBlank(name)) {
             nameBuilder.append(",name=");
-            nameBuilder.append(name);
+            nameBuilder.append(ObjectName.quote(name));
         }
 
         String scope = toScope(tags);
-        String tagsName = toMBeanName(tags);
-        if (Strings.isNotBlank(tagsName)) {
-            nameBuilder.append(",").append(tagsName);
+        if (Strings.isNotBlank(scope)) {
+            nameBuilder.append(",scope=");
+            nameBuilder.append(ObjectName.quote(scope));
         }
 
         return new MetricName(group, typeName, name, scope, nameBuilder.toString());

@@ -415,8 +415,7 @@ public class ConsumerOffsetManager extends RopMetricsGroup {
 
                         stream.write(RopYammerMetrics.ROP_MSG_BACKLOG)
                                 .write("{cluster=\"").write(this.brokerController.getRopClusterName())
-                                .write("\",topic=\"").write(pulsarTopicName)
-                                .write("\",partitioned=\"").write(String.valueOf(pulsarPartitionId))
+                                .write("\",topic=\"").write(pulsarTopicName + "-partition-" + pulsarPartitionId)
                                 .write("\",group=\"").write(pulsarGroupName).write("\"} ");
                         stream.write(msgBacklog).write(' ').write(System.currentTimeMillis()).write('\n');
                     }

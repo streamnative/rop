@@ -424,7 +424,7 @@ public class PullMessageProcessor extends RopMetricsGroup implements NettyReques
 
                     Map<String, String> tags = Maps.newHashMap();
                     tags.put("cluster", this.brokerController.getRopClusterName());
-                    tags.put("topic", pulsarTopicName);
+                    tags.put("topic", pulsarTopicName + "-partition-" + pulsarPartitionId);
                     tags.put("group", pulsarGroupName);
 
                     Meter ropRateOutMeter = super

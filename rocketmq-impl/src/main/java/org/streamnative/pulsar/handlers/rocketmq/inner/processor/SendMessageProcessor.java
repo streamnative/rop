@@ -508,7 +508,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
 
             Map<String, String> tags = Maps.newHashMap();
             tags.put("cluster", this.brokerController.getRopClusterName());
-            tags.put("topic", pulsarTopicName);
+            tags.put("topic", pulsarTopicName + "-partition-" + CommonUtils.getPulsarPartitionIdByRequest(request));
 
             Meter ropRateOutMeter = super
                     .newMeter(RopYammerMetrics.ROP_RATE_IN, "request", TimeUnit.SECONDS, tags);
