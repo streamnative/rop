@@ -133,23 +133,11 @@ public class ConsumerManageProcessor implements NettyRequestProcessor {
         if (offset >= 0) {
             responseHeader.setOffset(offset);
             response.setCode(ResponseCode.SUCCESS);
-        } else {
-            responseHeader.setOffset(-1L);
-            response.setCode(ResponseCode.QUERY_NOT_FOUND);
-            response.setRemark("Not found offset.");
-//            ConsumerGroupInfo consumerGroupInfo = this.brokerController.getConsumerManager()
-//                    .getConsumerGroupInfo(requestHeader.getConsumerGroup());
-//            if (ConsumeType.CONSUME_PASSIVELY.equals(consumerGroupInfo.getConsumeType())
-//                    && ConsumeFromWhere.CONSUME_FROM_LAST_OFFSET.equals(consumerGroupInfo.getConsumeFromWhere())) {
-//                responseHeader.setOffset(Long.MAX_VALUE);
-//                response.setCode(ResponseCode.SUCCESS);
-//            } else {
-//                responseHeader.setOffset(-1L);
-//                response.setCode(ResponseCode.QUERY_NOT_FOUND);
-//                response.setRemark("Not found offset.");
-//            }
+        } else {// if not exists in consumerOffsetManager, it must be registered at first time.
+            responseHeader.setOffset(0L);
+            response.setCode(ResponseCode.SUCCESS);
+            response.setRemark(null);
         }
-
         return response;
     }
 }
