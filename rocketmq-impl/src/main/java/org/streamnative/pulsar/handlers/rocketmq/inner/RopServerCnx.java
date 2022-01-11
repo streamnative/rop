@@ -49,6 +49,7 @@ import org.apache.bookkeeper.mledger.impl.NonDurableCursorImpl;
 import org.apache.bookkeeper.mledger.impl.PositionImpl;
 import org.apache.commons.lang.exception.ExceptionUtils;
 import org.apache.commons.lang3.math.NumberUtils;
+import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Triple;
 import org.apache.pulsar.broker.service.BrokerService;
 import org.apache.pulsar.broker.service.persistent.PersistentTopic;
@@ -101,6 +102,13 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
 
     public static final AtomicLong ADD_CURSOR_COUNT = new AtomicLong();
     public static final AtomicLong DEL_CURSOR_COUNT = new AtomicLong();
+
+    private static final Cache<ImmutablePair<String, Integer>, Long> minOffsetCaches = CacheBuilder.newBuilder()
+            .expireAfterWrite(5, TimeUnit.MINUTES)
+            .initialCapacity(1024)
+            .concurrencyLevel(64)
+            .maximumSize(1000 * 1000)
+            .build();
 
     private static final int sendTimeoutInSec = 3;
     private static final int maxPendingMessages = 30000;
@@ -659,6 +667,18 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                     .getMaxOffsetInPulsarPartition(new ClientTopicName(topicName), pulsarPartitionId);
 //            minOffset = queueOffset > 0 ? this.brokerController.getConsumerOffsetManager()
 //                    .getMinOffsetInQueue(new ClientTopicName(topicName), pulsarPartitionId) : queueOffset;
+            minOffset = minOffsetCaches.get(ImmutablePair.of(topicName, pulsarPartitionId),
+                    () -> {
+                        try {
+                            return brokerController.getConsumerOffsetManager()
+                                    .getMinOffsetInQueue(new ClientTopicName(topicName), pulsarPartitionId);
+                        } catch (Exception e) {
+                            return 0L;
+                        }
+                    });
+            if (minOffset > 0) {
+                queueOffset = Math.max(minOffset, queueOffset);
+            }
         } catch (Exception e) {
             throw new RuntimeException();
         }

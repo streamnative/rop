@@ -826,6 +826,9 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
                     long lastTimestamp = this.brokerController.getConsumerOffsetManager()
                             .getLastTimestamp(clientGroupName.getClientTopicName(), partitionId);
                     offsetWrapper.setLastTimestamp(lastTimestamp);
+                    if (lastTimestamp <= 0) {
+                        offsetWrapper.setMsgBacklog(0);
+                    }
                 }
 
                 consumeStats.getOffsetTable().put(mq, offsetWrapper);
