@@ -501,7 +501,6 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             this.brokerController.getBrokerStatsManager()
                     .incBrokerPutNums(putMessageResult.getAppendMessageResult().getMsgNum());
 
-            // TODO: hanmz 2022/1/4 统计生产速率、生产流量相关指标
             ClientTopicName clientTopicName = new ClientTopicName(msg.getTopic());
 
             String pulsarTopicName = clientTopicName.getPulsarTopicName();
@@ -669,7 +668,6 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         }
     }
 
-    // TODO: hanmz 2022/1/4 收集生产速率、生产流量相关指标
     @Override
     public void generate(SimpleTextOutputStream stream) {
         log.info("RoP generate produce relate metrics.");

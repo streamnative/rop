@@ -348,7 +348,6 @@ public class ConsumerOffsetManager extends RopMetricsGroup {
         return groupMetaManager.getPulsarPersistentTopic(topicName, pulsarPartitionId);
     }
 
-    // TODO: hanmz 2021/12/30 统计并收集积压指标
     @Override
     public void generate(SimpleTextOutputStream stream) {
         log.info("RoP generate backlog relate metrics.");
@@ -404,8 +403,14 @@ public class ConsumerOffsetManager extends RopMetricsGroup {
                         long consumerOffset = queryOffsetByPartitionId(rmqGroupName, ropTopicName, pulsarPartitionId);
 
                         // 计算每个分区的积压数量
-                        final long msgBacklog = consumerOffset <= 0 ? Math.max(0, brokerOffset)
+                        long msgBacklog = consumerOffset <= 0 ? Math.max(0, brokerOffset)
                                 : Math.max(0, brokerOffset - consumerOffset + 1);
+
+                        long lastTimestamp = this.brokerController.getConsumerOffsetManager()
+                                .getLastTimestamp(new ClientTopicName(ropTopicName), pulsarPartitionId);
+                        if (lastTimestamp <= 0) {
+                            msgBacklog = 0;
+                        }
 
                         // 记录到对应分区的 rop_msg_backlog gauge下
                         ClientGroupAndTopicName clientGroupAndTopicName = new ClientGroupAndTopicName(rmqGroupName,

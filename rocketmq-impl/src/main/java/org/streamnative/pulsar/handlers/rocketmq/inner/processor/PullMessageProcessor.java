@@ -415,7 +415,6 @@ public class PullMessageProcessor extends RopMetricsGroup implements NettyReques
                     this.brokerController.getBrokerStatsManager()
                             .incBrokerGetNums(ropGetMessageResult.getMessageCount());
 
-                    // TODO: hanmz 2021/12/30 统计消费速率、消费流量相关指标
                     ClientGroupAndTopicName clientGroupAndTopicName = new ClientGroupAndTopicName(
                             requestHeader.getConsumerGroup(), requestHeader.getTopic());
 
@@ -632,7 +631,6 @@ public class PullMessageProcessor extends RopMetricsGroup implements NettyReques
         this.consumeMessageHookList = sendMessageHookList;
     }
 
-    // TODO: hanmz 2022/1/2 收集消费速率、消费流量相关指标
     @Override
     public void generate(SimpleTextOutputStream stream) {
         log.info("RoP generate consume relate metrics.");
