@@ -52,6 +52,7 @@ import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.store.MessageArrivingListener;
 import org.apache.rocketmq.store.stats.BrokerStats;
 import org.apache.rocketmq.store.stats.BrokerStatsManager;
+import org.eclipse.jetty.util.ajax.JSON;
 import org.streamnative.pulsar.handlers.rocketmq.RocketMQProtocolHandler;
 import org.streamnative.pulsar.handlers.rocketmq.RocketMQServiceConfiguration;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.ConsumerManager;
@@ -63,6 +64,7 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.listener.DefaultConsumerI
 import org.streamnative.pulsar.handlers.rocketmq.inner.listener.DefaultTransactionalMessageCheckListener;
 import org.streamnative.pulsar.handlers.rocketmq.inner.listener.NotifyMessageArrivingListener;
 import org.streamnative.pulsar.handlers.rocketmq.inner.namesvr.MQTopicManager;
+import org.streamnative.pulsar.handlers.rocketmq.inner.processor.PullMessageProcessor;
 import org.streamnative.pulsar.handlers.rocketmq.inner.processor.SendMessageProcessor;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientTopicName;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ProducerManager;
@@ -183,7 +185,10 @@ public class RocketMQBrokerController {
                     log.info("Show current cursor count: {}, addCursorCount: {}, delCursorCount: {}.",
                             RopServerCnx.ADD_CURSOR_COUNT.get() - RopServerCnx.DEL_CURSOR_COUNT.get(),
                             RopServerCnx.ADD_CURSOR_COUNT.get(), RopServerCnx.DEL_CURSOR_COUNT.get());
+
                     log.info("Show request count: {}", RopBrokerProxy.REQUEST_COUNT_TABLE);
+
+                    log.info("Show pull request details: {}", JSON.toString(PullMessageProcessor.REQUEST_COUNT_TABLE));
                 }, 30, 30, TimeUnit.SECONDS);
     }
 
