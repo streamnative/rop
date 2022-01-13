@@ -14,6 +14,7 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner;
 
+import com.alibaba.fastjson.JSON;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import java.util.List;
@@ -52,7 +53,6 @@ import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.store.MessageArrivingListener;
 import org.apache.rocketmq.store.stats.BrokerStats;
 import org.apache.rocketmq.store.stats.BrokerStatsManager;
-import org.eclipse.jetty.util.ajax.JSON;
 import org.streamnative.pulsar.handlers.rocketmq.RocketMQProtocolHandler;
 import org.streamnative.pulsar.handlers.rocketmq.RocketMQServiceConfiguration;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.ConsumerManager;
@@ -192,7 +192,7 @@ public class RocketMQBrokerController {
 
                     log.info("Show request count: {}", RopBrokerProxy.REQUEST_COUNT_TABLE);
 
-                    log.info("Show pull request details: {}", JSON.toString(PullMessageProcessor.REQUEST_COUNT_TABLE));
+                    log.info("Show pull request details: {}", JSON.toJSON(PullMessageProcessor.REQUEST_COUNT_TABLE));
                 }, 30, 30, TimeUnit.SECONDS);
     }
 
