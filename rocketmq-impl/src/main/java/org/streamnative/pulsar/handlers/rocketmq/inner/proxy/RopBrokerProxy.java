@@ -903,7 +903,8 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
 
     public void registerProcessor() {
         // SendMessageProcessor
-        processorProxyRegisters.add(new SendMessageProcessorProxy(brokerController.getSendMessageExecutor()));
+        processorProxyRegisters.add(new SendMessageProcessorProxy(brokerController.getSendMessageExecutor(),
+                brokerController.getMsgCallbackExecutor()));
 
         // PullMessageProcessor
         processorProxyRegisters.add(new PullMessageProcessorProxy(brokerController.getPullMessageExecutor()));
@@ -1112,10 +1113,12 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
     protected class SendMessageProcessorProxy extends SendMessageProcessor implements ProcessorProxyRegister {
 
         private final ExecutorService processorExecutor;
+        private final ExecutorService msgCallbackProcessorExecutor;
 
-        public SendMessageProcessorProxy(ExecutorService processorExecutor) {
+        public SendMessageProcessorProxy(ExecutorService processorExecutor, ExecutorService msgCallbackProcessorExecutor) {
             super(RopBrokerProxy.this.brokerController);
             this.processorExecutor = processorExecutor;
+            this.msgCallbackProcessorExecutor = msgCallbackProcessorExecutor;
             registerSendMessageHook(sendMessageHookList);
             registerConsumeMessageHook(consumeMessageHookList);
         }
@@ -1131,7 +1134,7 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
             RopBrokerProxy.this.registerProcessor(SEND_MESSAGE, this, processorExecutor);
             RopBrokerProxy.this.registerProcessor(SEND_MESSAGE_V2, this, processorExecutor);
             RopBrokerProxy.this.registerProcessor(SEND_BATCH_MESSAGE, this, processorExecutor);
-            RopBrokerProxy.this.registerProcessor(CONSUMER_SEND_MSG_BACK, this, processorExecutor);
+            RopBrokerProxy.this.registerProcessor(CONSUMER_SEND_MSG_BACK, this, msgCallbackProcessorExecutor);
             return true;
         }
     }

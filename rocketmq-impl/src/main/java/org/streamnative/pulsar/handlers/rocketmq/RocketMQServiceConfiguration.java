@@ -187,6 +187,11 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
     private int sendMessageThreadPoolNums = 16 + Runtime.getRuntime().availableProcessors() * 2;
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
+            doc = "Number of message callback thread pool.\n"
+    )
+    private int msgCallbackThreadPoolNums = 16;
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
             doc = "Number of pull message thread pool.\n"
     )
     private int pullMessageThreadPoolNums = 64 + Runtime.getRuntime().availableProcessors() * 2;
