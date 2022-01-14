@@ -53,7 +53,6 @@ import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.store.MessageArrivingListener;
 import org.apache.rocketmq.store.stats.BrokerStats;
 import org.apache.rocketmq.store.stats.BrokerStatsManager;
-import org.eclipse.jetty.util.ajax.JSON;
 import org.streamnative.pulsar.handlers.rocketmq.RocketMQProtocolHandler;
 import org.streamnative.pulsar.handlers.rocketmq.RocketMQServiceConfiguration;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.ConsumerManager;
