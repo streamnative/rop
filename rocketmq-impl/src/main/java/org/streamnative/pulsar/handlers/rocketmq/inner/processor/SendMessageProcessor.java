@@ -139,6 +139,14 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         final ConsumerSendMsgBackRequestHeader requestHeader =
                 (ConsumerSendMsgBackRequestHeader) request
                         .decodeCommandCustomHeader(ConsumerSendMsgBackRequestHeader.class);
+
+        if (this.brokerController.getServerConfig().isQuickTerminateConsumeBack()) {
+            response.setCode(ResponseCode.SYSTEM_ERROR);
+            response.setRemark("consumerSendMsgBack process failed,will retry later " +requestHeader.getOriginTopic()+","+ requestHeader.getOffset());
+            return response;
+        }
+
+
         String namespace = NamespaceUtil.getNamespaceFromResource(requestHeader.getGroup());
         if (this.hasConsumeMessageHook() && !UtilAll.isBlank(requestHeader.getOriginMsgId())) {
             ConsumeMessageContext context = new ConsumeMessageContext();
