@@ -712,6 +712,11 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
                     traceContext.setDuration(now - traceContext.getPersistStartTime());
                     TraceManager.get().tracePersist(traceContext);
                 }
+
+                if (now - traceContext.getPersistStartTime() > 3000) {
+                    log.warn("RoP owner timeout [request={}], [response={}]. Cost = [{}ms]",
+                            request, response, now - traceContext.getPersistStartTime());
+                }
             }
 
             doResponse(ctx, request, response);
