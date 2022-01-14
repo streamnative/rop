@@ -14,6 +14,7 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner;
 
+import com.alibaba.fastjson.JSON;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import java.util.List;
@@ -95,6 +96,7 @@ public class RocketMQBrokerController {
 
     private final BlockingQueue<Runnable> sendThreadPoolQueue;
     private final BlockingQueue<Runnable> sendCallbackThreadPoolQueue;
+    private final BlockingQueue<Runnable> msgCallbackThreadPoolQueue;
     private final BlockingQueue<Runnable> pullThreadPoolQueue;
     private final BlockingQueue<Runnable> replyThreadPoolQueue;
     private final BlockingQueue<Runnable> queryThreadPoolQueue;
@@ -110,6 +112,7 @@ public class RocketMQBrokerController {
 
     private ExecutorService sendMessageExecutor;
     private ExecutorService sendCallbackExecutor;
+    private ExecutorService msgCallbackExecutor;
     private ExecutorService pullMessageExecutor;
     private ExecutorService replyMessageExecutor;
     private ExecutorService queryMessageExecutor;
@@ -150,6 +153,8 @@ public class RocketMQBrokerController {
         this.sendThreadPoolQueue = new LinkedBlockingQueue<>(
                 this.serverConfig.getSendThreadPoolQueueCapacity());
         this.sendCallbackThreadPoolQueue = new LinkedBlockingQueue<>();
+        this.msgCallbackThreadPoolQueue = new LinkedBlockingQueue<>(
+                this.serverConfig.getSendThreadPoolQueueCapacity());
         this.pullThreadPoolQueue = new LinkedBlockingQueue<>(
                 this.serverConfig.getPullThreadPoolQueueCapacity());
         this.replyThreadPoolQueue = new LinkedBlockingQueue<>(
@@ -188,7 +193,7 @@ public class RocketMQBrokerController {
 
                     log.info("Show request count: {}", RopBrokerProxy.REQUEST_COUNT_TABLE);
 
-                    log.info("Show pull request details: {}", JSON.toString(PullMessageProcessor.REQUEST_COUNT_TABLE));
+                    log.info("Show pull request details: {}", JSON.toJSON(PullMessageProcessor.REQUEST_COUNT_TABLE));
                 }, 30, 30, TimeUnit.SECONDS);
     }
 
@@ -209,6 +214,14 @@ public class RocketMQBrokerController {
                 TimeUnit.MILLISECONDS,
                 this.sendCallbackThreadPoolQueue,
                 new ThreadFactoryImpl("SendCallbackThread_"));
+
+        this.msgCallbackExecutor = new BrokerFixedThreadPoolExecutor(
+                this.serverConfig.getMsgCallbackThreadPoolNums(),
+                this.serverConfig.getMsgCallbackThreadPoolNums(),
+                1000 * 60,
+                TimeUnit.MILLISECONDS,
+                this.msgCallbackThreadPoolQueue,
+                new ThreadFactoryImpl("MsgCallbackThread_"));
 
         this.sendMessageExecutor = new BrokerFixedThreadPoolExecutor(
                 this.serverConfig.getSendMessageThreadPoolNums(),

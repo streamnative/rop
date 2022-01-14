@@ -73,6 +73,7 @@ public class BrokerNetworkAPI implements AutoCloseable {
                     clientConfig.setUseTLS(false);
                     clientConfig.setClientWorkerThreads(internalClientWorkerThreads);
                     clientConfig.setConnectTimeoutMillis(15 * 1000);
+                    clientConfig.setClientCallbackExecutorThreads(1);
                     remotingClient = new NettyRemotingClient(clientConfig);
                     remotingClient.start();
                     remotingClients[index] = remotingClient;
