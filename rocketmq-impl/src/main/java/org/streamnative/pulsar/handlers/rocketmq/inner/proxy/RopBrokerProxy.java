@@ -1117,7 +1117,8 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
         private final ExecutorService processorExecutor;
         private final ExecutorService msgCallbackProcessorExecutor;
 
-        public SendMessageProcessorProxy(ExecutorService processorExecutor, ExecutorService msgCallbackProcessorExecutor) {
+        public SendMessageProcessorProxy(ExecutorService processorExecutor,
+                ExecutorService msgCallbackProcessorExecutor) {
             super(RopBrokerProxy.this.brokerController);
             this.processorExecutor = processorExecutor;
             this.msgCallbackProcessorExecutor = msgCallbackProcessorExecutor;
