@@ -138,7 +138,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
         if (this.brokerController.getServerConfig().isQuickTerminateConsumeBack()) {
             response.setCode(ResponseCode.SYSTEM_ERROR);
-            response.setRemark("consumerSendMsgBack process failed,will retry later " + request.getRemark());
+            response.setRemark("consumerSendMsgBack process failed, will retry later.");
             return response;
         }
         final ConsumerSendMsgBackRequestHeader requestHeader =
