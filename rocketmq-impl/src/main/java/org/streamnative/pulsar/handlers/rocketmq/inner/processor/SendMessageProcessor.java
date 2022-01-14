@@ -138,7 +138,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
         if (this.brokerController.getServerConfig().isQuickTerminateConsumeBack()) {
             response.setCode(ResponseCode.SYSTEM_ERROR);
-            response.setRemark("consumerSendMsgBack process failed,will retry later " +request.getRemark());
+            response.setRemark("consumerSendMsgBack process failed,will retry later " + request.getRemark());
             return response;
         }
         final ConsumerSendMsgBackRequestHeader requestHeader =
@@ -411,7 +411,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
                     traceContext.setPersistStartTime(System.currentTimeMillis());
                 }
                 this.getServerCnxMsgStore(ctx,
-                        CommonUtils.getInnerProducerGroupName(request, requestHeader.getProducerGroup()))
+                                CommonUtils.getInnerProducerGroupName(request, requestHeader.getProducerGroup()))
                         .putMessage(CommonUtils.getPulsarPartitionIdByRequest(request),
                                 msgInner,
                                 requestHeader.getProducerGroup(),
@@ -601,7 +601,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
                 traceContext.setPersistStartTime(System.currentTimeMillis());
             }
             this.getServerCnxMsgStore(ctx,
-                    CommonUtils.getInnerProducerGroupName(request, requestHeader.getProducerGroup()))
+                            CommonUtils.getInnerProducerGroupName(request, requestHeader.getProducerGroup()))
                     .putMessages(CommonUtils.getPulsarPartitionIdByRequest(request),
                             messageExtBatch,
                             requestHeader.getProducerGroup(),
