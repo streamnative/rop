@@ -136,17 +136,14 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
     private RemotingCommand consumerSendMsgBack(final ChannelHandlerContext ctx, final RemotingCommand request)
             throws RemotingCommandException {
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
+        if (this.brokerController.getServerConfig().isQuickTerminateConsumeBack()) {
+            response.setCode(ResponseCode.SYSTEM_ERROR);
+            response.setRemark("consumerSendMsgBack process failed,will retry later " +request.getRemark());
+            return response;
+        }
         final ConsumerSendMsgBackRequestHeader requestHeader =
                 (ConsumerSendMsgBackRequestHeader) request
                         .decodeCommandCustomHeader(ConsumerSendMsgBackRequestHeader.class);
-
-        if (this.brokerController.getServerConfig().isQuickTerminateConsumeBack()) {
-            response.setCode(ResponseCode.SYSTEM_ERROR);
-            response.setRemark("consumerSendMsgBack process failed,will retry later " +requestHeader.getOriginTopic()+","+ requestHeader.getOffset());
-            return response;
-        }
-
-
         String namespace = NamespaceUtil.getNamespaceFromResource(requestHeader.getGroup());
         if (this.hasConsumeMessageHook() && !UtilAll.isBlank(requestHeader.getOriginMsgId())) {
             ConsumeMessageContext context = new ConsumeMessageContext();
