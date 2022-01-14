@@ -509,4 +509,12 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
             doc = "RoP name check enable.\n"
     )
     private boolean ropNameCheckEnable = true;
+
+
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
+            doc = "process consumerSendMsgBack as throw exception.\n"
+    )
+    private boolean quickTerminateConsumeBack = false;
+
 }
