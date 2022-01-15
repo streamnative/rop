@@ -193,6 +193,9 @@ public class RocketMQBrokerController {
                     log.info("Show request count: {}", RopBrokerProxy.REQUEST_COUNT_TABLE);
 
                     log.info("Show pull request details: {}", JSON.toJSON(PullMessageProcessor.REQUEST_COUNT_TABLE));
+
+                    log.info("Show send delay message count: {}", RopServerCnx.DELAY_SEND_COUNT.get());
+                    log.info("Show send timing message count: {}", RopServerCnx.TIMING_SEND_COUNT.get());
                 }, 30, 30, TimeUnit.SECONDS);
     }
 

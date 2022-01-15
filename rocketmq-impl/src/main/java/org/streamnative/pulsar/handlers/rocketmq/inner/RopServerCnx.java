@@ -102,6 +102,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
 
     public static final AtomicLong ADD_CURSOR_COUNT = new AtomicLong();
     public static final AtomicLong DEL_CURSOR_COUNT = new AtomicLong();
+    public static final AtomicLong DELAY_SEND_COUNT = new AtomicLong();
+    public static final AtomicLong TIMING_SEND_COUNT = new AtomicLong();
 
     private static final Cache<ImmutablePair<String, Integer>, Long> minOffsetCaches = CacheBuilder.newBuilder()
             .expireAfterWrite(5, TimeUnit.MINUTES)
@@ -237,6 +239,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 if (messageInner.getDelayTimeLevel() > 0) {
                     log.trace("Send delay level message topic: {}, messageInner: {}", messageInner.getTopic(),
                             messageInner);
+                    DELAY_SEND_COUNT.incrementAndGet();
                     CompletableFuture<MessageId> messageIdFuture = getProducerFromCache(pTopic, producerGroup)
                             .newMessage()
                             .value((body.get(0)))
@@ -270,6 +273,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 /*
                  * Use pulsar producer send delay message.
                  */
+                TIMING_SEND_COUNT.incrementAndGet();
                 CompletableFuture<MessageId> messageIdFuture = getProducerFromCache(pTopic, producerGroup)
                         .newMessage()
                         .value((body.get(0)))

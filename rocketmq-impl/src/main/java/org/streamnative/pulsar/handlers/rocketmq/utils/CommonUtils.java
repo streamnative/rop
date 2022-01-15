@@ -59,6 +59,9 @@ public class CommonUtils {
     public static final String ROP_TRACE_START_TIME = "rtst";
     public static final String ROP_INNER_MESSAGE_ID = "rimi";
     public static final String ROP_INNER_CLIENT_ADDRESS = "rica";
+    public static final String ROP_PROXY_SEND_TIMESTAMP = "rpst";
+    public static final String ROP_OWNER_RECEIVE_TIMESTAMP = "rort";
+    public static final String ROP_OWNER_FINISH_TIMESTAMP = "roft";
     public static final String ROP_MESSAGE_ID = "rop_message_id";
     public static final int ROP_CACHE_INITIAL_SIZE = 1024;
     public static final int ROP_CACHE_MAX_SIZE = 1024 << 8;

@@ -35,6 +35,7 @@ import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_CA
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_INNER_CLIENT_ADDRESS;
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_INNER_MESSAGE_ID;
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_INNER_REMOTE_CLIENT_TAG;
+import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_PROXY_SEND_TIMESTAMP;
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_TRACE_START_TIME;
 import static org.streamnative.pulsar.handlers.rocketmq.utils.PulsarUtil.autoExpanseBrokerGroupData;
 import static org.streamnative.pulsar.handlers.rocketmq.utils.PulsarUtil.genBrokerGroupData;
@@ -530,6 +531,7 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
         try {
             cmd.addExtField(ROP_INNER_REMOTE_CLIENT_TAG, INNER_CLIENT_NAME_PREFIX + sendHeader.getProducerGroup());
             cmd.addExtField(ROP_INNER_CLIENT_ADDRESS, RemotingHelper.parseChannelRemoteAddr(ctx.channel()));
+            cmd.addExtField(ROP_PROXY_SEND_TIMESTAMP, String.valueOf(startTime));
             if (cmd.isOnewayRPC()) {
                 brokerNetworkClients.invokeOneway(address, cmd, timeout);
                 return;
@@ -594,7 +596,7 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
                 }
             });
 
-            if (System.currentTimeMillis() - startTime > 3000) {
+            if (System.currentTimeMillis() - startTime > 1000) {
                 log.warn("RoP proxy invokeAsync timeout [request={}], address=[{}]. Cost = [{}ms]",
                         cmd, address, System.currentTimeMillis() - startTime);
             }
@@ -1115,7 +1117,8 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
         private final ExecutorService processorExecutor;
         private final ExecutorService msgCallbackProcessorExecutor;
 
-        public SendMessageProcessorProxy(ExecutorService processorExecutor, ExecutorService msgCallbackProcessorExecutor) {
+        public SendMessageProcessorProxy(ExecutorService processorExecutor,
+                ExecutorService msgCallbackProcessorExecutor) {
             super(RopBrokerProxy.this.brokerController);
             this.processorExecutor = processorExecutor;
             this.msgCallbackProcessorExecutor = msgCallbackProcessorExecutor;
