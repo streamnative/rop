@@ -138,7 +138,7 @@ public class PullMessageProcessor implements NettyRequestProcessor {
         } catch (Exception e) {
             log.info("PullMessageProcessor get client [request={}] channel context error,"
                             + " wait client register consumer info.",
-                    request);
+                    request, e);
             return null;
         }
     }
