@@ -16,6 +16,7 @@ package org.streamnative.pulsar.handlers.rocketmq.inner.processor;
 
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_INNER_CLIENT_ADDRESS;
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_INNER_MESSAGE_ID;
+import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_OWNER_COST_TIME;
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_OWNER_FINISH_TIMESTAMP;
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_OWNER_RECEIVE_TIMESTAMP;
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_TRACE_START_TIME;
@@ -717,10 +718,12 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
                     TraceManager.get().tracePersist(traceContext);
                 }
 
-                if (now - traceContext.getPersistStartTime() > 3000) {
+                long cost = now - traceContext.getPersistStartTime();
+                if (cost > 3000) {
                     log.warn("RoP owner timeout [request={}], [response={}]. Cost = [{}ms]",
                             request, response, now - traceContext.getPersistStartTime());
                 }
+                response.addExtField(ROP_OWNER_COST_TIME, String.valueOf(cost));
             }
 
             response.addExtField(ROP_OWNER_FINISH_TIMESTAMP, String.valueOf(System.currentTimeMillis()));
