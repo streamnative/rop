@@ -36,6 +36,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import lombok.Getter;
@@ -375,11 +376,14 @@ public class GroupMetaManager {
 
     public void persistOffset() {
         checkOffsetTableOk();
+        long now = System.currentTimeMillis();
+        AtomicLong count = new AtomicLong(0);
         for (Entry<GroupOffsetKey, GroupOffsetValue> entry : offsetTable.asMap().entrySet()) {
             GroupOffsetKey groupOffsetKey = entry.getKey();
             GroupOffsetValue groupOffsetValue = entry.getValue();
             String pulsarGroup = groupOffsetKey.getGroupName();
             if (groupOffsetValue.isValid() && !isSystemGroup(pulsarGroup) && isGroupExist(pulsarGroup)) {
+                count.incrementAndGet();
                 String pulsarTopicName = groupOffsetKey.getTopicName();
                 int pulsarPartitionId = groupOffsetKey.getPulsarPartitionId();
                 long offset = groupOffsetValue.getOffset();
@@ -432,6 +436,8 @@ public class GroupMetaManager {
                 }
             }
         }
+        log.info("RoP persist offset count: [{}], total count: [{}], cost: [{}ms]", count.get(), offsetTable.size(),
+                System.currentTimeMillis() - now);
     }
 
     /**
