@@ -249,6 +249,14 @@ public class ConsumerOffsetManager {
             PersistentTopic persistentTopic = getPulsarPersistentTopic(topicName, pulsarPartitionId);
             ManagedLedgerImpl managedLedger = (ManagedLedgerImpl) persistentTopic.getManagedLedger();
 
+            PositionImpl position = (PositionImpl) managedLedger.getLastConfirmedEntry();
+            if (!managedLedger.ledgerExists(position.getLedgerId())) {
+                return 0L;
+            }
+            if (position.getEntryId() < 0L) {
+                return 0L;
+            }
+
             final CompletableFuture<Long> future = new CompletableFuture<>();
             managedLedger.asyncReadEntry((PositionImpl) managedLedger.getLastConfirmedEntry(),
                     new AsyncCallbacks.ReadEntryCallback() {
@@ -277,7 +285,7 @@ public class ConsumerOffsetManager {
         } catch (Exception e) {
             log.warn("[{}] partition [{}] getLastTimestamp error", topicName, pulsarPartitionId, e);
         }
-        return 0;
+        return 0L;
     }
 
 

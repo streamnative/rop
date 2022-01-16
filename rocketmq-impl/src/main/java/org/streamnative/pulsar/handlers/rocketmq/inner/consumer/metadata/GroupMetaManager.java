@@ -188,6 +188,9 @@ public class GroupMetaManager {
             offsetLoadingLatch = new CountDownLatch(messageIds.size());
 
             offsetReaderExecutor.execute(() -> loadOffsets(offsetLoadingLatch, messageIds));
+            // wait for offset load finish
+            offsetLoadingLatch.await();
+
             persistOffsetExecutor.scheduleAtFixedRate(() -> {
                 try {
                     persistOffset();

@@ -236,7 +236,7 @@ public class PulsarUtil {
         }
 
         Long compactionThreshold = namespaces.getCompactionThreshold(ropOffsetNamespace);
-        if (compactionThreshold != null && compactionThreshold != MAX_COMPACTION_THRESHOLD) {
+        if (compactionThreshold == null || compactionThreshold != MAX_COMPACTION_THRESHOLD) {
             namespaces.setCompactionThreshold(ropOffsetNamespace, MAX_COMPACTION_THRESHOLD);
         }
 

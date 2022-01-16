@@ -133,7 +133,7 @@ public class MessageIdUtils {
             return getOffsetOfPosition(managedLedger,
                     (PositionImpl) pulsarPosition, false, -1).join();
         } catch (Exception e) {
-            log.warn("get offset of position[{}] error.", pulsarPosition);
+            log.warn("[{}] Get offset of position[{}] error.", pulsarTopic.getName(), pulsarPosition, e);
         }
         return queueOffset;
     }

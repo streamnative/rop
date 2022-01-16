@@ -687,14 +687,6 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             throw new RuntimeException();
         }
         ManagedLedger managedLedger = persistentTopic.getManagedLedger();
-        PositionImpl startPosition;
-        if (queueOffset <= MessageIdUtils.MIN_ROP_OFFSET) {
-            startPosition = PositionImpl.earliest;
-        } else if (queueOffset == Long.MAX_VALUE || queueOffset > maxOffset) {
-            startPosition = PositionImpl.latest;
-        } else {
-            startPosition = MessageIdUtils.getPositionForOffset(managedLedger, queueOffset);
-        }
 
         long nextBeginOffset = queueOffset;
         String pTopic = rmqTopic.getPartitionName(pulsarPartitionId);
@@ -708,7 +700,19 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             DEL_CURSOR_COUNT.incrementAndGet();
             closeCursor(triple, managedLedger);
         }
-        ManagedCursor managedCursor = getOrCreateCursor(triple, managedLedger, startPosition);
+
+        ManagedCursor managedCursor = cursors.get(triple);
+        if (managedCursor == null) {
+            PositionImpl startPosition;
+            if (queueOffset <= MessageIdUtils.MIN_ROP_OFFSET) {
+                startPosition = PositionImpl.earliest;
+            } else if (queueOffset == Long.MAX_VALUE || queueOffset > maxOffset) {
+                startPosition = PositionImpl.latest;
+            } else {
+                startPosition = MessageIdUtils.getPositionForOffset(managedLedger, queueOffset);
+            }
+            managedCursor = getOrCreateCursor(triple, managedLedger, startPosition);
+        }
 
         if (managedCursor != null) {
             try {
