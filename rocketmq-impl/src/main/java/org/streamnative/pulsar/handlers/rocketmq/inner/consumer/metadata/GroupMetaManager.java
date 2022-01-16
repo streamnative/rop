@@ -187,9 +187,11 @@ public class GroupMetaManager {
             List<MessageId> messageIds = sendCheckPointMessages();
             offsetLoadingLatch = new CountDownLatch(messageIds.size());
 
+            long now = System.currentTimeMillis();
             offsetReaderExecutor.execute(() -> loadOffsets(offsetLoadingLatch, messageIds));
             // wait for offset load finish
             offsetLoadingLatch.await();
+            log.info("RoP load offset meta cost: [{}ms]", System.currentTimeMillis() - now);
 
             persistOffsetExecutor.scheduleAtFixedRate(() -> {
                 try {

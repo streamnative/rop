@@ -251,6 +251,8 @@ public class ConsumerOffsetManager {
 
             PositionImpl position = (PositionImpl) managedLedger.getLastConfirmedEntry();
             if (!managedLedger.ledgerExists(position.getLedgerId())) {
+                log.info("[{}] [{}] position is not found, maybe has been deleted.", topicName.getPulsarTopicName(),
+                        position);
                 return 0L;
             }
             if (position.getEntryId() < 0L) {
