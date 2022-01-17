@@ -15,8 +15,11 @@
 package org.streamnative.pulsar.handlers.rocketmq.utils;
 
 import com.google.common.base.Preconditions;
+import com.yammer.metrics.Metrics;
+import com.yammer.metrics.core.Meter;
 import io.netty.buffer.ByteBuf;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bookkeeper.mledger.AsyncCallbacks;
 import org.apache.bookkeeper.mledger.Entry;
@@ -57,6 +60,8 @@ public class MessageIdUtils {
     private static final long MASK_PARTITION_ID = (1L << (PARTITION_BITS - 1)) - 1L;
     public static final long MAX_ROP_OFFSET =
             (MASK_PARTITION_ID << (LEDGER_BITS + ENTRY_BITS)) | (MASK_LEDGER_ID << ENTRY_BITS) | MASK_ENTRY_ID;
+    public static final Meter GET_QUEUE_OFFSET_BY_POSITION_METER = Metrics
+            .newMeter(MessageIdUtils.class, "GetQueueOffsetByPosition", "cost", TimeUnit.SECONDS);
 
     public static final long getOffset(long ledgerId, long entryId, long partitionId) {
         entryId = entryId < 0L ? -1L : entryId;
@@ -127,14 +132,16 @@ public class MessageIdUtils {
     public static long getQueueOffsetByPosition(PersistentTopic pulsarTopic, Position pulsarPosition) {
         Preconditions.checkNotNull(pulsarTopic);
         Preconditions.checkArgument(pulsarPosition instanceof PositionImpl);
+        long now = System.currentTimeMillis();
         long queueOffset = getLogEndOffset(pulsarTopic.getManagedLedger());
         try {
             ManagedLedgerImpl managedLedger = (ManagedLedgerImpl) pulsarTopic.getManagedLedger();
             return getOffsetOfPosition(managedLedger,
                     (PositionImpl) pulsarPosition, false, -1).join();
         } catch (Exception e) {
-            log.warn("get offset of position[{}] error.", pulsarPosition);
+            log.warn("[{}] Get offset of position[{}] error.", pulsarTopic.getName(), pulsarPosition, e);
         }
+        GET_QUEUE_OFFSET_BY_POSITION_METER.mark(System.currentTimeMillis() - now);
         return queueOffset;
     }
 
