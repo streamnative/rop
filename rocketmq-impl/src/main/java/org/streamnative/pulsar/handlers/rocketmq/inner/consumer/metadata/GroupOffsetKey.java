@@ -20,7 +20,6 @@ import com.google.common.base.Objects;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import lombok.Data;
-import lombok.ToString;
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopDecodeException;
 import org.streamnative.pulsar.handlers.rocketmq.inner.exception.RopEncodeException;
 import org.testng.util.Strings;
@@ -29,7 +28,6 @@ import org.testng.util.Strings;
  * Group offset key.
  */
 @Data
-@ToString
 public class GroupOffsetKey extends GroupMetaKey<GroupOffsetKey> {
 
     private int pulsarPartitionId;
@@ -103,5 +101,11 @@ public class GroupOffsetKey extends GroupMetaKey<GroupOffsetKey> {
     @Override
     public int hashCode() {
         return Objects.hashCode(super.hashCode(), pulsarPartitionId, topicName);
+    }
+
+    @Override
+    public String toString() {
+        return "GroupOffsetKey(" + "pulsarPartitionId=" + pulsarPartitionId + ", topicName=" + topicName + ", group="
+                + groupName + ")";
     }
 }
