@@ -36,6 +36,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import lombok.Getter;
@@ -85,6 +86,7 @@ public class GroupMetaManager {
     private volatile ProducerBuilder<ByteBuffer> offsetTopicProducerBuilder;
     private volatile ReaderBuilder<ByteBuffer> offsetTopicReaderBuilder;
     private static final int MAX_CHECKPOINT_TIMEOUT_MS = 30 * 1000;
+    private static final AtomicLong currentConsumeCount = new AtomicLong(0);
 
     /**
      * group offset producer\reader.
@@ -164,7 +166,7 @@ public class GroupMetaManager {
                 groupOffsetReader = offsetTopicReaderBuilder.clone()
                         .topic(RocketMQTopic.getGroupMetaOffsetTopic().getPulsarFullName())
                         .startMessageId(MessageId.earliest)
-                        .readCompacted(true)
+//                        .readCompacted(true)
                         .create();
             } catch (Exception e) {
                 log.warn("getGroupOffsetReader error.", e);
@@ -187,7 +189,12 @@ public class GroupMetaManager {
             List<MessageId> messageIds = sendCheckPointMessages();
             offsetLoadingLatch = new CountDownLatch(messageIds.size());
 
+            long now = System.currentTimeMillis();
             offsetReaderExecutor.execute(() -> loadOffsets(offsetLoadingLatch, messageIds));
+            // wait for offset load finish
+            offsetLoadingLatch.await();
+            log.info("RoP load offset meta cost: [{}ms]", System.currentTimeMillis() - now);
+
             persistOffsetExecutor.scheduleAtFixedRate(() -> {
                 try {
                     persistOffset();
@@ -224,14 +231,29 @@ public class GroupMetaManager {
                 if (Objects.isNull(message)) {
                     continue;
                 }
+                currentConsumeCount.incrementAndGet();
                 if (needCountDownOffsetLatch(latch, message, checkedMessageIds)) {
                     latch.countDown();
                     if (latch.getCount() == 0) {
-                        log.info("loadOffsets successfully and CountDownOffsetLatch count == 0.");
+                        log.info("loadOffsets successfully and CountDownOffsetLatch count == 0, consumeCount = {}",
+                                currentConsumeCount.get());
                     }
                 } else if (Objects.nonNull(message.getData()) && message.getData().length > 0) {
                     GroupOffsetKey groupOffsetKey = GroupMetaKey.decodeKey(ByteBuffer.wrap(message.getKeyBytes()));
                     GroupOffsetValue groupOffsetValue = GroupOffsetValue.decodeGroupOffset(message.getValue());
+                    GroupOffsetValue lastGroupOffsetValue = offsetTable.getIfPresent(groupOffsetKey);
+
+                    if (lastGroupOffsetValue != null && groupOffsetValue.getCommitTimestamp() < lastGroupOffsetValue
+                            .getCommitTimestamp()) {
+                        continue;
+                    }
+
+                    if (lastGroupOffsetValue != null && lastGroupOffsetValue.getOffset() > groupOffsetValue
+                            .getOffset()) {
+                        log.info("[{}] reset offset from [{}] to [{}]", groupOffsetKey, lastGroupOffsetValue,
+                                groupOffsetValue);
+                    }
+
                     offsetTable.put(groupOffsetKey, groupOffsetValue);
                 }
             } catch (Exception e) {
@@ -348,9 +370,14 @@ public class GroupMetaManager {
         long expireTimestamp = System.currentTimeMillis() + offsetsRetentionMs;
         if (Objects.nonNull(oldGroupOffset)) {
             //refresh group offset value and expire time
+            if (oldGroupOffset.getOffset() > offset) {
+                log.info("[{}] reset consumer offset from [{}] to [{}]", groupOffsetKey, oldGroupOffset.getOffset(),
+                        offset);
+            }
             oldGroupOffset.refresh(offset, commitTimestamp, expireTimestamp);
         } else {
             // add new group offset
+            log.info("[{}] init consumer offset to [{}]", groupOffsetKey, offset);
             offsetTable.put(groupOffsetKey, new GroupOffsetValue(offset, commitTimestamp, expireTimestamp));
         }
 
@@ -370,11 +397,14 @@ public class GroupMetaManager {
 
     public void persistOffset() {
         checkOffsetTableOk();
+        long now = System.currentTimeMillis();
+        AtomicLong count = new AtomicLong(0);
         for (Entry<GroupOffsetKey, GroupOffsetValue> entry : offsetTable.asMap().entrySet()) {
             GroupOffsetKey groupOffsetKey = entry.getKey();
             GroupOffsetValue groupOffsetValue = entry.getValue();
             String pulsarGroup = groupOffsetKey.getGroupName();
             if (groupOffsetValue.isValid() && !isSystemGroup(pulsarGroup) && isGroupExist(pulsarGroup)) {
+                count.incrementAndGet();
                 String pulsarTopicName = groupOffsetKey.getTopicName();
                 int pulsarPartitionId = groupOffsetKey.getPulsarPartitionId();
                 long offset = groupOffsetValue.getOffset();
@@ -427,6 +457,8 @@ public class GroupMetaManager {
                 }
             }
         }
+        log.info("RoP persist offset count: [{}], total count: [{}], cost: [{}ms], currentConsumeCount: [{}]",
+                count.get(), offsetTable.size(), System.currentTimeMillis() - now, currentConsumeCount.get());
     }
 
     /**

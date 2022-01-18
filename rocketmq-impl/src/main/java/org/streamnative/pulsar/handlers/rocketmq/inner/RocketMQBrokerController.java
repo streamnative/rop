@@ -69,6 +69,7 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.processor.SendMessageProc
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientTopicName;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ProducerManager;
 import org.streamnative.pulsar.handlers.rocketmq.inner.proxy.RopBrokerProxy;
+import org.streamnative.pulsar.handlers.rocketmq.utils.MessageIdUtils;
 
 /**
  * RocketMQ broker controller.
@@ -196,6 +197,10 @@ public class RocketMQBrokerController {
 
                     log.info("Show send delay message count: {}", RopServerCnx.DELAY_SEND_COUNT.get());
                     log.info("Show send timing message count: {}", RopServerCnx.TIMING_SEND_COUNT.get());
+
+                    log.info("Show getQueueOffsetByPosition avg cost: {}ms, count: {}",
+                            MessageIdUtils.GET_QUEUE_OFFSET_BY_POSITION_METER.oneMinuteRate(),
+                            MessageIdUtils.GET_QUEUE_OFFSET_BY_POSITION_METER.count());
                 }, 30, 30, TimeUnit.SECONDS);
     }
 
