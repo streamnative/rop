@@ -230,19 +230,19 @@ public class PulsarUtil {
         // set namespace config if namespace existed
         int retentionMinutes = (int) conf.getOffsetsRetentionMinutes();
         RetentionPolicies retentionPolicies = namespaces.getRetention(ropOffsetNamespace);
-        if (retentionPolicies == null || retentionPolicies.getRetentionTimeInMinutes() != retentionMinutes) {
+        if (retentionPolicies == null) {
             namespaces.setRetention(ropOffsetNamespace,
-                    new RetentionPolicies((int) conf.getOffsetsRetentionMinutes(), -1));
+                    new RetentionPolicies(retentionMinutes, -1));
         }
 
-        Long compactionThreshold = namespaces.getCompactionThreshold(ropOffsetNamespace);
-        if (compactionThreshold == null || compactionThreshold != MAX_COMPACTION_THRESHOLD) {
-            namespaces.setCompactionThreshold(ropOffsetNamespace, MAX_COMPACTION_THRESHOLD);
-        }
+//        Long compactionThreshold = namespaces.getCompactionThreshold(ropOffsetNamespace);
+//        if (compactionThreshold == null || compactionThreshold != MAX_COMPACTION_THRESHOLD) {
+//            namespaces.setCompactionThreshold(ropOffsetNamespace, MAX_COMPACTION_THRESHOLD);
+//        }
 
         int targetMessageTTL = conf.getOffsetsMessageTTL();
         Integer messageTTL = namespaces.getNamespaceMessageTTL(ropOffsetNamespace);
-        if (messageTTL == null || messageTTL != targetMessageTTL) {
+        if (messageTTL == null) {
             namespaces.setNamespaceMessageTTL(ropOffsetNamespace, targetMessageTTL);
         }
     }
