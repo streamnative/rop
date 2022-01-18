@@ -62,6 +62,7 @@ import org.apache.rocketmq.store.stats.BrokerStatsManager;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RopClientChannelCnx;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RopMessage;
+import org.streamnative.pulsar.handlers.rocketmq.inner.RopServerCnx;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.BatchMessageTransfer;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.ConsumerGroupInfo;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.RopGetMessageResult;
@@ -127,6 +128,7 @@ public class PullMessageProcessor implements NettyRequestProcessor {
 
     protected PulsarMessageStore getServerCnxMsgStore(Channel channel, PullMessageRequestHeader requestHeader,
             RemotingCommand request) {
+        RopServerCnx ropServerCnx = null;
         try {
             String groupName = isBrokerProxyRequest(request) ? request.getExtFields().get(ROP_INNER_REMOTE_CLIENT_TAG)
                     : requestHeader.getConsumerGroup();
@@ -134,13 +136,15 @@ public class PullMessageProcessor implements NettyRequestProcessor {
                     .getConsumerGroupInfo(groupName);
             RopClientChannelCnx channelCnx = (RopClientChannelCnx) consumerGroupInfo
                     .getChannelInfoTable().get(channel);
-            return channelCnx.getServerCnx();
+            if (channelCnx != null) {
+                ropServerCnx = channelCnx.getServerCnx();
+            }
         } catch (Exception e) {
-            log.info("PullMessageProcessor get client [request={}] channel context error,"
+            log.error("PullMessageProcessor get client [request={}] channel context error,"
                             + " wait client register consumer info.",
                     request, e);
-            return null;
         }
+        return ropServerCnx;
     }
 
     @Override
