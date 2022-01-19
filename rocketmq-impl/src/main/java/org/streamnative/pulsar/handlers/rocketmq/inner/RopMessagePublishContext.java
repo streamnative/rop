@@ -79,8 +79,8 @@ public final class RopMessagePublishContext implements PublishContext {
             }
             long cost = System.nanoTime() - startTimeNs;
             topic.recordAddLatency(System.nanoTime() - startTimeNs, TimeUnit.MICROSECONDS);
-            if (cost >= 100000000) {
-                log.warn("RoP publishMessage timeout. Cost = [{}ms], topic: [{}]", cost / 100000, topic.getName());
+            if (cost >= 1000000000) {
+                log.warn("RoP publishMessage timeout. Cost = [{}ms], topic: [{}]", cost / 1000000, topic.getName());
             }
             // setMetadataFromEntryData() was called before completed() is called so that baseOffset could be set
             if (baseOffset < 0) {

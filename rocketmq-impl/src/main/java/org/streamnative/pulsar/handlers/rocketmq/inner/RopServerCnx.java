@@ -240,6 +240,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                     log.trace("Send delay level message topic: {}, messageInner: {}", messageInner.getTopic(),
                             messageInner);
                     DELAY_SEND_COUNT.incrementAndGet();
+                    long startTimeMs = System.currentTimeMillis();
+                    final String finalTopic= pTopic;
                     CompletableFuture<MessageId> messageIdFuture = getProducerFromCache(pTopic, producerGroup)
                             .newMessage()
                             .value((body.get(0)))
@@ -247,6 +249,10 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                             .sendAsync();
                     offsetFuture = messageIdFuture.thenApply((Function<MessageId, PutMessageResult>) messageId -> {
                         try {
+                            long cost = System.currentTimeMillis() - startTimeMs;
+                            if (cost >= 1000) {
+                                log.warn("RoP sendMessage timeout. Cost = [{}ms], topic: [{}]", cost, finalTopic);
+                            }
                             if (messageId == null) {
                                 log.warn("Rop send delay level message error, messageId is null.");
                                 return null;
@@ -274,6 +280,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                  * Use pulsar producer send delay message.
                  */
                 TIMING_SEND_COUNT.incrementAndGet();
+                long startTimeMs = System.currentTimeMillis();
+                final String finalTopic= pTopic;
                 CompletableFuture<MessageId> messageIdFuture = getProducerFromCache(pTopic, producerGroup)
                         .newMessage()
                         .value((body.get(0)))
@@ -282,6 +290,10 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                         .sendAsync();
                 offsetFuture = messageIdFuture.thenApply((Function<MessageId, PutMessageResult>) messageId -> {
                     try {
+                        long cost = System.currentTimeMillis() - startTimeMs;
+                        if (cost >= 1000) {
+                            log.warn("RoP sendMessage timeout. Cost = [{}ms], topic: [{}]", cost, finalTopic);
+                        }
                         if (messageId == null) {
                             log.warn("Rop send delay message error, messageId is null.");
                             return null;
