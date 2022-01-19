@@ -102,6 +102,8 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
 
     public static final AtomicLong ADD_CURSOR_COUNT = new AtomicLong();
     public static final AtomicLong DEL_CURSOR_COUNT = new AtomicLong();
+    public static final AtomicLong DELAY_SEND_COUNT = new AtomicLong();
+    public static final AtomicLong TIMING_SEND_COUNT = new AtomicLong();
 
     private static final Cache<ImmutablePair<String, Integer>, Long> minOffsetCaches = CacheBuilder.newBuilder()
             .expireAfterWrite(5, TimeUnit.MINUTES)
@@ -237,6 +239,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 if (messageInner.getDelayTimeLevel() > 0) {
                     log.trace("Send delay level message topic: {}, messageInner: {}", messageInner.getTopic(),
                             messageInner);
+                    DELAY_SEND_COUNT.incrementAndGet();
                     CompletableFuture<MessageId> messageIdFuture = getProducerFromCache(pTopic, producerGroup)
                             .newMessage()
                             .value((body.get(0)))
@@ -270,6 +273,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 /*
                  * Use pulsar producer send delay message.
                  */
+                TIMING_SEND_COUNT.incrementAndGet();
                 CompletableFuture<MessageId> messageIdFuture = getProducerFromCache(pTopic, producerGroup)
                         .newMessage()
                         .value((body.get(0)))
@@ -631,6 +635,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
 
         String consumerGroupName = requestHeader.getConsumerGroup();
         String topicName = requestHeader.getTopic();
+        long queueOffset = requestHeader.getQueueOffset();
 
         // hang pull request if this broker not owner for the request partitionId topicName
         RocketMQTopic rmqTopic = new RocketMQTopic(topicName);
@@ -638,12 +643,12 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                 .isPartitionTopicOwner(rmqTopic.getPulsarTopicName(), pulsarPartitionId)) {
             log.info("RoP group [{}] topic [{}] getMessage on incorrect owner.", consumerGroupName, topicName);
             getResult.setStatus(GetMessageStatus.NO_MATCHED_LOGIC_QUEUE);
+            getResult.setNextBeginOffset(queueOffset);
             // set suspend flag
             requestHeader.setSysFlag(requestHeader.getSysFlag() | 2);
             return getResult;
         }
 
-        long queueOffset = requestHeader.getQueueOffset();
         int maxMsgNums = requestHeader.getMaxMsgNums();
         if (maxMsgNums < 1) {
             log.info("RoP group [{}] topic [{}] getMessage maxMsgNums < 1.", consumerGroupName, topicName);
@@ -683,14 +688,6 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             throw new RuntimeException();
         }
         ManagedLedger managedLedger = persistentTopic.getManagedLedger();
-        PositionImpl startPosition;
-        if (queueOffset <= MessageIdUtils.MIN_ROP_OFFSET) {
-            startPosition = PositionImpl.earliest;
-        } else if (queueOffset == Long.MAX_VALUE || queueOffset > maxOffset) {
-            startPosition = PositionImpl.latest;
-        } else {
-            startPosition = MessageIdUtils.getPositionForOffset(managedLedger, queueOffset);
-        }
 
         long nextBeginOffset = queueOffset;
         String pTopic = rmqTopic.getPartitionName(pulsarPartitionId);
@@ -704,7 +701,19 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
             DEL_CURSOR_COUNT.incrementAndGet();
             closeCursor(triple, managedLedger);
         }
-        ManagedCursor managedCursor = getOrCreateCursor(triple, managedLedger, startPosition);
+
+        ManagedCursor managedCursor = cursors.get(triple);
+        if (managedCursor == null) {
+            PositionImpl startPosition;
+            if (queueOffset <= MessageIdUtils.MIN_ROP_OFFSET) {
+                startPosition = PositionImpl.earliest;
+            } else if (queueOffset == Long.MAX_VALUE || queueOffset > maxOffset) {
+                startPosition = PositionImpl.latest;
+            } else {
+                startPosition = MessageIdUtils.getPositionForOffset(managedLedger, queueOffset);
+            }
+            managedCursor = getOrCreateCursor(triple, managedLedger, startPosition);
+        }
 
         if (managedCursor != null) {
             try {

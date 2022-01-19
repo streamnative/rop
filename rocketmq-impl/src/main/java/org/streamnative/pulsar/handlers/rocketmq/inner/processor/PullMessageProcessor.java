@@ -23,6 +23,7 @@ import com.google.common.collect.Maps;
 import com.yammer.metrics.core.Meter;
 import com.yammer.metrics.core.Metric;
 import com.yammer.metrics.core.MetricName;
+import com.google.common.collect.Maps;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
@@ -34,8 +35,10 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.logging.log4j.util.Strings;
 import org.apache.pulsar.common.naming.TopicName;
@@ -68,6 +71,7 @@ import org.apache.rocketmq.store.stats.BrokerStatsManager;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RopClientChannelCnx;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RopMessage;
+import org.streamnative.pulsar.handlers.rocketmq.inner.RopServerCnx;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.BatchMessageTransfer;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.ConsumerGroupInfo;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.RopGetMessageResult;
@@ -87,10 +91,46 @@ import org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils;
 @Slf4j
 public class PullMessageProcessor extends RopMetricsGroup implements NettyRequestProcessor {
 
+    public static final Map<String, AtomicLong> REQUEST_COUNT_TABLE = Maps.newConcurrentMap();
+    public static final String TOTAL_COUNT = "TOTAL_COUNT";
+    public static final String UN_SUSPEND_COUNT = "UN_SUSPEND_COUNT";
+    public static final String NO_MESSAGE_COUNT = "NO_MESSAGE_COUNT";
+    public static final String SMALLER_SUSPEND_TIMEOUT_COUNT = "SMALLER_SUSPEND_TIMEOUT_COUNT";
+    public static final String PULL_NOT_FOUND_COUNT = "PULL_NOT_FOUND_COUNT";
+    public static final String PULL_RETRY_IMMEDIATELY_COUNT = "PULL_RETRY_IMMEDIATELY_COUNT";
+    public static final String PULL_OFFSET_MOVED_COUNT = "PULL_OFFSET_MOVED_COUNT";
+    public static final String SYSTEM_ERROR_COUNT = "SYSTEM_ERROR_COUNT";
+    public static final String NO_PERMISSION_COUNT = "NO_PERMISSION_COUNT";
+    public static final String SUBSCRIPTION_GROUP_NOT_EXIST_COUNT = "SUBSCRIPTION_GROUP_NOT_EXIST_COUNT";
+    public static final String SUBSCRIPTION_PARSE_FAILED_COUNT = "SUBSCRIPTION_PARSE_FAILED_COUNT";
+    public static final String SUBSCRIPTION_NOT_EXIST_COUNT = "SUBSCRIPTION_NOT_EXIST_COUNT";
+    public static final String SUBSCRIPTION_NOT_LATEST_COUNT = "SUBSCRIPTION_NOT_LATEST_COUNT";
+    public static final String SUSPEND_COUNT = "SUSPEND_COUNT";
+    public static final String SUCCESS_COUNT = "SUCCESS_COUNT";
+    public static final String PULL_MESSAGE_COUNT = "PULL_MESSAGE_COUNT";
+
+
     private final RocketMQBrokerController brokerController;
     private List<ConsumeMessageHook> consumeMessageHookList;
 
     public PullMessageProcessor(final RocketMQBrokerController brokerController) {
+        REQUEST_COUNT_TABLE.put(TOTAL_COUNT, new AtomicLong(0));
+        REQUEST_COUNT_TABLE.put(UN_SUSPEND_COUNT, new AtomicLong(0));
+        REQUEST_COUNT_TABLE.put(NO_MESSAGE_COUNT, new AtomicLong(0));
+        REQUEST_COUNT_TABLE.put(SMALLER_SUSPEND_TIMEOUT_COUNT, new AtomicLong(0));
+        REQUEST_COUNT_TABLE.put(PULL_NOT_FOUND_COUNT, new AtomicLong(0));
+        REQUEST_COUNT_TABLE.put(PULL_RETRY_IMMEDIATELY_COUNT, new AtomicLong(0));
+        REQUEST_COUNT_TABLE.put(PULL_OFFSET_MOVED_COUNT, new AtomicLong(0));
+        REQUEST_COUNT_TABLE.put(SYSTEM_ERROR_COUNT, new AtomicLong(0));
+        REQUEST_COUNT_TABLE.put(NO_PERMISSION_COUNT, new AtomicLong(0));
+        REQUEST_COUNT_TABLE.put(SUBSCRIPTION_GROUP_NOT_EXIST_COUNT, new AtomicLong(0));
+        REQUEST_COUNT_TABLE.put(SUBSCRIPTION_PARSE_FAILED_COUNT, new AtomicLong(0));
+        REQUEST_COUNT_TABLE.put(SUBSCRIPTION_NOT_EXIST_COUNT, new AtomicLong(0));
+        REQUEST_COUNT_TABLE.put(SUBSCRIPTION_NOT_LATEST_COUNT, new AtomicLong(0));
+        REQUEST_COUNT_TABLE.put(SUSPEND_COUNT, new AtomicLong(0));
+        REQUEST_COUNT_TABLE.put(SUCCESS_COUNT, new AtomicLong(0));
+        REQUEST_COUNT_TABLE.put(PULL_MESSAGE_COUNT, new AtomicLong(0));
+
         this.brokerController = brokerController;
     }
 
@@ -100,6 +140,7 @@ public class PullMessageProcessor extends RopMetricsGroup implements NettyReques
 
     protected PulsarMessageStore getServerCnxMsgStore(Channel channel, PullMessageRequestHeader requestHeader,
             RemotingCommand request) {
+        RopServerCnx ropServerCnx = null;
         try {
             String groupName = isBrokerProxyRequest(request) ? request.getExtFields().get(ROP_INNER_REMOTE_CLIENT_TAG)
                     : requestHeader.getConsumerGroup();
@@ -107,13 +148,15 @@ public class PullMessageProcessor extends RopMetricsGroup implements NettyReques
                     .getConsumerGroupInfo(groupName);
             RopClientChannelCnx channelCnx = (RopClientChannelCnx) consumerGroupInfo
                     .getChannelInfoTable().get(channel);
-            return channelCnx.getServerCnx();
+            if (channelCnx != null) {
+                ropServerCnx = channelCnx.getServerCnx();
+            }
         } catch (Exception e) {
-            log.info("PullMessageProcessor get client [request={}] channel context error,"
+            log.error("PullMessageProcessor get client [request={}] channel context error,"
                             + " wait client register consumer info.",
-                    request);
-            return null;
+                    request, e);
         }
+        return ropServerCnx;
     }
 
     @Override
@@ -138,6 +181,8 @@ public class PullMessageProcessor extends RopMetricsGroup implements NettyReques
                                 true);
             }
         }
+        REQUEST_COUNT_TABLE.get(TOTAL_COUNT).incrementAndGet();
+
         return this.processRequest(ctx.channel(), requestHeader, request, true);
     }
 
@@ -158,6 +203,8 @@ public class PullMessageProcessor extends RopMetricsGroup implements NettyReques
         }
 
         if (!PermName.isReadable(this.brokerController.getServerConfig().getBrokerPermission())) {
+            REQUEST_COUNT_TABLE.get(NO_PERMISSION_COUNT).incrementAndGet();
+
             response.setCode(ResponseCode.NO_PERMISSION);
             response.setRemark(String.format("the broker[" //+ this.brokerController.getBrokerConfig().getBrokerIP1()
                     + "] pulling message is forbidden"));
@@ -168,6 +215,8 @@ public class PullMessageProcessor extends RopMetricsGroup implements NettyReques
                 this.brokerController.getSubscriptionGroupManager()
                         .findSubscriptionGroupConfig(requestHeader.getConsumerGroup());
         if (null == subscriptionGroupConfig) {
+            REQUEST_COUNT_TABLE.get(SUBSCRIPTION_GROUP_NOT_EXIST_COUNT).incrementAndGet();
+
             response.setCode(ResponseCode.SUBSCRIPTION_GROUP_NOT_EXIST);
             response.setRemark(
                     String.format("subscription group [%s] does not exist, %s", requestHeader.getConsumerGroup(),
@@ -176,6 +225,8 @@ public class PullMessageProcessor extends RopMetricsGroup implements NettyReques
         }
 
         if (!subscriptionGroupConfig.isConsumeEnable()) {
+            REQUEST_COUNT_TABLE.get(NO_PERMISSION_COUNT).incrementAndGet();
+
             response.setCode(ResponseCode.NO_PERMISSION);
             response.setRemark("subscription group no permission, " + requestHeader.getConsumerGroup());
             return response;
@@ -184,6 +235,10 @@ public class PullMessageProcessor extends RopMetricsGroup implements NettyReques
         final boolean hasSuspendFlag = PullSysFlag.hasSuspendFlag(requestHeader.getSysFlag());
         final boolean hasCommitOffsetFlag = PullSysFlag.hasCommitOffsetFlag(requestHeader.getSysFlag());
         final boolean hasSubscriptionFlag = PullSysFlag.hasSubscriptionFlag(requestHeader.getSysFlag());
+
+        if (!hasSuspendFlag) {
+            REQUEST_COUNT_TABLE.get(UN_SUSPEND_COUNT).incrementAndGet();
+        }
 
         final long suspendTimeoutMillisLong = hasSuspendFlag ? requestHeader.getSuspendTimeoutMillis() : 0;
 
@@ -199,12 +254,16 @@ public class PullMessageProcessor extends RopMetricsGroup implements NettyReques
         }
 
         if (!PermName.isReadable(topicConfig.getPerm())) {
+            REQUEST_COUNT_TABLE.get(NO_PERMISSION_COUNT).incrementAndGet();
+
             response.setCode(ResponseCode.NO_PERMISSION);
             response.setRemark("the topic[" + requestHeader.getTopic() + "] pulling message is forbidden");
             return response;
         }
 
         if (requestHeader.getQueueId() < 0 || requestHeader.getQueueId() >= topicConfig.getReadQueueNums()) {
+            REQUEST_COUNT_TABLE.get(SYSTEM_ERROR_COUNT).incrementAndGet();
+
             String errorInfo = String
                     .format("queueId[%d] is illegal, topic:[%s] topicConfig.readQueueNums:[%d] consumer:[%s]",
                             requestHeader.getQueueId(), requestHeader.getTopic(), topicConfig.getReadQueueNums(),
@@ -223,6 +282,8 @@ public class PullMessageProcessor extends RopMetricsGroup implements NettyReques
                         requestHeader.getTopic(), requestHeader.getSubscription(), requestHeader.getExpressionType()
                 );
             } catch (Exception e) {
+                REQUEST_COUNT_TABLE.get(SUBSCRIPTION_PARSE_FAILED_COUNT).incrementAndGet();
+
                 log.warn("Parse the consumer's subscription[{}] failed, group: {}", requestHeader.getSubscription(),
                         requestHeader.getConsumerGroup());
                 response.setCode(ResponseCode.SUBSCRIPTION_PARSE_FAILED);
@@ -236,6 +297,8 @@ public class PullMessageProcessor extends RopMetricsGroup implements NettyReques
                     consumerGroupInfo != null && consumerGroupInfo.getMessageModel() == MessageModel.BROADCASTING;
             if (consumerGroupInfo != null && !subscriptionGroupConfig.isConsumeBroadcastEnable()
                     && consumerGroupInfo.getMessageModel() == MessageModel.BROADCASTING) {
+                REQUEST_COUNT_TABLE.get(NO_PERMISSION_COUNT).incrementAndGet();
+
                 response.setCode(ResponseCode.NO_PERMISSION);
                 response.setRemark("the consumer group[" + requestHeader.getConsumerGroup()
                         + "] can not consume by broadcast way");
@@ -245,6 +308,8 @@ public class PullMessageProcessor extends RopMetricsGroup implements NettyReques
             ConsumerGroupInfo consumerGroupInfo =
                     this.brokerController.getConsumerManager().getConsumerGroupInfo(requestHeader.getConsumerGroup());
             if (null == consumerGroupInfo) {
+                REQUEST_COUNT_TABLE.get(SUBSCRIPTION_NOT_EXIST_COUNT).incrementAndGet();
+
                 log.warn("the consumer's group info not exist, group: {}", requestHeader.getConsumerGroup());
                 response.setCode(ResponseCode.SUBSCRIPTION_NOT_EXIST);
                 response.setRemark(
@@ -255,6 +320,8 @@ public class PullMessageProcessor extends RopMetricsGroup implements NettyReques
 
             if (!subscriptionGroupConfig.isConsumeBroadcastEnable()
                     && consumerGroupInfo.getMessageModel() == MessageModel.BROADCASTING) {
+                REQUEST_COUNT_TABLE.get(NO_PERMISSION_COUNT).incrementAndGet();
+
                 response.setCode(ResponseCode.NO_PERMISSION);
                 response.setRemark("the consumer group[" + requestHeader.getConsumerGroup()
                         + "] can not consume by broadcast way");
@@ -263,6 +330,8 @@ public class PullMessageProcessor extends RopMetricsGroup implements NettyReques
 
             subscriptionData = consumerGroupInfo.findSubscriptionData(requestHeader.getTopic());
             if (null == subscriptionData) {
+                REQUEST_COUNT_TABLE.get(SUBSCRIPTION_NOT_EXIST_COUNT).incrementAndGet();
+
                 log.warn("the consumer's subscription not exist, group: {}, topic:{}", requestHeader.getConsumerGroup(),
                         requestHeader.getTopic());
                 response.setCode(ResponseCode.SUBSCRIPTION_NOT_EXIST);
@@ -272,6 +341,8 @@ public class PullMessageProcessor extends RopMetricsGroup implements NettyReques
             }
 
             if (subscriptionData.getSubVersion() < requestHeader.getSubVersion()) {
+                REQUEST_COUNT_TABLE.get(SUBSCRIPTION_NOT_LATEST_COUNT).incrementAndGet();
+
                 log.warn("The broker's subscription is not latest, group: {} {}", requestHeader.getConsumerGroup(),
                         subscriptionData.getSubString());
                 response.setCode(ResponseCode.SUBSCRIPTION_NOT_LATEST);
@@ -288,6 +359,8 @@ public class PullMessageProcessor extends RopMetricsGroup implements NettyReques
         // If obtaining the serverCnxMsgStore object fails, enter the retry phase
         // and wait for the heartbeat request to register.
         if (null == pulsarMessageStore) {
+            REQUEST_COUNT_TABLE.get(PULL_RETRY_IMMEDIATELY_COUNT).incrementAndGet();
+
             response.setCode(ResponseCode.PULL_RETRY_IMMEDIATELY);
             responseHeader.setMaxOffset(requestHeader.getQueueOffset());
             responseHeader.setNextBeginOffset(requestHeader.getQueueOffset());
@@ -405,6 +478,8 @@ public class PullMessageProcessor extends RopMetricsGroup implements NettyReques
 
             switch (response.getCode()) {
                 case ResponseCode.SUCCESS:
+                    REQUEST_COUNT_TABLE.get(SUCCESS_COUNT).incrementAndGet();
+                    REQUEST_COUNT_TABLE.get(PULL_MESSAGE_COUNT).addAndGet(ropGetMessageResult.getMessageCount());
 
                     this.brokerController.getBrokerStatsManager()
                             .incGroupGetNums(requestHeader.getConsumerGroup(), requestHeader.getTopic(),
@@ -491,9 +566,15 @@ public class PullMessageProcessor extends RopMetricsGroup implements NettyReques
                     break;
                 case ResponseCode.PULL_NOT_FOUND:
                     if (brokerAllowSuspend && hasSuspendFlag) {
+                        REQUEST_COUNT_TABLE.get(SUSPEND_COUNT).incrementAndGet();
+
                         long pollingTimeMills = suspendTimeoutMillisLong;
                         if (!this.brokerController.getServerConfig().isLongPollingEnable()) {
                             pollingTimeMills = this.brokerController.getServerConfig().getShortPollingTimeMills();
+                        }
+
+                        if (pollingTimeMills < 9000) {
+                            REQUEST_COUNT_TABLE.get(SMALLER_SUSPEND_TIMEOUT_COUNT).incrementAndGet();
                         }
 
                         String topic = requestHeader.getTopic();
@@ -506,11 +587,17 @@ public class PullMessageProcessor extends RopMetricsGroup implements NettyReques
                         this.brokerController.getPullRequestHoldService()
                                 .suspendPullRequest(topic, partitionId, pullRequest);
                         response = null;
+                    } else {
+                        REQUEST_COUNT_TABLE.get(PULL_NOT_FOUND_COUNT).incrementAndGet();
                     }
                     break;
                 case ResponseCode.PULL_RETRY_IMMEDIATELY:
+                    REQUEST_COUNT_TABLE.get(PULL_RETRY_IMMEDIATELY_COUNT).incrementAndGet();
+
                     break;
                 case ResponseCode.PULL_OFFSET_MOVED:
+                    REQUEST_COUNT_TABLE.get(PULL_OFFSET_MOVED_COUNT).incrementAndGet();
+
                     responseHeader.setSuggestWhichBrokerId(subscriptionGroupConfig.getBrokerId());
                     response.setCode(ResponseCode.PULL_RETRY_IMMEDIATELY);
                     log.warn(
@@ -524,6 +611,8 @@ public class PullMessageProcessor extends RopMetricsGroup implements NettyReques
                     assert false;
             }
         } else {
+            REQUEST_COUNT_TABLE.get(SYSTEM_ERROR_COUNT).incrementAndGet();
+
             response.setCode(ResponseCode.SYSTEM_ERROR);
             response.setRemark("store getMessage return null");
         }

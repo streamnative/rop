@@ -16,6 +16,9 @@ package org.streamnative.pulsar.handlers.rocketmq.inner.processor;
 
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_INNER_CLIENT_ADDRESS;
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_INNER_MESSAGE_ID;
+import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_OWNER_COST_TIME;
+import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_OWNER_FINISH_TIMESTAMP;
+import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_OWNER_RECEIVE_TIMESTAMP;
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_TRACE_START_TIME;
 
 import com.alibaba.fastjson.JSON;
@@ -140,6 +143,11 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
     private RemotingCommand consumerSendMsgBack(final ChannelHandlerContext ctx, final RemotingCommand request)
             throws RemotingCommandException {
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
+        if (this.brokerController.getServerConfig().isQuickTerminateConsumeBack()) {
+            response.setCode(ResponseCode.SYSTEM_ERROR);
+            response.setRemark("consumerSendMsgBack process failed, will retry later.");
+            return response;
+        }
         final ConsumerSendMsgBackRequestHeader requestHeader =
                 (ConsumerSendMsgBackRequestHeader) request
                         .decodeCommandCustomHeader(ConsumerSendMsgBackRequestHeader.class);
@@ -350,6 +358,8 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             final TraceContext traceContext) throws RemotingCommandException {
 
         final RemotingCommand response = RemotingCommand.createResponseCommand(SendMessageResponseHeader.class);
+        response.addExtField(ROP_OWNER_RECEIVE_TIMESTAMP, String.valueOf(System.currentTimeMillis()));
+
         final SendMessageResponseHeader responseHeader = (SendMessageResponseHeader) response.readCustomHeader();
         response.setOpaque(request.getOpaque());
 
@@ -410,7 +420,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
                     traceContext.setPersistStartTime(System.currentTimeMillis());
                 }
                 this.getServerCnxMsgStore(ctx,
-                        CommonUtils.getInnerProducerGroupName(request, requestHeader.getProducerGroup()))
+                                CommonUtils.getInnerProducerGroupName(request, requestHeader.getProducerGroup()))
                         .putMessage(CommonUtils.getPulsarPartitionIdByRequest(request),
                                 msgInner,
                                 requestHeader.getProducerGroup(),
@@ -616,7 +626,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
                 traceContext.setPersistStartTime(System.currentTimeMillis());
             }
             this.getServerCnxMsgStore(ctx,
-                    CommonUtils.getInnerProducerGroupName(request, requestHeader.getProducerGroup()))
+                            CommonUtils.getInnerProducerGroupName(request, requestHeader.getProducerGroup()))
                     .putMessages(CommonUtils.getPulsarPartitionIdByRequest(request),
                             messageExtBatch,
                             requestHeader.getProducerGroup(),
@@ -747,8 +757,16 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
                     traceContext.setDuration(now - traceContext.getPersistStartTime());
                     TraceManager.get().tracePersist(traceContext);
                 }
+
+                long cost = now - traceContext.getPersistStartTime();
+                if (cost > 3000) {
+                    log.warn("RoP owner timeout [request={}], [response={}]. Cost = [{}ms]",
+                            request, response, now - traceContext.getPersistStartTime());
+                }
+                response.addExtField(ROP_OWNER_COST_TIME, String.valueOf(cost));
             }
 
+            response.addExtField(ROP_OWNER_FINISH_TIMESTAMP, String.valueOf(System.currentTimeMillis()));
             doResponse(ctx, request, response);
 
             // execute send message hook

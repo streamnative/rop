@@ -187,6 +187,11 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
     private int sendMessageThreadPoolNums = 16 + Runtime.getRuntime().availableProcessors() * 2;
     @FieldContext(
             category = CATEGORY_ROCKETMQ,
+            doc = "Number of message callback thread pool.\n"
+    )
+    private int msgCallbackThreadPoolNums = 16;
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
             doc = "Number of pull message thread pool.\n"
     )
     private int pullMessageThreadPoolNums = 64 + Runtime.getRuntime().availableProcessors() * 2;
@@ -504,4 +509,12 @@ public class RocketMQServiceConfiguration extends ServiceConfiguration {
             doc = "RoP name check enable.\n"
     )
     private boolean ropNameCheckEnable = true;
+
+
+    @FieldContext(
+            category = CATEGORY_ROCKETMQ,
+            doc = "process consumerSendMsgBack as throw exception.\n"
+    )
+    private boolean quickTerminateConsumeBack = false;
+
 }

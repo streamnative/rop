@@ -14,6 +14,7 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.inner;
 
+import com.alibaba.fastjson.JSON;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import java.util.List;
@@ -63,10 +64,12 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.listener.DefaultConsumerI
 import org.streamnative.pulsar.handlers.rocketmq.inner.listener.DefaultTransactionalMessageCheckListener;
 import org.streamnative.pulsar.handlers.rocketmq.inner.listener.NotifyMessageArrivingListener;
 import org.streamnative.pulsar.handlers.rocketmq.inner.namesvr.MQTopicManager;
+import org.streamnative.pulsar.handlers.rocketmq.inner.processor.PullMessageProcessor;
 import org.streamnative.pulsar.handlers.rocketmq.inner.processor.SendMessageProcessor;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientTopicName;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ProducerManager;
 import org.streamnative.pulsar.handlers.rocketmq.inner.proxy.RopBrokerProxy;
+import org.streamnative.pulsar.handlers.rocketmq.utils.MessageIdUtils;
 import org.streamnative.pulsar.handlers.rocketmq.metrics.RopMetricsManager;
 
 /**
@@ -95,6 +98,7 @@ public class RocketMQBrokerController {
 
     private final BlockingQueue<Runnable> sendThreadPoolQueue;
     private final BlockingQueue<Runnable> sendCallbackThreadPoolQueue;
+    private final BlockingQueue<Runnable> msgCallbackThreadPoolQueue;
     private final BlockingQueue<Runnable> pullThreadPoolQueue;
     private final BlockingQueue<Runnable> replyThreadPoolQueue;
     private final BlockingQueue<Runnable> queryThreadPoolQueue;
@@ -110,6 +114,7 @@ public class RocketMQBrokerController {
 
     private ExecutorService sendMessageExecutor;
     private ExecutorService sendCallbackExecutor;
+    private ExecutorService msgCallbackExecutor;
     private ExecutorService pullMessageExecutor;
     private ExecutorService replyMessageExecutor;
     private ExecutorService queryMessageExecutor;
@@ -152,6 +157,8 @@ public class RocketMQBrokerController {
         this.sendThreadPoolQueue = new LinkedBlockingQueue<>(
                 this.serverConfig.getSendThreadPoolQueueCapacity());
         this.sendCallbackThreadPoolQueue = new LinkedBlockingQueue<>();
+        this.msgCallbackThreadPoolQueue = new LinkedBlockingQueue<>(
+                this.serverConfig.getSendThreadPoolQueueCapacity());
         this.pullThreadPoolQueue = new LinkedBlockingQueue<>(
                 this.serverConfig.getPullThreadPoolQueueCapacity());
         this.replyThreadPoolQueue = new LinkedBlockingQueue<>(
@@ -189,7 +196,17 @@ public class RocketMQBrokerController {
                     log.info("Show current cursor count: {}, addCursorCount: {}, delCursorCount: {}.",
                             RopServerCnx.ADD_CURSOR_COUNT.get() - RopServerCnx.DEL_CURSOR_COUNT.get(),
                             RopServerCnx.ADD_CURSOR_COUNT.get(), RopServerCnx.DEL_CURSOR_COUNT.get());
+
                     log.info("Show request count: {}", RopBrokerProxy.REQUEST_COUNT_TABLE);
+
+                    log.info("Show pull request details: {}", JSON.toJSON(PullMessageProcessor.REQUEST_COUNT_TABLE));
+
+                    log.info("Show send delay message count: {}", RopServerCnx.DELAY_SEND_COUNT.get());
+                    log.info("Show send timing message count: {}", RopServerCnx.TIMING_SEND_COUNT.get());
+
+                    log.info("Show getQueueOffsetByPosition avg cost: {}ms, count: {}",
+                            MessageIdUtils.GET_QUEUE_OFFSET_BY_POSITION_METER.oneMinuteRate(),
+                            MessageIdUtils.GET_QUEUE_OFFSET_BY_POSITION_METER.count());
                 }, 30, 30, TimeUnit.SECONDS);
     }
 
@@ -210,6 +227,14 @@ public class RocketMQBrokerController {
                 TimeUnit.MILLISECONDS,
                 this.sendCallbackThreadPoolQueue,
                 new ThreadFactoryImpl("SendCallbackThread_"));
+
+        this.msgCallbackExecutor = new BrokerFixedThreadPoolExecutor(
+                this.serverConfig.getMsgCallbackThreadPoolNums(),
+                this.serverConfig.getMsgCallbackThreadPoolNums(),
+                1000 * 60,
+                TimeUnit.MILLISECONDS,
+                this.msgCallbackThreadPoolQueue,
+                new ThreadFactoryImpl("MsgCallbackThread_"));
 
         this.sendMessageExecutor = new BrokerFixedThreadPoolExecutor(
                 this.serverConfig.getSendMessageThreadPoolNums(),

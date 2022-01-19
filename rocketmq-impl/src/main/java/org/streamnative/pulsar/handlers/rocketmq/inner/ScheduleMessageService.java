@@ -257,8 +257,8 @@ public class ScheduleMessageService {
                                                          */
                                                         delayedConsumer.acknowledgeAsync(message);
                                                     } else {
-                                                        log.warn("DelayedMessageSender send message[{}] failed.",
-                                                                message);
+                                                        log.warn("DelayedMessageSender send message to [{}] failed.",
+                                                                pTopic);
                                                         delayedConsumer.negativeAcknowledge(message);
                                                     }
                                                 });
