@@ -134,10 +134,6 @@ public class RopCoordinator implements AutoCloseable {
      * broker become coordinator.
      */
     public void becomeCoordinator() {
-        // TODO: hanmz 2021/9/8 加载topics
-
-        // TODO: hanmz 2021/9/8 加载broker
-
     }
 
     public void removeBroker() {

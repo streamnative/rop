@@ -239,4 +239,8 @@ public class ConsumerGroupInfo {
     public void setConsumeFromWhere(ConsumeFromWhere consumeFromWhere) {
         this.consumeFromWhere = consumeFromWhere;
     }
+
+    public int consumerCount() {
+        return channelInfoTable.size();
+    }
 }

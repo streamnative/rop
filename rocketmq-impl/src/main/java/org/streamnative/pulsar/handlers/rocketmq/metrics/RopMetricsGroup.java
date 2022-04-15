@@ -14,17 +14,18 @@
 
 package org.streamnative.pulsar.handlers.rocketmq.metrics;
 
+import com.yammer.metrics.core.Counter;
 import com.yammer.metrics.core.Gauge;
 import com.yammer.metrics.core.Histogram;
 import com.yammer.metrics.core.Meter;
 import com.yammer.metrics.core.MetricName;
 import com.yammer.metrics.core.Timer;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import javax.management.ObjectName;
 import org.apache.logging.log4j.util.Strings;
 import org.apache.pulsar.broker.stats.prometheus.PrometheusRawMetricsProvider;
 import org.streamnative.pulsar.handlers.rocketmq.utils.Sanitizer;
@@ -43,19 +44,19 @@ public abstract class RopMetricsGroup implements PrometheusRawMetricsProvider {
 
     protected MetricName explicitMetricName(String group, String typeName, String name, Map<String, String> tags) {
         StringBuilder nameBuilder = new StringBuilder();
-        nameBuilder.append(group);
+        nameBuilder.append(ObjectName.quote(group));
         nameBuilder.append(":type=");
-        nameBuilder.append(typeName);
+        nameBuilder.append(ObjectName.quote(typeName));
 
         if (Strings.isNotBlank(name)) {
             nameBuilder.append(",name=");
-            nameBuilder.append(name);
+            nameBuilder.append(ObjectName.quote(name));
         }
 
         String scope = toScope(tags);
-        String tagsName = toMBeanName(tags);
-        if (Strings.isNotBlank(tagsName)) {
-            nameBuilder.append(",").append(tagsName);
+        if (Strings.isNotBlank(scope)) {
+            nameBuilder.append(",scope=");
+            nameBuilder.append(ObjectName.quote(scope));
         }
 
         return new MetricName(group, typeName, name, scope, nameBuilder.toString());
@@ -63,6 +64,10 @@ public abstract class RopMetricsGroup implements PrometheusRawMetricsProvider {
 
     public <T> Gauge<T> newGauge(String name, Gauge<T> metric, Map<String, String> tags) {
         return RopYammerMetrics.defaultRegistry().newGauge(metricName(name, tags), metric);
+    }
+
+    public Counter newCounter(String name, Map<String, String> tags) {
+        return RopYammerMetrics.defaultRegistry().newCounter(metricName(name, tags));
     }
 
     public Meter newMeter(String name, String eventType, TimeUnit timeUnit, Map<String, String> tags) {
@@ -100,13 +105,16 @@ public abstract class RopMetricsGroup implements PrometheusRawMetricsProvider {
         if (tags != null && !tags.isEmpty()) {
             List<Entry<String, String>> filteredTags = tags.entrySet().stream()
                     .filter(entry -> Strings.isNotBlank(entry.getValue()))
-                    .sorted(Comparator.comparing(Entry::getKey))
+                    .sorted(Entry.comparingByKey())
                     .collect(Collectors.toList());
 
             if (!filteredTags.isEmpty()) {
-                return filteredTags.stream()
-                        .map(entry -> "%s.%s".format(entry.getKey(), entry.getValue().replaceAll("\\.", "_")))
-                        .collect(Collectors.joining("."));
+                StringBuilder sbd = new StringBuilder();
+                sbd.append("{");
+                for (Entry<String, String> entry : tags.entrySet()) {
+                    sbd.append(entry.getKey()).append("=\"").append(entry.getValue()).append("\"").append(",");
+                }
+                return sbd.substring(0, sbd.length() - 1) + "}";
             }
         }
         return Strings.EMPTY;

@@ -70,6 +70,7 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientTopicName;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ProducerManager;
 import org.streamnative.pulsar.handlers.rocketmq.inner.proxy.RopBrokerProxy;
 import org.streamnative.pulsar.handlers.rocketmq.utils.MessageIdUtils;
+import org.streamnative.pulsar.handlers.rocketmq.metrics.RopMetricsManager;
 
 /**
  * RocketMQ broker controller.
@@ -79,6 +80,7 @@ import org.streamnative.pulsar.handlers.rocketmq.utils.MessageIdUtils;
 public class RocketMQBrokerController {
 
     private final RocketMQServiceConfiguration serverConfig;
+    private final RopMetricsManager ropMetricsManager;
     private final GroupMetaManager groupMetaManager;
     private final ConsumerOffsetManager consumerOffsetManager;
     private final ConsumerManager consumerManager;
@@ -136,16 +138,18 @@ public class RocketMQBrokerController {
     private static String ropTraceLogDir;
 
     private final Pattern ropNameCheckMatch;
+    private final String ropClusterName;
 
     public RocketMQBrokerController(final RocketMQServiceConfiguration serverConfig) throws PulsarServerException {
         this.serverConfig = serverConfig;
+        this.ropMetricsManager = new RopMetricsManager(this);
         this.groupMetaManager = new GroupMetaManager(this);
         this.consumerOffsetManager = new ConsumerOffsetManager(this, groupMetaManager);
 
         this.pullRequestHoldService = new PullRequestHoldService(this);
         this.messageArrivingListener = new NotifyMessageArrivingListener(this.pullRequestHoldService);
         this.consumerIdsChangeListener = new DefaultConsumerIdsChangeListener(this);
-        this.consumerManager = new ConsumerManager(this.consumerIdsChangeListener);
+        this.consumerManager = new ConsumerManager(this, this.consumerIdsChangeListener);
         this.producerManager = new ProducerManager();
         this.clientHousekeepingService = new ClientHousekeepingService(this);
         this.subscriptionGroupManager = new SubscriptionGroupManager(this);
@@ -182,6 +186,8 @@ public class RocketMQBrokerController {
         } else {
             this.ropNameCheckMatch = Pattern.compile("([^|/%]+?)\\|([^|/%]+?)%([^|/%]+?)");
         }
+
+        this.ropClusterName = serverConfig.getClusterName();
 
         setRopTraceLogDir(this.serverConfig.getRopTraceLogDir());
 
@@ -558,6 +564,10 @@ public class RocketMQBrokerController {
             return;
         }
 
+        if (this.ropMetricsManager != null) {
+            this.ropMetricsManager.close();
+        }
+
         if (this.subscriptionGroupManager != null) {
             this.subscriptionGroupManager.close();
         }
@@ -637,6 +647,14 @@ public class RocketMQBrokerController {
         this.brokerAddress = brokerService.pulsar().getAdvertisedAddress()
                 + ":"
                 + RocketMQProtocolHandler.getListenerPort(serverConfig.getRocketmqListeners());
+
+        if (this.consumerOffsetManager != null) {
+            this.consumerOffsetManager.start();
+        }
+
+        if (this.consumerManager != null) {
+            this.consumerManager.start();
+        }
 
         if (this.groupMetaManager != null) {
             this.groupMetaManager.start();
