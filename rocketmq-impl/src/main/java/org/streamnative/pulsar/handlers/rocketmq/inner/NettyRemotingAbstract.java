@@ -32,6 +32,9 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+
+import io.netty.handler.ssl.SslContext;
+import io.netty.handler.ssl.SslHandler;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.acl.common.AclException;
 import org.apache.rocketmq.remoting.ChannelEventListener;
@@ -90,6 +93,12 @@ public abstract class NettyRemotingAbstract {
      * The default request processor to use in case there is no exact match in {@link #processorTable} per request code.
      */
     protected Pair<NettyRequestProcessor, ExecutorService> defaultRequestProcessor;
+
+    /**
+     * SSL context via which to create {@link SslHandler}.
+     */
+    protected volatile SslContext sslContext;
+
     /**
      * custom rpc hooks.
      */
