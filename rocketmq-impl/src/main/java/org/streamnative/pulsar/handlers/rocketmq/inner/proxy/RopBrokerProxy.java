@@ -73,6 +73,8 @@ import org.apache.pulsar.client.api.ClientBuilder;
 import org.apache.pulsar.client.api.PulsarClient;
 import org.apache.pulsar.client.impl.PulsarClientImpl;
 import org.apache.pulsar.common.naming.TopicName;
+import org.apache.pulsar.zookeeper.ZooKeeperClientFactory;
+import org.apache.pulsar.zookeeper.ZookeeperBkClientFactoryImpl;
 import org.apache.rocketmq.broker.mqtrace.ConsumeMessageHook;
 import org.apache.rocketmq.broker.mqtrace.SendMessageHook;
 import org.apache.rocketmq.client.exception.MQBrokerException;
@@ -781,7 +783,11 @@ public class RopBrokerProxy extends RocketMQRemoteServer implements AutoCloseabl
         try {
             this.pulsarService = brokerController.getBrokerService().pulsar();
             ServiceConfiguration config = this.pulsarService.getConfig();
-            RopZookeeperCache ropZkCache = new RopZookeeperCache(pulsarService.getZkClientFactory(),
+            ZooKeeperClientFactory zkClientFactory = pulsarService.getZkClientFactory();
+            if (zkClientFactory == null) {
+                zkClientFactory = new ZookeeperBkClientFactoryImpl(pulsarService.getOrderedExecutor());
+            }
+            RopZookeeperCache ropZkCache = new RopZookeeperCache(zkClientFactory,
                     (int) config.getZooKeeperSessionTimeoutMillis(),
                     config.getZooKeeperOperationTimeoutSeconds(), config.getZookeeperServers(), orderedExecutor,
                     brokerController.getScheduledExecutorService(), config.getZooKeeperCacheExpirySeconds());
