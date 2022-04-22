@@ -33,6 +33,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.IntStream;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.math.NumberUtils;
 import org.apache.pulsar.broker.PulsarServerException;
 import org.apache.pulsar.client.admin.PulsarAdmin;
 import org.apache.pulsar.client.api.Consumer;
@@ -96,6 +97,13 @@ public class ScheduleMessageService {
     public String getDelayedTopicName(int timeDelayedLevel) {
         String delayedTopicName = ScheduleMessageService.this.scheduleTopicPrefix + CommonUtils.UNDERSCORE_CHAR
                 + delayLevelArray[timeDelayedLevel - 1];
+        RocketMQTopic rocketMQTopic = RocketMQTopic.getRocketMQMetaTopic(delayedTopicName);
+        return rocketMQTopic.getPulsarFullName();
+    }
+
+    public String getTimingTopicName() {
+        String delayedTopicName = ScheduleMessageService.this.scheduleTopicPrefix + CommonUtils.UNDERSCORE_CHAR
+                + delayLevelArray[0];
         RocketMQTopic rocketMQTopic = RocketMQTopic.getRocketMQMetaTopic(delayedTopicName);
         return rocketMQTopic.getPulsarFullName();
     }
@@ -219,9 +227,10 @@ public class ScheduleMessageService {
                         break;
                     }
 
-                    MessageExt messageExt = this.formatter.decodePulsarMessage(message);
-                    long deliveryTime = computeDeliverTimestamp(this.delayLevel,
-                            messageExt.getStoreTimestamp());
+                    MessageExt messageExt = RopEntryFormatter.decodePulsarMessage(message);
+                    String deliverTimeStr = messageExt.getProperties().get(CommonUtils.DELIVER_AT_TIME_PROPERTY_NAME);
+                    long deliveryTime = deliverTimeStr == null ? computeDeliverTimestamp(this.delayLevel,
+                            messageExt.getStoreTimestamp()) : NumberUtils.toLong(deliverTimeStr);
                     long diff = deliveryTime - Instant.now().toEpochMilli();
                     diff = diff < 0 ? 0 : diff;
                     timeoutTimer
@@ -229,10 +238,11 @@ public class ScheduleMessageService {
                                 @Override
                                 public void run() {
                                     try {
-                                        log.debug("Retry delayedTime: needDelayMs=[{}],real diff =[{}].",
+                                        MessageExtBrokerInner msgInner = messageTimeup(messageExt);
+                                        log.debug("[{}] Retry delayedTime: needDelayMs=[{}],real diff =[{}].",
+                                                msgInner.getTopic(),
                                                 this.delayMs,
                                                 deliveryTime - Instant.now().toEpochMilli());
-                                        MessageExtBrokerInner msgInner = messageTimeup(messageExt);
                                         if (MixAll.RMQ_SYS_TRANS_HALF_TOPIC.equals(messageExt.getTopic())) {
                                             log.error("[BUG] the real topic of schedule msg is {}, "
                                                             + "discard the msg. msg={}",

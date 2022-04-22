@@ -67,6 +67,7 @@ public class CommonUtils {
     public static final int ROP_CACHE_INITIAL_SIZE = 1024;
     public static final int ROP_CACHE_MAX_SIZE = 1024 << 8;
     public static final int ROP_CACHE_EXPIRE_TIME_MS = 360 * 1000;
+    public static final String DELIVER_AT_TIME_PROPERTY_NAME = "__STARTDELIVERTIME";
 
     /**
      * @param pulsarTopicName => [tenant/ns/topicName]
