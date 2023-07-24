@@ -241,7 +241,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                             messageInner);
                     DELAY_SEND_COUNT.incrementAndGet();
                     long startTimeMs = System.currentTimeMillis();
-                    final String finalTopic= pTopic;
+                    final String finalTopic = pTopic;
                     CompletableFuture<MessageId> messageIdFuture = getProducerFromCache(pTopic, producerGroup)
                             .newMessage()
                             .value((body.get(0)))
@@ -281,7 +281,7 @@ public class RopServerCnx extends ChannelInboundHandlerAdapter implements Pulsar
                  */
                 TIMING_SEND_COUNT.incrementAndGet();
                 long startTimeMs = System.currentTimeMillis();
-                final String finalTopic= pTopic;
+                final String finalTopic = pTopic;
                 CompletableFuture<MessageId> messageIdFuture = getProducerFromCache(pTopic, producerGroup)
                         .newMessage()
                         .value((body.get(0)))
