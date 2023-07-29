@@ -20,6 +20,10 @@ import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_IN
 import static org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils.ROP_INNER_REMOTE_CLIENT_TAG;
 
 import com.google.common.collect.Maps;
+import com.yammer.metrics.core.Meter;
+import com.yammer.metrics.core.Metric;
+import com.yammer.metrics.core.MetricName;
+import com.google.common.collect.Maps;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
@@ -30,10 +34,15 @@ import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.logging.log4j.util.Strings;
+import org.apache.pulsar.common.naming.TopicName;
+import org.apache.pulsar.common.util.SimpleTextOutputStream;
 import org.apache.rocketmq.broker.longpolling.PullRequest;
 import org.apache.rocketmq.broker.mqtrace.ConsumeMessageContext;
 import org.apache.rocketmq.broker.mqtrace.ConsumeMessageHook;
@@ -67,17 +76,20 @@ import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.BatchMessageTran
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.ConsumerGroupInfo;
 import org.streamnative.pulsar.handlers.rocketmq.inner.consumer.RopGetMessageResult;
 import org.streamnative.pulsar.handlers.rocketmq.inner.format.RopMessageFilter;
+import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupAndTopicName;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupName;
 import org.streamnative.pulsar.handlers.rocketmq.inner.pulsar.PulsarMessageStore;
 import org.streamnative.pulsar.handlers.rocketmq.inner.trace.TraceContext;
 import org.streamnative.pulsar.handlers.rocketmq.inner.trace.TraceManager;
+import org.streamnative.pulsar.handlers.rocketmq.metrics.RopMetricsGroup;
+import org.streamnative.pulsar.handlers.rocketmq.metrics.RopYammerMetrics;
 import org.streamnative.pulsar.handlers.rocketmq.utils.CommonUtils;
 
 /**
  * Pull message processor.
  */
 @Slf4j
-public class PullMessageProcessor implements NettyRequestProcessor {
+public class PullMessageProcessor extends RopMetricsGroup implements NettyRequestProcessor {
 
     public static final Map<String, AtomicLong> REQUEST_COUNT_TABLE = Maps.newConcurrentMap();
     public static final String TOTAL_COUNT = "TOTAL_COUNT";
@@ -359,8 +371,9 @@ public class PullMessageProcessor implements NettyRequestProcessor {
         }
 
         //TODO:
+        final int pulsarPartitionId = CommonUtils.getPulsarPartitionIdByRequest(request);
         final RopGetMessageResult ropGetMessageResult = pulsarMessageStore
-                .getMessage(CommonUtils.getPulsarPartitionIdByRequest(request), request, requestHeader, messageFilter);
+                .getMessage(pulsarPartitionId, request, requestHeader, messageFilter);
 
         if (ropGetMessageResult != null) {
             response.setRemark(ropGetMessageResult.getStatus().name());
@@ -476,6 +489,25 @@ public class PullMessageProcessor implements NettyRequestProcessor {
                                     ropGetMessageResult.getBufferTotalSize());
                     this.brokerController.getBrokerStatsManager()
                             .incBrokerGetNums(ropGetMessageResult.getMessageCount());
+
+                    ClientGroupAndTopicName clientGroupAndTopicName = new ClientGroupAndTopicName(
+                            requestHeader.getConsumerGroup(), requestHeader.getTopic());
+
+                    String pulsarGroupName = clientGroupAndTopicName.getClientGroupName().getPulsarGroupName();
+                    String pulsarTopicName = clientGroupAndTopicName.getClientTopicName().getPulsarTopicName();
+
+                    Map<String, String> tags = Maps.newHashMap();
+                    tags.put("cluster", this.brokerController.getRopClusterName());
+                    tags.put("topic", pulsarTopicName + "-partition-" + pulsarPartitionId);
+                    tags.put("group", pulsarGroupName);
+
+                    Meter ropRateOutMeter = super
+                            .newMeter(RopYammerMetrics.ROP_RATE_OUT, "request", TimeUnit.SECONDS, tags);
+                    ropRateOutMeter.mark(ropGetMessageResult.getMessageCount());
+
+                    Meter ropThroughputOutMeter = super
+                            .newMeter(RopYammerMetrics.ROP_THROUGHPUT_OUT, "request", TimeUnit.SECONDS, tags);
+                    ropThroughputOutMeter.mark(ropGetMessageResult.getBufferTotalSize());
 
                     if (this.brokerController.getServerConfig().isTransferMsgByHeap()) {
                         try {
@@ -686,6 +718,31 @@ public class PullMessageProcessor implements NettyRequestProcessor {
 
     public void registerConsumeMessageHook(List<ConsumeMessageHook> sendMessageHookList) {
         this.consumeMessageHookList = sendMessageHookList;
+    }
+
+    @Override
+    public void generate(SimpleTextOutputStream stream) {
+        log.info("RoP generate consume relate metrics.");
+
+        Map<MetricName, Metric> metricMap = RopYammerMetrics.defaultRegistry().allMetrics();
+
+        for (Entry<MetricName, Metric> entry : metricMap.entrySet()) {
+
+            String name = entry.getKey().getName();
+            String scope = entry.getKey().getScope();
+            if (!RopYammerMetrics.ROP_RATE_OUT.equals(name) && !RopYammerMetrics.ROP_THROUGHPUT_OUT.equals(name)) {
+                continue;
+            }
+
+            String pulsarTopic = RopYammerMetrics.getTopicFromScope(scope);
+            if (!this.brokerController.getBrokerService().isTopicNsOwnedByBroker(TopicName.get(pulsarTopic))) {
+                continue;
+            }
+
+            Meter meter = (Meter) entry.getValue();
+            stream.write(name).write(scope).write(' ');
+            stream.write(meter.oneMinuteRate()).write(' ').write(System.currentTimeMillis()).write('\n');
+        }
     }
 }
 

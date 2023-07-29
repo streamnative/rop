@@ -25,6 +25,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.pulsar.common.util.SimpleTextOutputStream;
 import org.apache.rocketmq.broker.client.ClientChannelInfo;
 import org.apache.rocketmq.broker.client.ConsumerGroupEvent;
 import org.apache.rocketmq.broker.client.ConsumerIdsChangeListener;
@@ -37,21 +38,31 @@ import org.apache.rocketmq.remoting.common.RemotingUtil;
 import org.apache.rocketmq.remoting.protocol.LanguageCode;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RocketMQBrokerController;
 import org.streamnative.pulsar.handlers.rocketmq.inner.RopClientChannelCnx;
+import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupAndTopicName;
 import org.streamnative.pulsar.handlers.rocketmq.inner.producer.ClientGroupName;
+import org.streamnative.pulsar.handlers.rocketmq.metrics.RopMetricsGroup;
+import org.streamnative.pulsar.handlers.rocketmq.metrics.RopYammerMetrics;
 
 /**
  * Consumer manager service.
  */
 @Slf4j
-public class ConsumerManager {
+public class ConsumerManager extends RopMetricsGroup {
 
     private static final long CHANNEL_EXPIRED_TIMEOUT = 120000L;
+    private final RocketMQBrokerController brokerController;
     private final ConcurrentHashMap<ClientGroupName, ConsumerGroupInfo> consumerTable = new ConcurrentHashMap<>(1024);
     //ConsumerIdsChangeListener groupName is rocketmq groupName example: tenant|ns%topicName; %RETRY%tenant|ns%topicName
     private final ConsumerIdsChangeListener consumerIdsChangeListener;
 
-    public ConsumerManager(ConsumerIdsChangeListener consumerIdsChangeListener) {
+    public ConsumerManager(final RocketMQBrokerController brokerController,
+            ConsumerIdsChangeListener consumerIdsChangeListener) {
+        this.brokerController = brokerController;
         this.consumerIdsChangeListener = consumerIdsChangeListener;
+    }
+
+    public void start() {
+        brokerController.getBrokerService().getPulsar().addPrometheusRawMetricsProvider(this);
     }
 
     public ClientChannelInfo findChannel(String group, String clientId) {
@@ -225,6 +236,42 @@ public class ConsumerManager {
             }
         }
         return groups;
+    }
+
+    @Override
+    public void generate(SimpleTextOutputStream stream) {
+        log.info("RoP generate consumer relate metrics.");
+
+        for (Entry<ClientGroupName, ConsumerGroupInfo> entry : consumerTable.entrySet()) {
+            ClientGroupName clientGroupName = entry.getKey();
+            ConsumerGroupInfo consumerGroupInfo = entry.getValue();
+
+            String ropGroupName = clientGroupName.getRmqGroupName();
+            if (ropGroupName.startsWith(INNER_CLIENT_NAME_PREFIX)) {
+                continue;
+            }
+
+            if (!brokerController.getRopBrokerProxy().getZkService()
+                    .isGroupExist(clientGroupName.getPulsarGroupName())) {
+                continue;
+            }
+
+            for (Entry<String, SubscriptionData> subEntry : consumerGroupInfo.getSubscriptionTable().entrySet()) {
+                String ropTopicName = subEntry.getKey();
+                ClientGroupAndTopicName clientGroupAndTopicName = new ClientGroupAndTopicName(ropGroupName,
+                        ropTopicName);
+
+                String pulsarGroupName = clientGroupAndTopicName.getClientGroupName().getPulsarGroupName();
+                String pulsarTopicName = clientGroupAndTopicName.getClientTopicName().getPulsarTopicName();
+
+                stream.write(RopYammerMetrics.ROP_CONSUMERS_COUNT)
+                        .write("{cluster=\"").write(this.brokerController.getRopClusterName())
+                        .write("\",topic=\"").write(pulsarTopicName)
+                        .write("\",group=\"").write(pulsarGroupName).write("\"} ");
+                stream.write(consumerGroupInfo.consumerCount()).write(' ').write(System.currentTimeMillis())
+                        .write('\n');
+            }
+        }
     }
 }
 
